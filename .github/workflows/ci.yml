@@ -112,6 +112,47 @@ jobs:
           name: gallery
           path: gallery/
 
+  # The GitHub Action end to end: download the release, collect, render.
+  # It needs the release for Cargo.toml's version, so it waits for the tag.
+  action:
+    name: Action (${{ matrix.os }})
+    needs: check
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Is this version released?
+        id: released
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
+          if gh release view "v$version" > /dev/null 2>&1; then
+            echo "yes=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::v$version is not released yet; the action is checked once it is"
+          fi
+
+      - uses: ./
+        id: bonsai
+        if: steps.released.outputs.yes == 'true'
+        with:
+          output-dir: out
+          legend: right
+
+      - name: Check the outputs
+        if: steps.released.outputs.yes == 'true'
+        shell: bash
+        run: |
+          for f in "${{ steps.bonsai.outputs.light }}" "${{ steps.bonsai.outputs.dark }}"; do
+            test -s "$f" && grep -q '<svg' "$f" && grep -q '<text' "$f"
+          done
+
   determinism:
     name: Byte-identical on every platform
     needs: test
