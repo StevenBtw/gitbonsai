@@ -1,0 +1,23 @@
+# bonsai.toml: every key is optional; these are the defaults unless noted.
+
+[tree]
+style = "moyogi"        # chokkan | moyogi | shakan | fukinagashi (kengai comes later)
+# wind = "left"         # fukinagashi only; default comes from the seed
+
+[leaves]
+pins = []               # at most 5 languages, e.g. ["Rust", "Python"]; they take color slots first
+other = "#9AA58A"       # every language outside the 5 named slots
+
+[leaves.colors]         # used verbatim, no foliage tint; names are GitHub's, case-sensitive
+# Rust = "#C0703A"
+# "C++" = "#4F7FA8"
+
+[blossoms]
+color = "#F4C7D3"
+
+[pot]
+# glaze = "#3E5C76"     # used from pot tier 3 up
+
+[render]
+animate = true
+size = 400              # display width in px; the viewBox stays 512
