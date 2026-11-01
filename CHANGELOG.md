@@ -17,7 +17,7 @@ The first release.
 - Leaf colors from GitHub's language colors on the Japanese maple palette;
   bronze new growth from last week; samaras for the lifetime level; falling
   momiji in a milestone week; moss for the current streak; pot tiers for the
-  longest streak; drip irrigation at level 11.
-- A few hidden surprises around the pot.
+  longest streak.
+- A few hidden surprises.
 - Four styles: moyogi, chokkan, shakan, fukinagashi.
 - `render`, `explain`, `timelapse`, `gallery` and `fixture` commands.

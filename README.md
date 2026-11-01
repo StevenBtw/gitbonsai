@@ -9,7 +9,29 @@ Grow a Japanese maple bonsai from your GitHub activity: an animated SVG for your
   </picture>
 </p>
 
-Height is your age on GitHub, girth is every contribution you ever made, each language grows its own branches and leaf color, and your last few months decide how full the leaves are. Wood never shrinks.
+The tree is yours: it grows from your own GitHub activity, week by week. The trunk rises with the years you've been active and thickens with every contribution you've ever made. Each language you write grows branches on its own side, with leaves in that language's color. Your last few months decide how full the leaves are, so busy stretches show and quiet ones thin the crown. Wood never shrinks, so the tree remembers everything.
+
+<details>
+<summary>What every part shows</summary>
+
+| What you see | What it shows |
+| --- | --- |
+| Height | Age, from your first sustained activity |
+| Girth | Every contribution ever, flowing down the branches |
+| Branches | One side of the tree per language; your top language feeds the crown |
+| Leaf color | The language, on the Japanese maple palette |
+| Leaf density | Your last 13 weeks |
+| Bronze tips | New growth from last week |
+| Bare wood | A language unused for 13 weeks |
+| Bleached deadwood | A language silent for a year |
+| Winged seeds | Your lifetime level |
+| Falling leaves | You crossed a level this week |
+| Moss | Your current weekly streak |
+| The pot | Your longest streak |
+
+Weeks count up to 1,000 contributions, so bots can't inflate the tree.
+
+</details>
 
 ## Use it
 
