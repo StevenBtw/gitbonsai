@@ -48,10 +48,12 @@ On your profile, copy [examples/profile-workflow.yml](examples/profile-workflow.
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/bonsai-dark.svg" />
-    <img src="assets/bonsai-light.svg" width="400" alt="My bonsai, grown from my GitHub activity" />
+    <img src="assets/bonsai-light.svg" width="600" alt="My bonsai, grown from my GitHub activity" />
   </picture>
 </p>
 ```
+
+On its own, `width="600"` suits a desktop column, and phones scale it down to fit. Next to other cards, use `400`.
 
 Styles, leaf colors and the pot glaze go in a `bonsai.toml`; see [examples/bonsai.toml](examples/bonsai.toml).
 
