@@ -90,6 +90,9 @@ jobs:
     name: Action (${{ matrix.os }})
     needs: release
     runs-on: ${{ matrix.os }}
+    # It runs the downloaded binary with the token: reading is all it needs.
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
