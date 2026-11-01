@@ -425,6 +425,28 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
         }
     }
 
+    // Twiglets from the wood out to leaves that sit clear of it: one hairline
+    // path behind the leaves.
+    let mut twiglets = PathData::coarse();
+    for t in &scene.tufts {
+        if let Some(q) = t.stem {
+            let (x0, y0, _) = project(q);
+            let (x1, y1, _) = project(t.p);
+            twiglets.m((x0, y0));
+            twiglets.l((x1, y1));
+        }
+    }
+    if !twiglets.is_empty() {
+        items.push((
+            f64::MIN,
+            format!(
+                r#"<path d="{}" fill="none" stroke="{}" stroke-width="{}" stroke-linecap="round"/>"#,
+                twiglets.as_str(),
+                paints.bark,
+                Num::coarse(0.8 * WORLD)
+            ),
+        ));
+    }
     for (k, d) in twigs.iter().enumerate() {
         if !d.is_empty() {
             let color = if k == 1 { paints.jin } else { paints.bark };

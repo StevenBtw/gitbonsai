@@ -89,6 +89,8 @@ pub struct Tuft {
     pub samara: bool,
     /// Size factor.
     pub size: f64,
+    /// Where a twiglet joins the wood, when the leaf sits clear of it.
+    pub stem: Option<V3>,
 }
 
 /// A chain of wood: points with radii, and whether it is deadwood.
@@ -115,6 +117,51 @@ pub fn samara_share(level: u8) -> f64 {
     } else {
         (0.018 * f64::from(level - 2)).min(0.18)
     }
+}
+
+/// Leaves farther than this from the wood (world units) get a twiglet.
+const STEM_AFTER: f64 = 3.0;
+
+/// A leaf drawn back toward the nearest wood, as the viewer sees it, so no
+/// leaf floats free of its branch. Leaves within 60% of `reach` stay put;
+/// farther ones are pulled in smoothly and never end up beyond `reach`.
+/// Also returns where a twiglet would join the wood, if the leaf needs one.
+fn hug(wood: &[(P, P)], p: V3, reach: f64) -> (V3, Option<V3>) {
+    // Depth shifts a point on screen through the tilt; wood lies at z = 0.
+    let lean = math::sin(TILT) / math::cos(TILT);
+    let at = (p[0], p[1] - p[2] * lean);
+    let mut best = (f64::INFINITY, at);
+    for &(a, b) in wood {
+        let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+        let len = dx * dx + dy * dy;
+        let t = if len > 0.0 {
+            (((at.0 - a.0) * dx + (at.1 - a.1) * dy) / len).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        let q = (a.0 + t * dx, a.1 + t * dy);
+        let dist = ((at.0 - q.0).powi(2) + (at.1 - q.1).powi(2)).sqrt();
+        if dist < best.0 {
+            best = (dist, q);
+        }
+    }
+    let (dist, q) = best;
+    if !dist.is_finite() {
+        return (p, None);
+    }
+    let stem = (dist > STEM_AFTER).then_some([q.0, q.1, 0.0]);
+    let keep = 0.6 * reach;
+    if dist <= keep {
+        return (p, stem);
+    }
+    let e = (dist - keep) / (reach - keep);
+    let k = (keep + (reach - keep) * e / (1.0 + e)) / dist;
+    let p = [
+        q.0 + (at.0 - q.0) * k,
+        q.1 + (at.1 - q.1) * k + p[2] * lean,
+        p[2],
+    ];
+    (p, stem)
 }
 
 impl Scene {
@@ -188,15 +235,26 @@ impl Scene {
             }
             // Leaves only where this pad's own branches arrived: centered on
             // their ends and just covering them, so no leaf ever floats.
-            let arrived: Vec<P> = sk
-                .nodes
-                .iter()
+            let inside: Vec<usize> = (0..n)
                 // Any branch wood counts; the leader only feeds the crown.
-                .filter(|and| and.language.is_some() == language.is_some())
-                .filter(|and| {
-                    ((and.p.0 - c.0) / prx).powi(2) + ((and.p.1 - c.1) / pry).powi(2) < 1.0
+                .filter(|&i| sk.nodes[i].language.is_some() == language.is_some())
+                .filter(|&i| {
+                    let p = sk.nodes[i].p;
+                    ((p.0 - c.0) / prx).powi(2) + ((p.1 - c.1) / pry).powi(2) < 1.0
                 })
-                .map(|and| and.p)
+                .collect();
+            let arrived: Vec<P> = inside.iter().map(|&i| sk.nodes[i].p).collect();
+            // The same wood as segments, for holding every leaf close to it.
+            let flat = |p: P| (p.0 - CENTER_X, SOIL_Y - p.1);
+            let wood: Vec<(P, P)> = inside
+                .iter()
+                .map(|&i| {
+                    let a = sk.nodes[i].p;
+                    (
+                        flat(a),
+                        flat(sk.nodes[i].parent.map_or(a, |q| sk.nodes[q].p)),
+                    )
+                })
                 .collect();
             if arrived.is_empty() {
                 continue;
@@ -245,6 +303,7 @@ impl Scene {
             }
             // A Fibonacci sphere over the pad's upper shell.
             let k = (40.0 + 90.0 * d) as usize;
+            let reach = 7.0 + 5.0 * d;
             let phase = hash01(seed, pi as i64) * math::TAU;
             for i in 0..k {
                 let y = 1.0 - 2.0 * (i as f64 + 0.5) / k as f64;
@@ -254,7 +313,7 @@ impl Scene {
                 let r = (1.0 - y * y).sqrt();
                 let th = math::rad(i as f64 * GOLDEN) + phase;
                 let u = [math::cos(th) * r, y, math::sin(th) * r];
-                let p = v_add(c3, [u[0] * rx, u[1] * ry, u[2] * rz]);
+                let (p, stem) = hug(&wood, v_add(c3, [u[0] * rx, u[1] * ry, u[2] * rz]), reach);
                 let normal = v_norm([u[0] / rx, u[1] / ry, u[2] / rz]);
                 let salt = (pi * 1000 + i) as i64;
                 let h = hash01(seed ^ 0x51, salt);
@@ -268,6 +327,7 @@ impl Scene {
                         && (-0.3..0.35).contains(&y)
                         && h > 1.0 - seeds * 1.4,
                     size: 1.05 + 0.55 * d,
+                    stem,
                 });
             }
         }
