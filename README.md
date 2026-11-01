@@ -29,8 +29,6 @@ The tree is yours: it grows from your own GitHub activity, week by week. The tru
 | Moss | Your current weekly streak |
 | The pot | Your longest streak |
 
-Weeks count up to 1,000 contributions, so bots can't inflate the tree.
-
 </details>
 
 ## Use it
