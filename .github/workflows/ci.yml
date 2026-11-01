@@ -1,0 +1,136 @@
+name: CI
+
+on:
+  push:
+    branches: [main, 'release/*']
+  pull_request:
+    branches: [main, 'release/*']
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Formatting, lints (both feature sets), docs, typos and dependency policy
+  check:
+    name: Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.99.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-check-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-check-
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Clippy (all features)
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      # The SVG-only build, without resvg
+      - name: Clippy (no default features)
+        run: cargo clippy --all-targets --no-default-features -- -D warnings
+
+      - name: Check docs
+        run: cargo doc --no-deps --all-features
+        env:
+          RUSTDOCFLAGS: -D warnings
+
+      - name: Typos
+        uses: crate-ci/typos@v1.50.3
+
+      - name: Dependency policy
+        uses: EmbarkStudios/cargo-deny-action@v2
+
+  # Tests on every platform the release ships to, and a hash of every
+  # fixture's output in every style: the tree must be byte-identical everywhere
+  test:
+    name: Test (${{ matrix.os }})
+    needs: check
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.99.0
+
+      - name: Cache cargo
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-${{ runner.arch }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-cargo-test-
+
+      - name: Test
+        run: cargo test --all-features
+
+      - name: Render the gallery
+        run: cargo run --release --quiet -- gallery --output-dir gallery --quiet
+
+      - name: Hash the outputs
+        shell: bash
+        run: |
+          cd gallery
+          sha256sum *.svg | sort -k2 > ../hashes-${{ matrix.os }}.txt
+          sha256sum ../hashes-${{ matrix.os }}.txt
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: hashes-${{ matrix.os }}
+          path: hashes-${{ matrix.os }}.txt
+
+      # The gallery from one platform, for design review on pull requests
+      - uses: actions/upload-artifact@v7
+        if: matrix.os == 'ubuntu-latest'
+        with:
+          name: gallery
+          path: gallery/
+
+  determinism:
+    name: Byte-identical on every platform
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: hashes-*
+          merge-multiple: true
+
+      - name: Compare
+        run: |
+          ls hashes-*.txt
+          first=$(ls hashes-*.txt | head -1)
+          status=0
+          for f in hashes-*.txt; do
+            if ! diff -q "$first" "$f" > /dev/null; then
+              echo "::error::$f differs from $first"
+              diff "$first" "$f" | head -20
+              status=1
+            fi
+          done
+          exit $status

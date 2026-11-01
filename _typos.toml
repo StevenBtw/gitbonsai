@@ -1,0 +1,17 @@
+# typos configuration
+# https://github.com/crate-ci/typos
+
+[files]
+extend-exclude = ["target/", "gallery/", "frames/", "bonsai/", "*.snapshot.json", "*.lock"]
+
+[default.extend-words]
+# Bonsai terms: jin (deadwood), nebari (surface roots), moyogi, chokkan, shakan,
+# kengai, fukinagashi (styles), sokan (twin trunk)
+jin = "jin"
+nebari = "nebari"
+moyogi = "moyogi"
+chokkan = "chokkan"
+shakan = "shakan"
+kengai = "kengai"
+fukinagashi = "fukinagashi"
+sokan = "sokan"

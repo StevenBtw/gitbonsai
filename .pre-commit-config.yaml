@@ -1,0 +1,58 @@
+# Pre-commit hooks for gitbonsai
+# Install: cargo install prek && prek install
+#   (installs the pre-commit and pre-push hooks below)
+# Run manually: prek run --all-files
+# Docs: https://github.com/j178/prek
+
+default_install_hook_types: [pre-commit, pre-push]
+default_stages: [pre-commit]
+
+repos:
+  - repo: builtin
+    hooks:
+      - id: trailing-whitespace
+        exclude: '\.md$'
+      - id: end-of-file-fixer
+        exclude: '\.md$'
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ['--maxkb=500']
+
+  - repo: https://github.com/crate-ci/typos
+    rev: v1.50.3
+    hooks:
+      - id: typos
+
+  - repo: local
+    hooks:
+      - id: cargo-fmt
+        name: rustfmt
+        entry: rustfmt --edition 2024
+        language: system
+        types: [rust]
+
+      # One crate, so clippy on everything is quick enough for every commit
+      - id: cargo-clippy
+        name: cargo clippy
+        entry: cargo clippy --all-targets --all-features -- -D warnings
+        language: system
+        files: '(\.rs|Cargo\.(toml|lock))$'
+        pass_filenames: false
+
+      - id: cargo-deny
+        name: cargo deny
+        entry: cargo deny check
+        language: system
+        files: ^(Cargo\.(toml|lock)|deny\.toml)$
+        pass_filenames: false
+
+      # The invariant tests take a couple of seconds; run them before a push
+      - id: cargo-test
+        name: cargo test
+        entry: cargo test --all-features
+        language: system
+        files: '(\.rs|Cargo\.(toml|lock))$'
+        pass_filenames: false
+        stages: [pre-push]
