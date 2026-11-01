@@ -82,3 +82,30 @@ jobs:
           files: |
             gitbonsai-*
           generate_release_notes: true
+
+  # The GitHub Action end to end against the release just published: download,
+  # sha256 check, collect, render. A release made with the built-in token
+  # triggers no other workflow, so the check runs here.
+  action:
+    name: Action (${{ matrix.os }})
+    needs: release
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./
+        id: bonsai
+        with:
+          output-dir: out
+          legend: left
+
+      - name: Check the outputs
+        shell: bash
+        run: |
+          for f in "${{ steps.bonsai.outputs.light }}" "${{ steps.bonsai.outputs.dark }}"; do
+            test -s "$f" && grep -q '<svg' "$f" && grep -q '<text' "$f" || { echo "::error::$f is not a rendered SVG"; exit 1; }
+          done

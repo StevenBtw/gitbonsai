@@ -21,8 +21,10 @@ inputs:
       default (moyogi).
     default: ""
   legend:
-    description: off, left or right; a legend beside the tree.
-    default: "off"
+    description:
+      off, left or right; a legend beside the tree. Empty uses the config or
+      the default (off).
+    default: ""
   config:
     description: A bonsai.toml in the workspace; a missing file means defaults.
     default: bonsai.toml
@@ -90,9 +92,13 @@ runs:
         BONSAI_LEGEND: ${{ inputs.legend }}
         BONSAI_CONFIG: ${{ inputs.config }}
       run: |
-        args=(--output-dir "$BONSAI_OUTPUT_DIR" --legend "$BONSAI_LEGEND" --config "$BONSAI_CONFIG")
+        # Style and legend override the config only when given.
+        args=(--output-dir "$BONSAI_OUTPUT_DIR" --config "$BONSAI_CONFIG")
         if [ -n "$BONSAI_STYLE" ]; then
           args+=(--style "$BONSAI_STYLE")
+        fi
+        if [ -n "$BONSAI_LEGEND" ]; then
+          args+=(--legend "$BONSAI_LEGEND")
         fi
         gitbonsai render "$RUNNER_TEMP/bonsai.snapshot.json" "${args[@]}"
         echo "light=$BONSAI_OUTPUT_DIR/bonsai-light.svg" >> "$GITHUB_OUTPUT"
