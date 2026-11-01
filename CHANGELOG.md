@@ -4,6 +4,19 @@ All notable changes to gitbonsai are recorded here. Any change to how a tree
 grows or looks is at least a minor version, because people will notice their
 tree changing.
 
+## 0.1.1
+
+Trees change look in this release: smoother wood and softer leaves.
+
+- An optional legend beside the tree (`[render] legend = "left"` or `"right"`,
+  or `render --legend`): each language's leaf color and what the signs mean.
+  Off by default; the PNG leaves it out.
+- Smoother wood: curved outlines, no knobs where pieces meet, side branches
+  that start at their own girth instead of as thorns, and tapered tips.
+- Softer leaves: each pad is lit as one volume in three soft tones, with cool
+  shadows and warm light.
+- Smaller SVGs.
+
 ## 0.1.0
 
 The first release.

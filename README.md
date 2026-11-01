@@ -4,12 +4,17 @@ Grow a Japanese maple bonsai from your GitHub activity: an animated SVG for your
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/veteran-dark.svg" />
-    <img src="assets/veteran-light.svg" width="400" alt="A Japanese maple bonsai grown from synthetic GitHub activity" />
+    <source media="(prefers-color-scheme: dark)" srcset="assets/veteran-legend-dark.svg" />
+    <img src="assets/veteran-legend-light.svg" width="640" alt="A Japanese maple bonsai grown from synthetic GitHub activity, with a legend of its leaf colors and signs" />
   </picture>
 </p>
 
 The tree is yours: it grows from your own GitHub activity, week by week. The trunk rises with the years you've been active and thickens with every contribution you've ever made. Each language you write grows branches on its own side, with leaves in that language's color. Your last few months decide how full the leaves are, so busy stretches show and quiet ones thin the crown. Wood never shrinks, so the tree remembers everything.
+
+| Newbie | Comeback | Veteran |
+| :---: | :---: | :---: |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="assets/newbie-dark.svg" /><img src="assets/newbie-light.svg" width="260" alt="A newcomer bonsai: a young tree in its first pot" /></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="assets/comeback-dark.svg" /><img src="assets/comeback-light.svg" width="260" alt="A comeback bonsai: deadwood from the quiet years, new growth since" /></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="assets/veteran-dark.svg" /><img src="assets/veteran-light.svg" width="260" alt="A veteran bonsai: tall, thick and full" /></picture> |
+| a few months in | quiet for two years, then back | 16 years, busy since 2023 |
 
 <details>
 <summary>What every part shows</summary>
@@ -55,7 +60,7 @@ On your profile, copy [examples/profile-workflow.yml](examples/profile-workflow.
 
 On its own, `width="600"` suits a desktop column, and phones scale it down to fit. Next to other cards, use `400`.
 
-Styles, leaf colors and the pot glaze go in a `bonsai.toml`; see [examples/bonsai.toml](examples/bonsai.toml).
+Styles, leaf colors, the pot glaze and an optional legend (left or right of the tree) go in a `bonsai.toml`; see [examples/bonsai.toml](examples/bonsai.toml).
 
 ## Credits
 

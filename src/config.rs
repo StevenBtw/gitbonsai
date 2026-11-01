@@ -97,6 +97,8 @@ pub struct RenderConfig {
     pub animate: bool,
     /// Display width in pixels; the height follows the tree's frame.
     pub size: u32,
+    /// A legend beside the tree: what the colors and signs mean.
+    pub legend: Legend,
 }
 
 impl Default for RenderConfig {
@@ -104,6 +106,33 @@ impl Default for RenderConfig {
         Self {
             animate: true,
             size: 400,
+            legend: Legend::Off,
+        }
+    }
+}
+
+/// Where the legend goes, if anywhere.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Legend {
+    /// No legend: just the tree.
+    #[default]
+    Off,
+    /// Left of the tree.
+    Left,
+    /// Right of the tree.
+    Right,
+}
+
+impl std::str::FromStr for Legend {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "off" => Ok(Self::Off),
+            "left" => Ok(Self::Left),
+            "right" => Ok(Self::Right),
+            _ => Err(format!("legend must be off, left or right, not {s:?}")),
         }
     }
 }

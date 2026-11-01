@@ -155,15 +155,56 @@ pub fn norm((x, y): (f64, f64)) -> (f64, f64) {
     (x / l, y / l)
 }
 
-/// A tube with a round end cap along `(x, y, r)` samples.
-pub fn tube(points: &[(f64, f64, f64)]) -> PathData {
+/// Continues `d` from `pts[0]` (the current point) through the rest of `pts`
+/// on one smooth curve: Catmull-Rom, written as cubic Béziers. Interior
+/// control points mirror each other, so after the first segment every one is
+/// a short `s`.
+pub fn smooth_through(d: &mut PathData, pts: &[(f64, f64)]) {
+    let n = pts.len();
+    if n < 2 {
+        return;
+    }
+    if n == 2 {
+        // Two points make a straight curve: a line says the same, shorter.
+        d.l(pts[1]);
+        return;
+    }
+    let at = |i: isize| -> (f64, f64) {
+        if i < 0 {
+            (2.0 * pts[0].0 - pts[1].0, 2.0 * pts[0].1 - pts[1].1)
+        } else if i as usize >= n {
+            let (a, b) = (pts[n - 1], pts[n - 2]);
+            (2.0 * a.0 - b.0, 2.0 * a.1 - b.1)
+        } else {
+            pts[i as usize]
+        }
+    };
+    for i in 0..n - 1 {
+        let k = i as isize;
+        let (p0, p1, p2, p3) = (at(k - 1), at(k), at(k + 1), at(k + 2));
+        let c2 = (p2.0 - (p3.0 - p1.0) / 6.0, p2.1 - (p3.1 - p1.1) / 6.0);
+        if i == 0 {
+            let c1 = (p1.0 + (p2.0 - p0.0) / 6.0, p1.1 + (p2.1 - p0.1) / 6.0);
+            d.c(c1, c2, p2);
+        } else {
+            d.s(c2, p2);
+        }
+    }
+}
+
+/// A tube along `(x, y, r)` samples, ending in a round cap when `cap` and cut
+/// flat otherwise (for a piece that the next one overlaps). Its sides are
+/// curves when `smooth`; thin twigs don't need them, and straight sides are
+/// shorter to write.
+pub fn tube(points: &[(f64, f64, f64)], cap: bool, smooth: bool) -> PathData {
     let n = points.len();
     let mut d = PathData::coarse();
     if n < 2 {
         return d;
     }
+    // Tangents over two neighbours each way, so sides don't wobble.
     let tangent = |i: usize| {
-        let (a, b) = (points[i.saturating_sub(1)], points[(i + 1).min(n - 1)]);
+        let (a, b) = (points[i.saturating_sub(2)], points[(i + 2).min(n - 1)]);
         norm((b.0 - a.0, b.1 - a.1))
     };
     let side = |i: usize, s: f64| {
@@ -171,23 +212,58 @@ pub fn tube(points: &[(f64, f64, f64)]) -> PathData {
         let (x, y, r) = points[i];
         (x - ty * r * s, y + tx * r * s)
     };
-    d.m(side(0, -1.0));
-    for i in 1..n {
-        d.l(side(i, -1.0));
+    let left: Vec<(f64, f64)> = (0..n).map(|i| side(i, -1.0)).collect();
+    let right: Vec<(f64, f64)> = (0..n).rev().map(|i| side(i, 1.0)).collect();
+    let side_line = |d: &mut PathData, pts: &[(f64, f64)]| {
+        if smooth {
+            smooth_through(d, pts);
+        } else {
+            for &p in &pts[1..] {
+                d.l(p);
+            }
+        }
+    };
+    d.m(left[0]);
+    side_line(&mut d, &left);
+    let (a, b) = (left[n - 1], right[0]);
+    if cap {
+        let (tx, ty) = tangent(n - 1);
+        let r = points[n - 1].2;
+        d.c(
+            (a.0 + tx * r * 1.33, a.1 + ty * r * 1.33),
+            (b.0 + tx * r * 1.33, b.1 + ty * r * 1.33),
+            b,
+        );
+    } else {
+        d.l(b);
     }
-    let (tx, ty) = tangent(n - 1);
-    let r = points[n - 1].2;
-    let (a, b) = (side(n - 1, -1.0), side(n - 1, 1.0));
-    d.c(
-        (a.0 + tx * r * 1.33, a.1 + ty * r * 1.33),
-        (b.0 + tx * r * 1.33, b.1 + ty * r * 1.33),
-        b,
-    );
-    for i in (0..n - 1).rev() {
-        d.l(side(i, 1.0));
-    }
+    side_line(&mut d, &right);
     d.z();
     d
+}
+
+/// Narrows the last stretch of a branch, about three tip-widths long, so it
+/// ends in a slim rounded point instead of a blunt stub. Short stubs keep
+/// their round end: tapered, they would read as thorns.
+pub fn taper_tip(pts: &mut [(f64, f64, f64, f64)]) {
+    let Some(&(tx, ty, tr, _)) = pts.last() else {
+        return;
+    };
+    let length: f64 = pts
+        .windows(2)
+        .map(|w| ((w[1].0 - w[0].0).powi(2) + (w[1].1 - w[0].1).powi(2)).sqrt())
+        .sum();
+    if length < tr * 10.0 {
+        return;
+    }
+    let reach = (tr * 3.0).max(1e-9);
+    for p in pts.iter_mut().rev() {
+        let d = ((p.0 - tx).powi(2) + (p.1 - ty).powi(2)).sqrt();
+        if d >= reach {
+            break;
+        }
+        p.2 *= 0.6 + 0.4 * d / reach;
+    }
 }
 
 /// A five-point moving average; the ends stay put so chains still meet.
@@ -350,17 +426,12 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                 (x, y, *r * WORLD, z)
             })
             .collect();
-        // Relax the growth zigzag, then subdivide; thin twigs need less.
-        let relaxed = relax(&relax(&pts));
+        // Relax the growth zigzag, then subdivide; thin twigs need less. The
+        // outline is drawn as curves, so few points carry a smooth branch.
+        let relaxed = relax(&relax(&relax(&pts)));
         let thick = pts.iter().any(|p| p.2 > 3.2);
-        let fine = simplify(
-            &if thick {
-                chaikin(&chaikin(&relaxed))
-            } else {
-                chaikin(&relaxed)
-            },
-            0.6,
-        );
+        let mut fine = simplify(&chaikin(&relaxed), if thick { 1.0 } else { 0.6 });
+        taper_tip(&mut fine);
         for p in &fine {
             extent = (
                 extent.0.min(p.0 - p.2),
@@ -371,19 +442,32 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
         // Thin twigs all share one path per color, drawn behind the leaves.
         if !thick {
             let seg: Vec<(f64, f64, f64)> = fine.iter().map(|p| (p.0, p.1, p.2)).collect();
-            twigs[usize::from(*jin)].push_str(tube(&seg).as_str());
+            twigs[usize::from(*jin)].push_str(tube(&seg, true, false).as_str());
             continue;
         }
         let piece = 20;
         let mut start = 0;
         while start + 1 < fine.len() {
             let end = (start + piece).min(fine.len() - 1);
-            let seg: Vec<(f64, f64, f64)> =
-                fine[start..=end].iter().map(|p| (p.0, p.1, p.2)).collect();
+            // Each piece runs two points into the next, which covers the seam,
+            // so only the branch's real tip gets a cap.
+            let last = end == fine.len() - 1;
+            let reach = if last {
+                end
+            } else {
+                (end + 2).min(fine.len() - 1)
+            };
+            let seg: Vec<(f64, f64, f64)> = fine[start..=reach]
+                .iter()
+                .map(|p| (p.0, p.1, p.2))
+                .collect();
             let depth =
                 fine[start..=end].iter().map(|p| p.3).sum::<f64>() / (end - start + 1) as f64;
             let base = haze(if *jin { paints.jin } else { paints.bark }, depth);
-            let mut s = format!(r#"<path d="{}" fill="{base}"/>"#, tube(&seg).as_str());
+            let mut s = format!(
+                r#"<path d="{}" fill="{base}"/>"#,
+                tube(&seg, last, true).as_str()
+            );
             if seg.iter().any(|p| p.2 > 4.5) {
                 // The shadow falls on whichever side faces away from the light.
                 let m = seg.len();
@@ -398,26 +482,30 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                     }
                 };
                 let strip = |from: f64, to: f64| {
+                    let offset = |i: usize, k: f64| {
+                        let n = away(i);
+                        (seg[i].0 + n.0 * seg[i].2 * k, seg[i].1 + n.1 * seg[i].2 * k)
+                    };
+                    // Strips are soft bands inside the wood: a point every
+                    // dozen units or so carries them on a smooth curve.
+                    let mut idx = vec![0];
+                    let mut run = 0.0;
+                    for i in 1..m {
+                        run += ((seg[i].0 - seg[i - 1].0).powi(2)
+                            + (seg[i].1 - seg[i - 1].1).powi(2))
+                        .sqrt();
+                        if run >= 14.0 || i == m - 1 {
+                            idx.push(i);
+                            run = 0.0;
+                        }
+                    }
+                    let there: Vec<(f64, f64)> = idx.iter().map(|&i| offset(i, from)).collect();
+                    let back: Vec<(f64, f64)> = idx.iter().rev().map(|&i| offset(i, to)).collect();
                     let mut d = PathData::coarse();
-                    for i in 0..m {
-                        let n = away(i);
-                        let q = (
-                            seg[i].0 + n.0 * seg[i].2 * from,
-                            seg[i].1 + n.1 * seg[i].2 * from,
-                        );
-                        if i == 0 {
-                            d.m(q)
-                        } else {
-                            d.l(q)
-                        };
-                    }
-                    for i in (0..m).rev() {
-                        let n = away(i);
-                        d.l((
-                            seg[i].0 + n.0 * seg[i].2 * to,
-                            seg[i].1 + n.1 * seg[i].2 * to,
-                        ));
-                    }
+                    d.m(there[0]);
+                    smooth_through(&mut d, &there);
+                    d.l(back[0]);
+                    smooth_through(&mut d, &back);
                     d.z();
                     d
                 };
@@ -490,22 +578,26 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
         }
     }
 
-    // ---- leaves: lit by n.L, darkened by occlusion; bronze flush; samaras ----
+    // ---- leaves: each pad lit as one smooth ball in three soft tones, the
+    // way painted backgrounds shade foliage; bronze flush; samaras ----
+    let smoothstep = |e0: f64, e1: f64, v: f64| {
+        let t = ((v - e0) / (e1 - e0)).clamp(0.0, 1.0);
+        t * t * (3.0 - 2.0 * t)
+    };
     let mut fallen: Vec<(f64, f64, f64)> = Vec::new();
     for (j, t) in scene.tufts.iter().enumerate() {
         let (x, y, depth) = project(t.p);
         let diffuse = v_dot(t.n, light).max(0.0);
         let shade = (0.25 + 0.75 * diffuse) * (0.55 + 0.45 * t.q);
-        let mut c = t.color.shift(
-            paints.leaf_shift + (shade - 0.55) * 0.38,
-            (shade - 0.5) * 0.04,
-        );
-        // Light warms, shadow cools.
-        c = if shade > 0.55 {
-            c.mix(Rgb::hex(0xe8d27a), (shade - 0.55) * 0.25)
-        } else {
-            c.mix(Rgb::hex(0x24384a), (0.55 - shade) * 0.35)
-        };
+        // Light from the pad's ball normal and height in the pad, then a
+        // ramp: cool shadow, the leaf color, warm light, with soft steps.
+        let s = 0.62 * diffuse + 0.38 * t.q;
+        let base = t.color.shift(paints.leaf_shift, 0.0);
+        let dark = base.shift(-0.15, -0.01).mix(Rgb::hex(0x2f3d63), 0.28);
+        let lit = base.shift(0.09, -0.005).mix(Rgb::hex(0xfff0c2), 0.22);
+        let mut c = base
+            .mix(dark, 1.0 - smoothstep(0.33, 0.39, s))
+            .mix(lit, smoothstep(0.66, 0.72, s));
         if t.fresh {
             // Japanese maples flush bronze-red before the leaves settle.
             c = c.mix(Rgb::hex(0xc8553d), 0.45).shift(0.06, 0.0);
@@ -618,7 +710,14 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
         glaze: pot_glaze(b.extras.pot_tier, config, &paints),
     };
     out.frame = frame(extent, &pot);
-    let egg = eggs::eggs(b, &scene, &paints, &pot, &mut out.frame);
+    let egg = eggs::eggs(
+        b,
+        &scene,
+        &paints,
+        &pot,
+        &mut out.frame,
+        config.render.legend,
+    );
 
     let body = &mut out.body;
     body.push_str(&egg.behind);
@@ -692,6 +791,13 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
         pot.glaze.shift(0.08, 0.0)
     );
     body.push_str(&egg.top);
+    let signs = crate::legend::Signs {
+        fresh: scene.tufts.iter().any(|t| t.fresh),
+        falling: !fallen.is_empty(),
+        glaze: Some(pot.glaze),
+    };
+    let legend = crate::legend::legend(b, &paints, signs, config.render.legend, &mut out.frame);
+    out.body.push_str(&legend);
     out
 }
 
@@ -734,7 +840,7 @@ fn nebari(b: &Bonsai, paints: &Paints, base_r: f64) -> String {
                 (x, y, base_r * 0.42 * (1.0 - t) + 0.5)
             })
             .collect();
-        roots.push_str(tube(&pts).as_str());
+        roots.push_str(tube(&pts, true, false).as_str());
     }
     format!(
         r#"<path d="{roots}" fill="{}"/>"#,

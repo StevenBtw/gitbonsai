@@ -9,6 +9,7 @@ use std::process::ExitCode;
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 
+use gitbonsai::config::Legend;
 use gitbonsai::date::Date;
 use gitbonsai::{
     Bonsai, Config, Error, Snapshot, Style, Theme, collect, explain, fixtures, html, output, render,
@@ -75,6 +76,10 @@ enum Command {
         /// Leave every animation rule out
         #[arg(long)]
         no_animate: bool,
+
+        /// Override [render] legend: off, left or right
+        #[arg(long)]
+        legend: Option<Legend>,
     },
 
     /// Print every derived number behind the tree
@@ -174,6 +179,7 @@ fn run(cli: Cli) -> Result<()> {
             output_dir,
             size,
             no_animate,
+            legend,
         } => {
             let snapshot = load_snapshot(&snapshot)?;
             let mut config = load_config(&tree, &snapshot, &status)?;
@@ -183,6 +189,9 @@ fn run(cli: Cli) -> Result<()> {
             }
             if no_animate {
                 config.render.animate = false;
+            }
+            if let Some(legend) = legend {
+                config.render.legend = legend;
             }
             let bonsai = Bonsai::grow(&snapshot, &config, as_of(&tree)?);
             render_outputs(&bonsai, &config, &output_dir)?;
@@ -330,8 +339,10 @@ fn render_outputs(bonsai: &Bonsai, config: &Config, dir: &Path) -> Result<()> {
     let png = cfg!(feature = "png");
     #[cfg(feature = "png")]
     {
+        // Without its font stack resvg draws no text, so the PNG goes without the legend.
         let mut still = config.clone();
         still.render.animate = false;
+        still.render.legend = Legend::Off;
         let svg = render::svg(bonsai, &still, Theme::Light);
         let bytes = gitbonsai::raster::png(&svg, config.render.size)?;
         output::write_atomic(&dir.join("bonsai.png"), &bytes)?;

@@ -1,6 +1,6 @@
 //! The growth model's promises, checked on every fixture.
 
-use gitbonsai::config::Wind;
+use gitbonsai::config::{Legend, Wind};
 use gitbonsai::foliage::LanguageState;
 use gitbonsai::growth::H_REF;
 use gitbonsai::{Bonsai, Config, Style, Theme, fixtures, render};
@@ -191,6 +191,70 @@ fn the_svg_is_self_contained_and_accessible() {
         assert!(!svg.contains("<text"), "no rendered text");
         assert!(!svg.contains("<image"), "no embedded images");
         assert!(!svg.contains("filter="), "no filters");
+    }
+}
+
+/// The legend sits on either side, stays within budget, lists the living
+/// languages, and never gives away a surprise.
+#[test]
+fn the_legend_explains_without_spoiling() {
+    let spoilers = [
+        "fish",
+        "shark",
+        "tuna",
+        "star",
+        "furin",
+        "fūrin",
+        "moon",
+        "firefly",
+        "glow",
+        "pebble",
+        "crane",
+        "coin",
+        "snow",
+        "copter",
+        "kintsugi",
+        "achievement",
+        "drip",
+        "archived",
+    ];
+    for fixture in fixtures::all() {
+        for side in [Legend::Left, Legend::Right] {
+            let mut config = Config::default();
+            config.render.legend = side;
+            let bonsai = Bonsai::grow(&fixture.snapshot, &config, None);
+            for theme in Theme::ALL {
+                let svg = render::svg(&bonsai, &config, theme);
+                let label = format!("{}/{side:?}/{}", fixture.name, theme.name());
+                assert!(svg.len() <= 150 * 1024, "{label}: {} bytes", svg.len());
+                if bonsai.is_empty() {
+                    assert!(!svg.contains("<text"), "{label}: nothing to explain yet");
+                    continue;
+                }
+                let words: String = svg
+                    .split("<text")
+                    .skip(1)
+                    .map(|t| t.split("</text>").next().unwrap_or("").to_lowercase())
+                    .collect();
+                assert!(
+                    words.contains("leaves") && words.contains("signs"),
+                    "{label}"
+                );
+                for language in &bonsai.order {
+                    if bonsai.state(Some(language)) == LanguageState::Alive
+                        && bonsai.order.len() <= 8
+                    {
+                        assert!(
+                            words.contains(&language.to_lowercase()),
+                            "{label}: {language}"
+                        );
+                    }
+                }
+                for word in spoilers {
+                    assert!(!words.contains(word), "{label}: says {word}");
+                }
+            }
+        }
     }
 }
 

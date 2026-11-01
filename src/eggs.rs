@@ -27,6 +27,7 @@ use std::fmt::Write as _;
 
 use crate::Bonsai;
 use crate::color::Rgb;
+use crate::config::Legend;
 use crate::growth::GOLDEN;
 use crate::math;
 use crate::noise::{fbm, hash01, noise1};
@@ -139,8 +140,9 @@ fn take_spot(
 /// The easter eggs of `b`'s achievements.
 /// Where the moon hangs: the clearer of the frame's top corners. When both
 /// are crowded, the frame grows upward until the moon's disc stands clear.
-/// `k` is the moon's size relative to a full-grown frame.
-fn moon_spot(scene: &Scene, frame: &mut Frame, k: f64) -> (f64, f64) {
+/// `k` is the moon's size relative to a full-grown frame. With a legend, the
+/// corner away from it wins whenever it is clear.
+fn moon_spot(scene: &Scene, frame: &mut Frame, k: f64, legend: Legend) -> (f64, f64) {
     let inset = 34.0 * k;
     let clear = 30.0 * k;
     let mut pts: Vec<(f64, f64)> = scene
@@ -165,10 +167,15 @@ fn moon_spot(scene: &Scene, frame: &mut Frame, k: f64) -> (f64, f64) {
     let top = frame.1 + inset;
     let left = (frame.0 + inset, top);
     let right = (frame.0 + frame.2 - inset, top);
-    let (spot, room) = if clearance(left) > clearance(right) {
-        (left, clearance(left))
-    } else {
-        (right, clearance(right))
+    let away = match legend {
+        Legend::Right => Some(left),
+        Legend::Left => Some(right),
+        Legend::Off => None,
+    };
+    let (spot, room) = match away {
+        Some(c) if clearance(c) >= clear => (c, clearance(c)),
+        _ if clearance(left) > clearance(right) => (left, clearance(left)),
+        _ => (right, clearance(right)),
     };
     if room >= clear {
         return spot;
@@ -179,8 +186,16 @@ fn moon_spot(scene: &Scene, frame: &mut Frame, k: f64) -> (f64, f64) {
     (spot.0, spot.1 - lift)
 }
 
-/// The easter eggs of `b`'s achievements. The moon may grow `frame` upward.
-pub fn eggs(b: &Bonsai, scene: &Scene, paints: &Paints, pot: &Pot, frame: &mut Frame) -> Eggs {
+/// The easter eggs of `b`'s achievements. The moon may grow `frame` upward,
+/// and keeps clear of the legend's side.
+pub fn eggs(
+    b: &Bonsai,
+    scene: &Scene,
+    paints: &Paints,
+    pot: &Pot,
+    frame: &mut Frame,
+    legend: Legend,
+) -> Eggs {
     let mut e = Eggs::default();
     let tier = |slug: &str| b.achievements.get(slug).copied();
     if !DRAWN.iter().any(|slug| tier(slug).is_some()) {
@@ -350,7 +365,7 @@ pub fn eggs(b: &Bonsai, scene: &Scene, paints: &Paints, pot: &Pot, frame: &mut F
         if t >= 3 {
             // Sized to the frame, so it never looms over a young tree.
             let k = (frame.2 / 480.0).clamp(0.5, 1.0);
-            let at = moon_spot(scene, frame, k);
+            let at = moon_spot(scene, frame, k, legend);
             // Golden with a halo on light backgrounds, pale on dark: visible on both.
             let (body, halo, crater) = if dark {
                 ("#f3e3a3", "#f6e9b2", "#d9c47e")

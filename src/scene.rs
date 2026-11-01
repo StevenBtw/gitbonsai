@@ -206,13 +206,16 @@ impl Scene {
             // The trunk never becomes jin, whichever branch its heaviest path leads into.
             let jin =
                 chain[0] != 0 && b.state(sk.nodes[last].language.as_deref()) == LanguageState::Jin;
-            scene.chains.push((
-                chain
-                    .iter()
-                    .map(|&i| (lift(sk.nodes[i].p), radius(flow[i])))
-                    .collect(),
-                jin,
-            ));
+            let mut wood: Vec<(V3, f64)> = chain
+                .iter()
+                .map(|&i| (lift(sk.nodes[i].p), radius(flow[i])))
+                .collect();
+            // A side branch starts inside its parent at its own girth, a
+            // little flared, not the parent's: else short stubs become thorns.
+            if chain[0] != s0 && wood.len() > 1 {
+                wood[0].1 = wood[0].1.min(wood[1].1 * 1.3);
+            }
+            scene.chains.push((wood, jin));
         }
 
         let seeds = samara_share(b.extras.level);
