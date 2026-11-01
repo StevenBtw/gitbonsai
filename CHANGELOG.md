@@ -4,6 +4,12 @@ All notable changes to gitbonsai are recorded here. Any change to how a tree
 grows or looks is at least a minor version, because people will notice their
 tree changing.
 
+## 0.1.2
+
+- A GitHub Action: `uses: StevenBtw/gitbonsai@v0.1.2` downloads the release,
+  checks its sha256, then collects and renders, with inputs for style, legend
+  and config. The profile workflow example uses it.
+
 ## 0.1.1
 
 Trees change look in this release: smoother wood and softer leaves.
