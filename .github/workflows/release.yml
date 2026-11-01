@@ -1,0 +1,84 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-24.04-arm
+          - target: x86_64-apple-darwin
+            os: macos-latest
+          - target: aarch64-apple-darwin
+            os: macos-latest
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.99.0
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install musl tools
+        if: contains(matrix.target, 'musl')
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - name: Build
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      # One archive per target with the binary at its root, plus its checksum:
+      # gitbonsai-<target>.tar.gz (zip on Windows) and gitbonsai-<target>.<ext>.sha256
+      - name: Package
+        shell: bash
+        run: |
+          name="gitbonsai-${{ matrix.target }}"
+          dir="target/${{ matrix.target }}/release"
+          if [[ "${{ matrix.target }}" == *windows* ]]; then
+            archive="$name.zip"
+            (cd "$dir" && 7z a "../../../$archive" gitbonsai.exe > /dev/null)
+            sha256sum "$archive" > "$archive.sha256"
+          else
+            archive="$name.tar.gz"
+            tar -czf "$archive" -C "$dir" gitbonsai
+            shasum -a 256 "$archive" > "$archive.sha256"
+          fi
+          echo "ARCHIVE=$archive" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.target }}
+          path: |
+            ${{ env.ARCHIVE }}
+            ${{ env.ARCHIVE }}.sha256
+
+  release:
+    name: Publish the GitHub release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            gitbonsai-*
+          generate_release_notes: true
