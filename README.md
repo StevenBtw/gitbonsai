@@ -4,12 +4,17 @@ Grow a Japanese maple bonsai from your GitHub activity: an animated SVG for your
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/veteran-dark.svg" />
-    <img src="assets/veteran-light.svg" width="400" alt="A Japanese maple bonsai grown from synthetic GitHub activity" />
+    <source media="(prefers-color-scheme: dark)" srcset="assets/veteran-legend-dark.svg" />
+    <img src="assets/veteran-legend-light.svg" width="640" alt="A Japanese maple bonsai grown from synthetic GitHub activity, with a legend of its leaf colors and signs" />
   </picture>
 </p>
 
 The tree is yours: it grows from your own GitHub activity, week by week. The trunk rises with the years you've been active and thickens with every contribution you've ever made. Each language you write grows branches on its own side, with leaves in that language's color. Your last few months decide how full the leaves are, so busy stretches show and quiet ones thin the crown. Wood never shrinks, so the tree remembers everything.
+
+| Veteran | Comeback | Newbie |
+| :---: | :---: | :---: |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="assets/veteran-dark.svg" /><img src="assets/veteran-light.svg" width="260" alt="A veteran's bonsai: tall, thick and full" /></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="assets/comeback-dark.svg" /><img src="assets/comeback-light.svg" width="260" alt="A comeback bonsai: deadwood from the quiet years, new growth since" /></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="assets/newbie-dark.svg" /><img src="assets/newbie-light.svg" width="260" alt="A newcomer's bonsai: a young tree in its first pot" /></picture> |
+| 16 years, busy since 2023 | quiet for two years, then back | one year in |
 
 <details>
 <summary>What every part shows</summary>
