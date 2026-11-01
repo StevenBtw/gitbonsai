@@ -111,6 +111,42 @@ pub struct Painted {
     pub body: String,
     /// Animated elements.
     pub animated: usize,
+    /// The part of the canvas worth showing.
+    pub frame: Frame,
+}
+
+/// A rectangle of the canvas: `(x, y, width, height)`.
+pub type Frame = (f64, f64, f64, f64);
+
+/// The canvas cropped to the tree, the pot and its shadow, plus a margin and
+/// at least 320 units wide. It sits on an 8-unit grid, so it only moves when
+/// the tree outgrows it, and its aspect stays between square and 2:1, which
+/// reads well both in a wide desktop column and on a phone.
+pub fn frame(extent: (f64, f64, f64), pot: &Pot) -> Frame {
+    const MARGIN: f64 = 10.0;
+    const GRID: f64 = 8.0;
+    // Never closer than this, so a seedling isn't all pot.
+    const MIN_WIDTH: f64 = 320.0;
+    let down = |v: f64| (v / GRID).floor() * GRID;
+    let up = |v: f64| (v / GRID).ceil() * GRID;
+    let mut x0 = down(extent.0.min(CENTER_X - pot.hw) - MARGIN);
+    let mut x1 = up(extent.1.max(CENTER_X + pot.hw * 1.2) + MARGIN);
+    let mut y0 = down(extent.2.min(SOIL_Y - 40.0) - MARGIN);
+    let y1 = up(SOIL_Y + pot.depth + pot.ry + 8.0 + MARGIN);
+    if x1 - x0 < MIN_WIDTH {
+        let pad = up((MIN_WIDTH - (x1 - x0)) / 2.0);
+        x0 -= pad;
+        x1 += pad;
+    }
+    let (w, h) = (x1 - x0, y1 - y0);
+    if w < h {
+        let pad = up((h - w) / 2.0);
+        x0 -= pad;
+        x1 += pad;
+    } else if w > 2.0 * h {
+        y0 -= up(w / 2.0 - h);
+    }
+    (x0, y0, x1 - x0, y1 - y0)
 }
 
 /// A unit vector in 2D.
@@ -581,7 +617,8 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
         bw: hw * 0.88,
         glaze: pot_glaze(b.extras.pot_tier, config, &paints),
     };
-    let egg = eggs::eggs(b, &scene, &paints, &pot);
+    out.frame = frame(extent, &pot);
+    let egg = eggs::eggs(b, &scene, &paints, &pot, &mut out.frame);
 
     let body = &mut out.body;
     body.push_str(&egg.behind);

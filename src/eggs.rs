@@ -30,7 +30,7 @@ use crate::color::Rgb;
 use crate::growth::GOLDEN;
 use crate::math;
 use crate::noise::{fbm, hash01, noise1};
-use crate::paint::{Paints, Pot, norm};
+use crate::paint::{Frame, Paints, Pot, norm};
 use crate::render::{Num, PathData};
 use crate::rng::{Rng, siphash13};
 use crate::scene::{Scene, WORLD, project};
@@ -137,7 +137,50 @@ fn take_spot(
 }
 
 /// The easter eggs of `b`'s achievements.
-pub fn eggs(b: &Bonsai, scene: &Scene, paints: &Paints, pot: &Pot) -> Eggs {
+/// Where the moon hangs: the clearer of the frame's top corners. When both
+/// are crowded, the frame grows upward until the moon's disc stands clear.
+/// `k` is the moon's size relative to a full-grown frame.
+fn moon_spot(scene: &Scene, frame: &mut Frame, k: f64) -> (f64, f64) {
+    let inset = 34.0 * k;
+    let clear = 30.0 * k;
+    let mut pts: Vec<(f64, f64)> = scene
+        .tufts
+        .iter()
+        .map(|t| {
+            let (x, y, _) = project(t.p);
+            (x, y)
+        })
+        .collect();
+    for (chain, _) in &scene.chains {
+        pts.extend(chain.iter().map(|(p, _)| {
+            let (x, y, _) = project(*p);
+            (x, y)
+        }));
+    }
+    let clearance = |c: (f64, f64)| {
+        pts.iter()
+            .map(|p| ((p.0 - c.0).powi(2) + (p.1 - c.1).powi(2)).sqrt())
+            .fold(f64::INFINITY, f64::min)
+    };
+    let top = frame.1 + inset;
+    let left = (frame.0 + inset, top);
+    let right = (frame.0 + frame.2 - inset, top);
+    let (spot, room) = if clearance(left) > clearance(right) {
+        (left, clearance(left))
+    } else {
+        (right, clearance(right))
+    };
+    if room >= clear {
+        return spot;
+    }
+    let lift = ((clear - room) / 8.0).ceil() * 8.0;
+    frame.1 -= lift;
+    frame.3 += lift;
+    (spot.0, spot.1 - lift)
+}
+
+/// The easter eggs of `b`'s achievements. The moon may grow `frame` upward.
+pub fn eggs(b: &Bonsai, scene: &Scene, paints: &Paints, pot: &Pot, frame: &mut Frame) -> Eggs {
     let mut e = Eggs::default();
     let tier = |slug: &str| b.achievements.get(slug).copied();
     if !DRAWN.iter().any(|slug| tier(slug).is_some()) {
@@ -305,6 +348,9 @@ pub fn eggs(b: &Bonsai, scene: &Scene, paints: &Paints, pot: &Pot) -> Eggs {
             e.animated += 2;
         }
         if t >= 3 {
+            // Sized to the frame, so it never looms over a young tree.
+            let k = (frame.2 / 480.0).clamp(0.5, 1.0);
+            let at = moon_spot(scene, frame, k);
             // Golden with a halo on light backgrounds, pale on dark: visible on both.
             let (body, halo, crater) = if dark {
                 ("#f3e3a3", "#f6e9b2", "#d9c47e")
@@ -323,8 +369,10 @@ pub fn eggs(b: &Bonsai, scene: &Scene, paints: &Paints, pot: &Pot) -> Eggs {
             };
             let _ = write!(
                 e.top,
-                r#"<g transform="translate(418 82) scale({})">{moon}</g>"#,
-                Num(w * 1.5)
+                r#"<g transform="translate({} {}) scale({})">{moon}</g>"#,
+                Num(at.0),
+                Num(at.1),
+                Num(w * 1.5 * k)
             );
         }
     }

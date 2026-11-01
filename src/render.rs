@@ -206,11 +206,17 @@ const SYMBOLS: &str = concat!(
 pub fn svg(bonsai: &Bonsai, config: &Config, theme: Theme) -> String {
     let painted = paint::paint(bonsai, config, theme);
     let size = config.render.size;
+    let (x, y, w, h) = painted.frame;
+    let height = (f64::from(size) * h / w).round();
     let (year, week) = bonsai.observed_on.iso_week();
     let mut out = String::with_capacity(painted.body.len() + 16 * 1024);
     let _ = write!(
         out,
-        r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="{size}" height="{size}" role="img" aria-labelledby="t d">"#
+        r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}" width="{size}" height="{height}" role="img" aria-labelledby="t d">"#,
+        Num(x),
+        Num(y),
+        Num(w),
+        Num(h)
     );
     let _ = write!(
         out,

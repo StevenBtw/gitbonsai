@@ -95,7 +95,7 @@ pub struct PotConfig {
 pub struct RenderConfig {
     /// Whether the SVG sways. `false` leaves every animation rule out.
     pub animate: bool,
-    /// Display width in pixels. The viewBox stays 512.
+    /// Display width in pixels; the height follows the tree's frame.
     pub size: u32,
 }
 
