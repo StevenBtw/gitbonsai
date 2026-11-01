@@ -58,16 +58,78 @@ gitbonsai render me.snapshot.json            # writes bonsai/: light and dark SV
 gitbonsai explain me.snapshot.json           # every number behind the tree
 ```
 
-Embed it in your profile README:
+`collect` reads public data only: your contribution calendar and which languages your commits and pull requests were in (GraphQL through `gh`), your archived repositories, and your public achievements page.
+
+## Use it on your profile
+
+Your profile README lives in the repository named after you (`<you>/<you>`). Commit the two SVGs there and reference them with relative paths. `<picture>` lets GitHub follow each viewer's light or dark theme, and `<p align="center">` centers it:
 
 ```html
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="bonsai/bonsai-dark.svg" />
-  <img src="bonsai/bonsai-light.svg" width="400" alt="My bonsai, grown from my GitHub activity" />
-</picture>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/bonsai-dark.svg" />
+    <img src="assets/bonsai-light.svg" width="400" alt="My bonsai, grown from my GitHub activity" />
+  </picture>
+</p>
 ```
 
-`collect` reads public data only: your contribution calendar and which languages your commits and pull requests were in (GraphQL through `gh`), your archived repositories, and your public achievements page.
+To regrow it every week, add `.github/workflows/bonsai.yml` to that repository:
+
+```yaml
+name: bonsai
+on:
+  schedule:
+    - cron: "17 6 * * 0"   # Sundays 06:17 UTC
+  workflow_dispatch:        # run it once by hand; the schedule waits for its day
+
+permissions:
+  contents: write
+
+jobs:
+  bonsai:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install gitbonsai (latest release)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download --repo StevenBtw/gitbonsai \
+            --pattern 'gitbonsai-x86_64-unknown-linux-musl.tar.gz*' --dir /tmp/gb
+          cd /tmp/gb
+          sha256sum -c gitbonsai-x86_64-unknown-linux-musl.tar.gz.sha256
+          tar -xzf gitbonsai-x86_64-unknown-linux-musl.tar.gz
+          echo /tmp/gb >> "$GITHUB_PATH"
+
+      - name: Grow the bonsai
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gitbonsai collect ${{ github.repository_owner }} --output /tmp/bonsai.snapshot.json
+          gitbonsai render /tmp/bonsai.snapshot.json --output-dir /tmp/bonsai
+          mkdir -p assets
+          cp /tmp/bonsai/bonsai-light.svg /tmp/bonsai/bonsai-dark.svg assets/
+
+      - name: Commit if it changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add assets/bonsai-light.svg assets/bonsai-dark.svg
+          git diff --cached --quiet || git commit -m "Grow bonsai"
+          git push
+```
+
+Good to know:
+
+- **Commit as `github-actions[bot]`**, never as yourself, or every run adds a contribution to your own graph and the tree waters itself.
+- **The built-in token is enough.** `GH_TOKEN: ${{ github.token }}` covers everything `collect` reads; no personal token is needed.
+- **Each run is self-contained.** `collect` fetches the whole history every time; no snapshot needs to be kept between runs. The same snapshot always renders to the same bytes.
+- **The schedule stays alive.** GitHub pauses scheduled workflows in public repositories after 60 days without activity. The SVGs record the week they were grown, so every weekly run commits a change.
+- **Caching:** GitHub serves README images with a 5-minute cache, so right after a run viewers may see last week's tree for a few minutes.
+- **Safe for GitHub's image proxy:** the SVGs have no scripts, fonts or external references; their CSS animations play inside `<img>` and stop for viewers who prefer reduced motion.
+- **Pin actions to versions that exist**, or by commit SHA.
+- **No release for your platform, or want the latest code?** Build it instead of downloading: `dtolnay/rust-toolchain@1.99.0`, then `cargo install --locked --git https://github.com/StevenBtw/gitbonsai`.
 
 ## Settings
 
