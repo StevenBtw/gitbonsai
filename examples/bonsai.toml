@@ -20,4 +20,5 @@ color = "#F4C7D3"
 
 [render]
 animate = true
-size = 400              # display width in px; the viewBox stays 512
+size = 400              # display width in px; the height follows the tree
+legend = "off"          # "left" or "right": what the colors and signs mean

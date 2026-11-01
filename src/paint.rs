@@ -618,7 +618,14 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
         glaze: pot_glaze(b.extras.pot_tier, config, &paints),
     };
     out.frame = frame(extent, &pot);
-    let egg = eggs::eggs(b, &scene, &paints, &pot, &mut out.frame);
+    let egg = eggs::eggs(
+        b,
+        &scene,
+        &paints,
+        &pot,
+        &mut out.frame,
+        config.render.legend,
+    );
 
     let body = &mut out.body;
     body.push_str(&egg.behind);
@@ -692,6 +699,13 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
         pot.glaze.shift(0.08, 0.0)
     );
     body.push_str(&egg.top);
+    let signs = crate::legend::Signs {
+        fresh: scene.tufts.iter().any(|t| t.fresh),
+        falling: !fallen.is_empty(),
+        glaze: Some(pot.glaze),
+    };
+    let legend = crate::legend::legend(b, &paints, signs, config.render.legend, &mut out.frame);
+    out.body.push_str(&legend);
     out
 }
 

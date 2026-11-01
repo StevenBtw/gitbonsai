@@ -55,7 +55,7 @@ On your profile, copy [examples/profile-workflow.yml](examples/profile-workflow.
 
 On its own, `width="600"` suits a desktop column, and phones scale it down to fit. Next to other cards, use `400`.
 
-Styles, leaf colors and the pot glaze go in a `bonsai.toml`; see [examples/bonsai.toml](examples/bonsai.toml).
+Styles, leaf colors, the pot glaze and an optional legend (left or right of the tree) go in a `bonsai.toml`; see [examples/bonsai.toml](examples/bonsai.toml).
 
 ## Credits
 

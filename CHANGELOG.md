@@ -4,6 +4,12 @@ All notable changes to gitbonsai are recorded here. Any change to how a tree
 grows or looks is at least a minor version, because people will notice their
 tree changing.
 
+## Unreleased
+
+- An optional legend beside the tree (`[render] legend = "left"` or `"right"`,
+  or `render --legend`): each language's leaf color and what the signs mean.
+  Off by default; the PNG leaves it out.
+
 ## 0.1.0
 
 The first release.

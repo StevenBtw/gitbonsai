@@ -36,6 +36,7 @@ pub mod fixtures;
 pub mod foliage;
 pub mod growth;
 pub mod html;
+pub mod legend;
 pub mod maple;
 pub mod math;
 pub mod noise;
