@@ -1,0 +1,5 @@
+/target
+/gallery
+/frames
+/bonsai
+*.snapshot.json

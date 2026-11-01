@@ -1,0 +1,81 @@
+[package]
+name = "gitbonsai"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99.0"
+license = "MIT OR Apache-2.0"
+authors = ["S.T. Grond"]
+description = "Grow a Japanese maple bonsai from your GitHub activity: an animated SVG for your profile README."
+readme = "README.md"
+repository = "https://github.com/StevenBtw/gitbonsai"
+homepage = "https://github.com/StevenBtw/gitbonsai"
+documentation = "https://docs.rs/gitbonsai"
+keywords = ["github", "profile", "readme", "svg", "bonsai"]
+categories = ["command-line-utilities", "visualization"]
+include = ["src/**/*.rs", "tests/**/*.rs", "examples/bonsai.toml", "README.md", "CHANGELOG.md", "LICENSE-MIT", "LICENSE-APACHE", "Cargo.toml"]
+
+[[bin]]
+name = "gitbonsai"
+path = "src/main.rs"
+doc = false
+
+[features]
+default = ["png"]
+# bonsai.png, rasterized from the light variant
+png = ["dep:resvg"]
+
+[dependencies]
+anyhow = "1.0.104"
+clap = { version = "4.6.7", features = ["derive"] }
+# Pure-Rust math, so coordinates round the same on every platform
+libm = "0.2.16"
+# No text, fonts or embedded images: the SVG has none
+resvg = { version = "0.49.0", default-features = false, optional = true }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+thiserror = "2.0.21"
+toml = "1.1.8"
+
+[lints.rust]
+unsafe_code = "deny"
+missing_docs = "warn"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+missing_errors_doc = "warn"
+missing_panics_doc = "warn"
+cast_possible_truncation = "warn"
+cast_sign_loss = "warn"
+cast_precision_loss = "allow"
+cast_possible_wrap = "warn"
+cast_lossless = "allow"
+uninlined_format_args = "allow"
+doc_markdown = "allow"
+redundant_closure_for_method_calls = "allow"
+similar_names = "allow"
+too_many_lines = "allow"
+type_complexity = "allow"
+needless_pass_by_value = "allow"
+items_after_statements = "allow"
+unreadable_literal = "allow"
+struct_field_names = "allow"
+if_not_else = "allow"
+match_same_arms = "allow"
+single_match_else = "allow"
+return_self_not_must_use = "allow"
+unnecessary_wraps = "allow"
+needless_range_loop = "allow"
+default_trait_access = "allow"
+float_cmp = "allow"
+many_single_char_names = "allow"
+too_many_arguments = "allow"
+suboptimal_flops = "allow"
+allow_attributes_without_reason = "warn"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
