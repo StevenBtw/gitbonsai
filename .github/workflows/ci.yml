@@ -150,7 +150,7 @@ jobs:
         shell: bash
         run: |
           for f in "${{ steps.bonsai.outputs.light }}" "${{ steps.bonsai.outputs.dark }}"; do
-            test -s "$f" && grep -q '<svg' "$f" && grep -q '<text' "$f"
+            test -s "$f" && grep -q '<svg' "$f" && grep -q '<text' "$f" || { echo "::error::$f is not a rendered SVG"; exit 1; }
           done
 
   determinism:
