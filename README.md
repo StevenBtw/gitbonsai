@@ -11,10 +11,10 @@ Grow a Japanese maple bonsai from your GitHub activity: an animated SVG for your
 
 The tree is yours: it grows from your own GitHub activity, week by week. The trunk rises with the years you've been active and thickens with every contribution you've ever made. Each language you write grows branches on its own side, with leaves in that language's color. Your last few months decide how full the leaves are, so busy stretches show and quiet ones thin the crown. Wood never shrinks, so the tree remembers everything.
 
-| Veteran | Comeback | Newbie |
+| Newbie | Comeback | Veteran |
 | :---: | :---: | :---: |
-| <picture><source media="(prefers-color-scheme: dark)" srcset="assets/veteran-dark.svg" /><img src="assets/veteran-light.svg" width="260" alt="A veteran's bonsai: tall, thick and full" /></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="assets/comeback-dark.svg" /><img src="assets/comeback-light.svg" width="260" alt="A comeback bonsai: deadwood from the quiet years, new growth since" /></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="assets/newbie-dark.svg" /><img src="assets/newbie-light.svg" width="260" alt="A newcomer's bonsai: a young tree in its first pot" /></picture> |
-| 16 years, busy since 2023 | quiet for two years, then back | one year in |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="assets/newbie-dark.svg" /><img src="assets/newbie-light.svg" width="260" alt="A newcomer bonsai: a young tree in its first pot" /></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="assets/comeback-dark.svg" /><img src="assets/comeback-light.svg" width="260" alt="A comeback bonsai: deadwood from the quiet years, new growth since" /></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="assets/veteran-dark.svg" /><img src="assets/veteran-light.svg" width="260" alt="A veteran bonsai: tall, thick and full" /></picture> |
+| a few months in | quiet for two years, then back | 16 years, busy since 2023 |
 
 <details>
 <summary>What every part shows</summary>
