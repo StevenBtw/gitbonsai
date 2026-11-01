@@ -133,14 +133,57 @@ impl PathData {
         self
     }
 
-    /// Cubic curve to `to` with control points `c1` and `c2`.
+    /// Cubic curve to `to` with control points `c1` and `c2`. Coarse paths
+    /// write it relative (`c`), like `l`.
     pub fn c(&mut self, c1: (f64, f64), c2: (f64, f64), to: (f64, f64)) -> &mut Self {
-        self.d.push('C');
-        self.point(c1);
-        self.d.push(' ');
-        self.point(c2);
-        self.d.push(' ');
-        self.point(to);
+        if self.coarse {
+            let step = |v: f64| (v * 10.0).round() / 10.0;
+            let rel = |p: (f64, f64), at: (f64, f64)| (step(p.0 - at.0), step(p.1 - at.1));
+            let (a, b, t) = (rel(c1, self.at), rel(c2, self.at), rel(to, self.at));
+            let _ = write!(
+                self.d,
+                "c{} {} {} {} {} {}",
+                Coarse(a.0),
+                Coarse(a.1),
+                Coarse(b.0),
+                Coarse(b.1),
+                Coarse(t.0),
+                Coarse(t.1)
+            );
+            self.at = (self.at.0 + t.0, self.at.1 + t.1);
+        } else {
+            self.d.push('C');
+            self.point(c1);
+            self.d.push(' ');
+            self.point(c2);
+            self.d.push(' ');
+            self.point(to);
+        }
+        self
+    }
+
+    /// Smooth cubic curve to `to`, its first control point mirrored from the
+    /// last curve's. Coarse paths write it relative (`s`), like `l`.
+    pub fn s(&mut self, c2: (f64, f64), to: (f64, f64)) -> &mut Self {
+        if self.coarse {
+            let step = |v: f64| (v * 10.0).round() / 10.0;
+            let (cx, cy) = (step(c2.0 - self.at.0), step(c2.1 - self.at.1));
+            let (dx, dy) = (step(to.0 - self.at.0), step(to.1 - self.at.1));
+            let _ = write!(
+                self.d,
+                "s{} {} {} {}",
+                Coarse(cx),
+                Coarse(cy),
+                Coarse(dx),
+                Coarse(dy)
+            );
+            self.at = (self.at.0 + dx, self.at.1 + dy);
+        } else {
+            self.d.push('S');
+            self.point(c2);
+            self.d.push(' ');
+            self.point(to);
+        }
         self
     }
 
