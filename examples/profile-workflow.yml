@@ -1,7 +1,7 @@
 # Regrows the bonsai every week. Copy to .github/workflows/bonsai.yml in your
 # profile repository (<you>/<you>).
 #
-# - The built-in token is enough: everything `collect` reads is public.
+# - The built-in token is enough: everything gitbonsai reads is public.
 # - It commits as github-actions[bot], never as you, so the tree doesn't water itself.
 # - Each SVG records the week it was grown, so every run commits a change and
 #   GitHub never pauses the schedule.
@@ -20,25 +20,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install gitbonsai (latest release)
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release download --repo StevenBtw/gitbonsai \
-            --pattern 'gitbonsai-x86_64-unknown-linux-musl.tar.gz*' --dir /tmp/gb
-          cd /tmp/gb
-          sha256sum -c gitbonsai-x86_64-unknown-linux-musl.tar.gz.sha256
-          tar -xzf gitbonsai-x86_64-unknown-linux-musl.tar.gz
-          echo /tmp/gb >> "$GITHUB_PATH"
-
-      - name: Grow the bonsai
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gitbonsai collect ${{ github.repository_owner }} --output /tmp/bonsai.snapshot.json
-          gitbonsai render /tmp/bonsai.snapshot.json --output-dir /tmp/bonsai
-          mkdir -p assets
-          cp /tmp/bonsai/bonsai-light.svg /tmp/bonsai/bonsai-dark.svg assets/
+      - uses: StevenBtw/gitbonsai@v0.1.2
+        with:
+          output-dir: assets
+          # legend: left        # what the colors and signs mean, beside the tree
 
       - name: Commit if it changed
         run: |
