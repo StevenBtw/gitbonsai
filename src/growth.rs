@@ -190,7 +190,7 @@ pub fn grow(timeline: &Timeline, seed: u64, leader: &Leader, order: &[String]) -
                 clippy::cast_sign_loss,
                 reason = "a small pad count"
             )]
-            let by_amount = (1.0 + (1.0 + life / 150.0).log2()).floor() as usize;
+            let by_amount = (1.0 + math::log2(1.0 + life / 150.0)).floor() as usize;
             let want = by_amount.min(5).min(1 + (k - first_seen[language]) / 16);
             let have = active.get(language).map_or(0, Vec::len);
             for _ in have..want {
@@ -201,7 +201,7 @@ pub fn grow(timeline: &Timeline, seed: u64, leader: &Leader, order: &[String]) -
                 let mut r = Rng::keyed(seed, &format!("pad/{language}/{n}"));
                 let v = r.range(0.25, 0.85);
                 let y = SOIL_Y - h * v;
-                let half_width = h * 0.75 * (1.0 - v).powf(0.8) + 10.0;
+                let half_width = h * 0.75 * math::pow(1.0 - v, 0.8) + 10.0;
                 let theta = home(language) + math::rad(n as f64 * GOLDEN);
                 let natural = if math::cos(theta) >= 0.0 { 1.0 } else { -1.0 };
                 let side = leader.pad_side(natural, r.unit());
@@ -212,7 +212,7 @@ pub fn grow(timeline: &Timeline, seed: u64, leader: &Leader, order: &[String]) -
                 };
                 let mag = (0.55 + 0.45 * math::cos(theta).abs()) * reach * r.range(0.75, 1.05);
                 let mut x = apex_x(SOIL_Y - y) + side * mag * half_width;
-                let size = (13.0 + 9.0 * (1.0 + life / 50.0).log10()) * r.range(0.85, 1.2);
+                let size = (13.0 + 9.0 * math::log10(1.0 + life / 50.0)) * r.range(0.85, 1.2);
                 // Keep pads apart: slide outward along their side until clear.
                 for _ in 0..10 {
                     let clear = sk.pads.iter().filter(|p| !p.retired).all(|p| {

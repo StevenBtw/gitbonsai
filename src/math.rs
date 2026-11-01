@@ -15,6 +15,18 @@ pub fn ln(x: f64) -> f64 {
     libm::log(x)
 }
 
+/// The base-2 logarithm.
+#[inline]
+pub fn log2(x: f64) -> f64 {
+    libm::log2(x)
+}
+
+/// The base-10 logarithm.
+#[inline]
+pub fn log10(x: f64) -> f64 {
+    libm::log10(x)
+}
+
 /// `e` to the power `x`.
 #[inline]
 pub fn exp(x: f64) -> f64 {

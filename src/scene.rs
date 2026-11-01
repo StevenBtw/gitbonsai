@@ -69,7 +69,7 @@ pub fn project(p: V3) -> (f64, f64, f64) {
 /// at every fork, so girth follows the cube root of what a branch carries,
 /// and it never shrinks because flow never does.
 pub fn radius(flow: f64) -> f64 {
-    0.5 + 0.42 * flow.max(0.0).cbrt()
+    0.5 + 0.42 * math::cbrt(flow.max(0.0))
 }
 
 /// A tuft of maple leaves.

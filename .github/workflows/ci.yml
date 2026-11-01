@@ -96,7 +96,8 @@ jobs:
         shell: bash
         run: |
           cd gallery
-          sha256sum *.svg | sort -k2 > ../hashes-${{ matrix.os }}.txt
+          # Windows marks binary reads with '*'; drop it so only content differs
+          sha256sum *.svg | sed 's/ \*/  /' | sort -k2 > ../hashes-${{ matrix.os }}.txt
           sha256sum ../hashes-${{ matrix.os }}.txt
 
       - uses: actions/upload-artifact@v7
