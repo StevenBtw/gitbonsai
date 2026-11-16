@@ -9,7 +9,7 @@
 use std::collections::BTreeMap;
 use std::process::Command;
 
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use crate::Error;
 use crate::color::Rgb;
@@ -25,6 +25,10 @@ const WINDOW_QUERY: &str = "query($login:String!,$from:DateTime!,$to:DateTime!){
 contributionCalendar{weeks{contributionDays{date contributionCount}}}\
 commitContributionsByRepository(maxRepositories:100){repository{nameWithOwner primaryLanguage{name color}}contributions(first:100){pageInfo{hasNextPage}nodes{occurredAt commitCount}}}\
 pullRequestContributionsByRepository(maxRepositories:100){repository{nameWithOwner primaryLanguage{name color}}contributions(first:100){pageInfo{hasNextPage}nodes{occurredAt}}}\
+issueContributionsByRepository(maxRepositories:100){repository{nameWithOwner primaryLanguage{name color}}contributions(first:100){pageInfo{hasNextPage}nodes{occurredAt}}}\
+pullRequestReviewContributionsByRepository(maxRepositories:100){repository{nameWithOwner primaryLanguage{name color}}contributions(first:100){pageInfo{hasNextPage}nodes{occurredAt}}}\
+repositoryContributions(first:100){pageInfo{hasNextPage}nodes{occurredAt repository{primaryLanguage{name color}}}}\
+restrictedContributionsCount earliestRestrictedContributionDate latestRestrictedContributionDate\
 }}}";
 
 /// Something that answers GraphQL queries: `gh`, or fixtures in tests.
@@ -165,7 +169,7 @@ pub fn collect(
             date: *date,
             total: *total,
             by_language: acc.by_language.remove(date).unwrap_or_default(),
-            private: 0,
+            private: acc.private.get(date).copied().unwrap_or(0),
         })
         .collect();
     progress("archived repositories and achievements");
@@ -259,6 +263,8 @@ struct Accumulator {
     by_language: BTreeMap<Date, BTreeMap<String, u32>>,
     colors: BTreeMap<String, Option<Rgb>>,
     truncated: Vec<DateRange>,
+    /// Private contributions per day, spread from each window's count.
+    private: BTreeMap<Date, u32>,
 }
 
 /// Calendar quarters from `from` through `to`, clipped to the range.
@@ -333,11 +339,34 @@ fn fetch_window(
         .and_then(Value::as_array)
         .cloned()
         .unwrap_or_default();
-    let prs = collection
-        .get("pullRequestContributionsByRepository")
+    let list = |name: &str| {
+        collection
+            .get(name)
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default()
+    };
+    let prs = list("pullRequestContributionsByRepository");
+    let issues = list("issueContributionsByRepository");
+    let reviews = list("pullRequestReviewContributionsByRepository");
+    // Created repositories, reshaped like the lists above: one entry per
+    // repository creation.
+    let created: Vec<Value> = collection
+        .pointer("/repositoryContributions/nodes")
         .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
+        .into_iter()
+        .flatten()
+        .map(|n| {
+            json!({
+                "repository": n.get("repository").cloned().unwrap_or(Value::Null),
+                "contributions": {"nodes": [{"occurredAt": n.get("occurredAt").cloned().unwrap_or(Value::Null)}]}
+            })
+        })
+        .collect();
+    let more_created = collection
+        .pointer("/repositoryContributions/pageInfo/hasNextPage")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
     let cut_off = |repos: &[Value]| {
         repos.len() >= MAX_REPOSITORIES
             || repos.iter().any(|r| {
@@ -347,7 +376,7 @@ fn fetch_window(
             })
     };
 
-    if cut_off(&commits) || cut_off(&prs) {
+    if cut_off(&commits) || cut_off(&prs) || cut_off(&issues) || cut_off(&reviews) || more_created {
         if window.from < window.to {
             let half = window.len_days() / 2;
             let mid = window.from.add_days(half - 1);
@@ -376,7 +405,14 @@ fn fetch_window(
     for (date, count) in calendar {
         acc.totals.insert(date, count);
     }
-    for (repos, counted) in [(&commits, true), (&prs, false)] {
+    // Commits count their commits; every other kind counts one.
+    for (repos, counted) in [
+        (&commits, true),
+        (&prs, false),
+        (&issues, false),
+        (&reviews, false),
+        (&created, false),
+    ] {
         for repo in repos {
             let Some(language) = repo
                 .pointer("/repository/primaryLanguage")
@@ -425,7 +461,74 @@ fn fetch_window(
             }
         }
     }
+    // GitHub gives a window's private count, not its days: spread it over
+    // the days the languages leave something on.
+    let count = collection
+        .get("restrictedContributionsCount")
+        .and_then(Value::as_u64)
+        .and_then(|n| u32::try_from(n).ok())
+        .unwrap_or(0);
+    if count > 0 {
+        let day_of = |name: &str| {
+            collection
+                .get(name)
+                .and_then(Value::as_str)
+                .and_then(|s| s.get(..10))
+                .and_then(|s| s.parse::<Date>().ok())
+        };
+        let span = day_of("earliestRestrictedContributionDate")
+            .zip(day_of("latestRestrictedContributionDate"));
+        let leftover: BTreeMap<Date, u32> = acc
+            .totals
+            .range(window.from..=window.to)
+            .map(|(day, total)| {
+                let named: u32 = acc.by_language.get(day).map_or(0, |l| l.values().sum());
+                (*day, total.saturating_sub(named))
+            })
+            .collect();
+        acc.private.extend(spread_private(&leftover, count, span));
+    }
     Ok(())
+}
+
+/// `count` private contributions over the days of `leftover` (what the
+/// languages leave each day), only days inside `span` when given: in
+/// proportion to the leftover, never above it, rounded by largest remainder
+/// (the earlier day on a tie) so the days sum to `count`, or to all the
+/// leftover when GitHub counted more.
+fn spread_private(
+    leftover: &BTreeMap<Date, u32>,
+    count: u32,
+    span: Option<(Date, Date)>,
+) -> BTreeMap<Date, u32> {
+    let days: Vec<(Date, u32)> = leftover
+        .iter()
+        .filter(|(day, left)| **left > 0 && span.is_none_or(|(a, z)| a <= **day && **day <= z))
+        .map(|(day, left)| (*day, *left))
+        .collect();
+    let room: u64 = days.iter().map(|(_, left)| u64::from(*left)).sum();
+    let n = u64::from(count).min(room);
+    if n == 0 {
+        return BTreeMap::new();
+    }
+    // Integer shares: floor(n * left / room), remainders ranked.
+    let mut out: Vec<(Date, u64, u64)> = days
+        .iter()
+        .map(|(day, left)| {
+            let exact = n * u64::from(*left);
+            (*day, exact / room, exact % room)
+        })
+        .collect();
+    let given: u64 = out.iter().map(|o| o.1).sum();
+    let mut order: Vec<usize> = (0..out.len()).collect();
+    order.sort_by(|&a, &b| out[b].2.cmp(&out[a].2).then(out[a].0.cmp(&out[b].0)));
+    for &i in order.iter().take(usize::try_from(n - given).unwrap_or(0)) {
+        out[i].1 += 1;
+    }
+    out.into_iter()
+        .filter(|o| o.1 > 0)
+        .map(|(day, k, _)| (day, u32::try_from(k).unwrap_or(u32::MAX)))
+        .collect()
 }
 
 fn calendar_days(data: &Value, window: DateRange) -> BTreeMap<Date, u32> {
@@ -502,6 +605,148 @@ mod tests {
                 "pullRequestContributionsByRepository": []
             }}}))
         }
+    }
+
+    /// Answers every window query with `answer(from, to)` as the
+    /// contributions collection, counting calls.
+    struct Scripted<F: Fn(Date, Date) -> Value> {
+        answer: F,
+        calls: RefCell<usize>,
+    }
+
+    impl<F: Fn(Date, Date) -> Value> GraphQl for Scripted<F> {
+        fn query(&self, _query: &str, variables: &[(&str, &str)]) -> Result<Value, Error> {
+            *self.calls.borrow_mut() += 1;
+            let get = |name: &str| variables.iter().find(|(n, _)| *n == name).unwrap().1;
+            let from: Date = get("from")[..10].parse().unwrap();
+            let to: Date = get("to")[..10].parse().unwrap();
+            Ok(json!({"user": {"contributionsCollection": (self.answer)(from, to)}}))
+        }
+    }
+
+    fn calendar(from: Date, to: Date, count: u32) -> Value {
+        let days: Vec<Value> = (0..=to.days_since(from))
+            .map(|i| json!({"date": from.add_days(i).to_string(), "contributionCount": count}))
+            .collect();
+        json!({"weeks": [{"contributionDays": days}]})
+    }
+
+    fn repo(language: &str, more: bool, days: &[Date]) -> Value {
+        let nodes: Vec<Value> = days
+            .iter()
+            .map(|d| json!({"occurredAt": format!("{d}T12:00:00Z"), "commitCount": 1}))
+            .collect();
+        json!({
+            "repository": {"nameWithOwner": "octo/r", "primaryLanguage": {"name": language, "color": null}},
+            "contributions": {"pageInfo": {"hasNextPage": more}, "nodes": nodes}
+        })
+    }
+
+    fn d(s: &str) -> Date {
+        s.parse().unwrap()
+    }
+
+    #[test]
+    fn issues_reviews_and_new_repos_grow_their_language() {
+        let day = d("2026-10-05");
+        let api = Scripted {
+            answer: |from, to| {
+                json!({
+                    "contributionCalendar": calendar(from, to, 3),
+                    "commitContributionsByRepository": [],
+                    "pullRequestContributionsByRepository": [],
+                    "issueContributionsByRepository": [repo("Go", false, &[day])],
+                    "pullRequestReviewContributionsByRepository": [repo("Go", false, &[day])],
+                    "repositoryContributions": {"pageInfo": {"hasNextPage": false}, "nodes": [
+                        {"occurredAt": format!("{day}T09:00:00Z"), "repository": {"primaryLanguage": {"name": "Rust", "color": null}}}
+                    ]},
+                    "restrictedContributionsCount": 0
+                })
+            },
+            calls: RefCell::new(0),
+        };
+        let mut acc = Accumulator::default();
+        fetch_window(&api, "octo", DateRange { from: day, to: day }, &mut acc).unwrap();
+        let langs = &acc.by_language[&day];
+        assert_eq!((langs["Go"], langs["Rust"]), (2, 1), "{langs:?}");
+        assert_eq!(acc.private.get(&day).copied().unwrap_or(0), 0);
+    }
+
+    #[test]
+    fn a_cut_off_review_list_splits_the_window() {
+        let (a, b) = (d("2026-10-05"), d("2026-10-06"));
+        let api = Scripted {
+            answer: |from: Date, to: Date| {
+                json!({
+                    "contributionCalendar": calendar(from, to, 1),
+                    "commitContributionsByRepository": [],
+                    "pullRequestContributionsByRepository": [],
+                    "issueContributionsByRepository": [],
+                    "pullRequestReviewContributionsByRepository": [repo("Go", to > from, &[from])],
+                    "restrictedContributionsCount": 0
+                })
+            },
+            calls: RefCell::new(0),
+        };
+        let mut acc = Accumulator::default();
+        fetch_window(&api, "octo", DateRange { from: a, to: b }, &mut acc).unwrap();
+        assert_eq!(*api.calls.borrow(), 3, "the window and its two halves");
+        assert_eq!(acc.by_language[&b]["Go"], 1);
+    }
+
+    #[test]
+    fn a_windows_private_count_lands_on_its_days() {
+        let day = d("2026-10-05");
+        let api = Scripted {
+            answer: |from, to| {
+                json!({
+                    "contributionCalendar": calendar(from, to, 3),
+                    "commitContributionsByRepository": [repo("Rust", false, &[day])],
+                    "pullRequestContributionsByRepository": [],
+                    "restrictedContributionsCount": 2,
+                    "earliestRestrictedContributionDate": "2026-10-05",
+                    "latestRestrictedContributionDate": "2026-10-05"
+                })
+            },
+            calls: RefCell::new(0),
+        };
+        let mut acc = Accumulator::default();
+        fetch_window(&api, "octo", DateRange { from: day, to: day }, &mut acc).unwrap();
+        assert_eq!(acc.private[&day], 2);
+    }
+
+    fn spread(leftover: &[(Date, u32)], count: u32, span: Option<(Date, Date)>) -> Vec<u32> {
+        let map: BTreeMap<Date, u32> = leftover.iter().copied().collect();
+        let out = spread_private(&map, count, span);
+        leftover
+            .iter()
+            .map(|(d, _)| out.get(d).copied().unwrap_or(0))
+            .collect()
+    }
+
+    #[test]
+    fn private_is_spread_by_leftover() {
+        let (a, b) = (d("2026-10-05"), d("2026-10-06"));
+        assert_eq!(
+            spread(&[(a, 3), (b, 1)], 2, None),
+            [2, 0],
+            "1.5 and 0.5: the earlier wins"
+        );
+        assert_eq!(spread(&[(a, 3), (b, 1)], 4, None), [3, 1]);
+        assert_eq!(spread(&[(a, 2), (b, 2)], 3, None).iter().sum::<u32>(), 3);
+    }
+
+    #[test]
+    fn private_never_exceeds_the_leftover() {
+        let a = d("2026-10-05");
+        assert_eq!(spread(&[(a, 1)], 5, None), [1]);
+        assert_eq!(spread(&[(a, 0)], 5, None), [0]);
+    }
+
+    #[test]
+    fn private_stays_inside_its_dates() {
+        let (a, b) = (d("2026-10-05"), d("2026-10-06"));
+        assert_eq!(spread(&[(a, 3), (b, 3)], 2, Some((b, b))), [0, 2]);
     }
 
     #[test]
