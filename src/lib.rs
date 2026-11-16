@@ -1,9 +1,11 @@
 //! # gitbonsai
 //!
 //! Draws a GitHub account as a Japanese maple bonsai, grown from its public
-//! activity. Age makes the tree tall, contributions make it thick, the
-//! languages you work in color the leaves, and achievements leave small
-//! easter eggs in the pot.
+//! activity. A newcomer is a thin sprout; age makes the tree short, stout,
+//! wide and full, never tall. Each main language grows its own trunk, older
+//! years become lower limbs under a crown of the recent years, the languages
+//! you work in color the leaves (private work silver), and achievements
+//! leave small easter eggs in the pot.
 //!
 //! The pipeline: [`collect`] is the only step with I/O. It writes a
 //! [`Snapshot`]. Everything after it is a pure function of the snapshot, the

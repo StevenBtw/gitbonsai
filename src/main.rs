@@ -32,9 +32,9 @@ struct Cli {
 /// Options that shape a tree, shared by the rendering commands.
 #[derive(clap::Args, Clone)]
 struct TreeArgs {
-    /// Config file; a missing file means all defaults
-    #[arg(long, default_value = "bonsai.toml")]
-    config: PathBuf,
+    /// Config file [default: bonsai.toml, all defaults when absent]
+    #[arg(long)]
+    config: Option<PathBuf>,
 
     /// Override [tree] style: chokkan, moyogi, shakan, fukinagashi
     #[arg(long)]
@@ -52,9 +52,15 @@ enum Command {
         /// GitHub login
         login: String,
 
-        /// Write here instead of stdout; replaced only after success
+        /// Write here instead of stdout; replaced only after success. A
+        /// snapshot already there from this version is reused: only recent
+        /// months are fetched again
         #[arg(long, short)]
         output: Option<PathBuf>,
+
+        /// Fetch the whole history, even with a reusable snapshot at --output
+        #[arg(long)]
+        full: bool,
     },
 
     /// Render light and dark SVGs, a PNG and preview.html
@@ -118,9 +124,9 @@ enum Command {
         #[arg(long = "snapshot")]
         snapshots: Vec<PathBuf>,
 
-        /// Config file; a missing file means all defaults
-        #[arg(long, default_value = "bonsai.toml")]
-        config: PathBuf,
+        /// Config file [default: bonsai.toml, all defaults when absent]
+        #[arg(long)]
+        config: Option<PathBuf>,
     },
 
     /// Render several trees side by side at one scale: row-light.svg and row-dark.svg
@@ -129,9 +135,9 @@ enum Command {
         #[arg(required = true)]
         trees: Vec<String>,
 
-        /// Config file; a missing file means all defaults
-        #[arg(long, default_value = "bonsai.toml")]
-        config: PathBuf,
+        /// Config file [default: bonsai.toml, all defaults when absent]
+        #[arg(long)]
+        config: Option<PathBuf>,
 
         /// Output folder
         #[arg(long, default_value = "bonsai")]
@@ -169,12 +175,21 @@ fn run(cli: Cli) -> Result<()> {
         }
     };
     match cli.command {
-        Command::Collect { login, output } => {
+        Command::Collect {
+            login,
+            output,
+            full,
+        } => {
             let observed_on = Date::today_utc().add_days(-1);
             status(&format!("collecting @{login} through {observed_on}"));
-            let snapshot = collect::collect(&collect::GhCli, &login, observed_on, &mut |line| {
-                status(line);
-            })?;
+            let previous = previous_snapshot(output.as_deref(), full, &mut |line| status(line));
+            let snapshot = collect::collect(
+                &collect::GhCli,
+                &login,
+                observed_on,
+                previous.as_ref(),
+                &mut |line| status(line),
+            )?;
             let json = snapshot.to_json();
             match output {
                 Some(path) => {
@@ -262,7 +277,7 @@ fn run(cli: Cli) -> Result<()> {
             snapshots,
             config,
         } => {
-            let config = Config::load(&config)?;
+            let config = config_file(config.as_deref(), &mut |s| status(s))?;
             gallery(&output_dir, &snapshots, &config)?;
             status(&format!(
                 "wrote {}",
@@ -274,7 +289,7 @@ fn run(cli: Cli) -> Result<()> {
             config,
             output_dir,
         } => {
-            let config = Config::load(&config)?;
+            let config = config_file(config.as_deref(), &mut |s| status(s))?;
             let mut grown = Vec::new();
             for text in &trees {
                 let (name, source, day) = gitbonsai::row::spec(text)?;
@@ -333,8 +348,25 @@ fn load_snapshot(source: &str) -> Result<Snapshot> {
     Ok(Snapshot::load(Path::new(source))?)
 }
 
+/// The config at `path`, or `bonsai.toml` when none is given. A missing
+/// `bonsai.toml` means all defaults; a missing file named on the command line
+/// does too, with a warning, since it is likely a typo.
+fn config_file(path: Option<&Path>, status: &mut dyn FnMut(&str)) -> Result<Config> {
+    match path {
+        Some(path) if !path.exists() => {
+            status(&format!(
+                "warning: {} not found; using the defaults",
+                path.display()
+            ));
+            Ok(Config::default())
+        }
+        Some(path) => Ok(Config::load(path)?),
+        None => Ok(Config::load(Path::new("bonsai.toml"))?),
+    }
+}
+
 fn load_config(args: &TreeArgs, snapshot: &Snapshot, status: &dyn Fn(&str)) -> Result<Config> {
-    let mut config = Config::load(&args.config)?;
+    let mut config = config_file(args.config.as_deref(), &mut |s| status(s))?;
     if let Some(style) = &args.style {
         config.tree.style = style.parse::<Style>()?;
     }
@@ -352,16 +384,36 @@ fn as_of(args: &TreeArgs) -> Result<Option<Date>> {
         .map_err(Into::into)
 }
 
+/// The snapshot at `output` to reuse, unless `full`: `None` for stdout, a
+/// first run, or a file that isn't a valid snapshot (reported, then
+/// replaced).
+fn previous_snapshot(
+    output: Option<&Path>,
+    full: bool,
+    status: &mut dyn FnMut(&str),
+) -> Option<Snapshot> {
+    let path = output.filter(|p| !full && p.exists())?;
+    match Snapshot::load(path) {
+        Ok(snapshot) => Some(snapshot),
+        Err(e) => {
+            status(&format!("not reusing {}: {e}", path.display()));
+            None
+        }
+    }
+}
+
 fn parse_interval(text: &str) -> Result<i32> {
     let invalid = || {
         Error::Config(format!(
             "`{text}` is not an interval; use for example 4w or 10d"
         ))
     };
-    let (number, unit) = text.split_at(text.len().saturating_sub(1));
+    // The unit is the last character, which need not be one byte.
+    let cut = text.char_indices().last().map_or(0, |(i, _)| i);
+    let (number, unit) = text.split_at(cut);
     let n: i32 = number.parse().map_err(|_| invalid())?;
     let days = match unit {
-        "w" => n * 7,
+        "w" => n.checked_mul(7).ok_or_else(invalid)?,
         "d" => n,
         _ => return Err(invalid().into()),
     };
@@ -504,4 +556,66 @@ fn summary(b: &Bonsai) -> String {
         b.extras.pot_tier,
         b.window.total
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{config_file, parse_interval, previous_snapshot};
+
+    #[test]
+    fn an_explicit_missing_config_warns() {
+        let mut said = Vec::new();
+        let missing = std::path::Path::new("no-such-dir/nope.toml");
+        let config = config_file(Some(missing), &mut |s| said.push(s.to_string())).unwrap();
+        assert_eq!(config, gitbonsai::Config::default());
+        assert_eq!(said.len(), 1, "{said:?}");
+        assert!(said[0].contains("nope.toml"), "{said:?}");
+        // The implicit bonsai.toml may be absent without a word (the tests
+        // run in the crate root, which has none).
+        assert!(!std::path::Path::new("bonsai.toml").exists());
+        said.clear();
+        config_file(None, &mut |s| said.push(s.to_string())).unwrap();
+        assert!(said.is_empty(), "{said:?}");
+    }
+
+    #[test]
+    fn a_missing_or_corrupt_previous_snapshot_is_ignored() {
+        let dir = std::env::temp_dir().join(format!("gitbonsai-prev-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut said = Vec::new();
+        let missing = dir.join("none.json");
+        assert!(
+            previous_snapshot(Some(&missing), false, &mut |s| said.push(s.to_string())).is_none()
+        );
+        assert!(said.is_empty(), "a first run says nothing");
+        let corrupt = dir.join("bad.json");
+        std::fs::write(&corrupt, "{not json").unwrap();
+        assert!(
+            previous_snapshot(Some(&corrupt), false, &mut |s| said.push(s.to_string())).is_none()
+        );
+        assert_eq!(said.len(), 1, "a corrupt file is reported: {said:?}");
+        let good = dir.join("good.json");
+        let snapshot = gitbonsai::fixtures::by_name("mono").unwrap().snapshot;
+        std::fs::write(&good, snapshot.to_json()).unwrap();
+        assert!(previous_snapshot(Some(&good), false, &mut |_| {}).is_some());
+        assert!(
+            previous_snapshot(Some(&good), true, &mut |_| {}).is_none(),
+            "--full"
+        );
+        assert!(
+            previous_snapshot(None, false, &mut |_| {}).is_none(),
+            "stdout"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn an_interval_with_a_multibyte_unit_is_an_error() {
+        assert!(parse_interval("4\u{e9}").is_err());
+        assert!(parse_interval("\u{e9}").is_err());
+        assert_eq!(parse_interval("4w").unwrap(), 28);
+        assert_eq!(parse_interval("10d").unwrap(), 10);
+        assert!(parse_interval("400000000w").is_err(), "too many weeks");
+        assert!(parse_interval("613566757w").is_err(), "no wrap-around");
+    }
 }

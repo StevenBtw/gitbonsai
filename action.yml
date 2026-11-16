@@ -26,11 +26,24 @@ inputs:
       the default (off).
     default: ""
   config:
-    description: A bonsai.toml in the workspace; a missing file means defaults.
+    description: A bonsai.toml in the workspace; a missing bonsai.toml means defaults, any other missing file a warning.
     default: bonsai.toml
+  snapshot:
+    description:
+      Where the collected history is kept, relative to the workspace; empty
+      means bonsai.snapshot.json in output-dir. Commit it, and the next run
+      fetches only recent months instead of the whole history.
+    default: ""
+  full:
+    description:
+      true fetches the whole history again instead of only recent months; use
+      it once after turning private contributions on or off in your profile.
+    default: "false"
   token:
     description:
-      Token for reading the account's public data; the built-in token is enough.
+      Token for reading the account's public data; the built-in token is
+      enough. The snapshot is committed with the SVGs, so a token that sees
+      private repositories would publish their languages and archived names.
     default: ${{ github.token }}
 
 outputs:
@@ -40,6 +53,9 @@ outputs:
   dark:
     description: Path of the dark SVG.
     value: ${{ steps.render.outputs.dark }}
+  snapshot:
+    description: Path of the snapshot, to commit with the SVGs.
+    value: ${{ steps.collect.outputs.snapshot }}
 
 runs:
   using: composite
@@ -70,6 +86,12 @@ runs:
           exit 1
         fi
         cd "$install_dir"
+        # Where it came from: the release's signed attestation (immutable
+        # releases). The sha256 below only shows it arrived intact.
+        if ! gh release verify-asset "v$version" "$archive" --repo "$repository"; then
+          echo "$archive is not attested by release v$version of $repository" >&2
+          exit 1
+        fi
         if command -v sha256sum > /dev/null; then
           sha256sum -c "$archive.sha256"
         else
@@ -78,11 +100,25 @@ runs:
         tar -xzf "$archive"
         echo "$install_dir" >> "$GITHUB_PATH"
     - name: Collect the account's activity
+      id: collect
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.token }}
         BONSAI_LOGIN: ${{ inputs.login }}
-      run: gitbonsai collect "$BONSAI_LOGIN" --output "$RUNNER_TEMP/bonsai.snapshot.json"
+        BONSAI_SNAPSHOT: ${{ inputs.snapshot }}
+        BONSAI_OUTPUT_DIR: ${{ inputs.output-dir }}
+        BONSAI_FULL: ${{ inputs.full }}
+      run: |
+        # A snapshot from an earlier run of this version is reused: only
+        # recent months are fetched again, unless full is true.
+        snapshot="${BONSAI_SNAPSHOT:-$BONSAI_OUTPUT_DIR/bonsai.snapshot.json}"
+        mkdir -p "$(dirname "$snapshot")"
+        args=(--output "$snapshot")
+        if [ "$BONSAI_FULL" = true ]; then
+          args+=(--full)
+        fi
+        gitbonsai collect "$BONSAI_LOGIN" "${args[@]}"
+        echo "snapshot=$snapshot" >> "$GITHUB_OUTPUT"
     - name: Grow the bonsai
       id: render
       shell: bash
@@ -91,15 +127,21 @@ runs:
         BONSAI_STYLE: ${{ inputs.style }}
         BONSAI_LEGEND: ${{ inputs.legend }}
         BONSAI_CONFIG: ${{ inputs.config }}
+        BONSAI_SNAPSHOT: ${{ steps.collect.outputs.snapshot }}
       run: |
         # Style and legend override the config only when given.
-        args=(--output-dir "$BONSAI_OUTPUT_DIR" --config "$BONSAI_CONFIG")
+        args=(--output-dir "$BONSAI_OUTPUT_DIR")
+        # A config named in the inputs that is missing gets a warning; the
+        # default bonsai.toml may simply not exist.
+        if [ "$BONSAI_CONFIG" != bonsai.toml ] || [ -f "$BONSAI_CONFIG" ]; then
+          args+=(--config "$BONSAI_CONFIG")
+        fi
         if [ -n "$BONSAI_STYLE" ]; then
           args+=(--style "$BONSAI_STYLE")
         fi
         if [ -n "$BONSAI_LEGEND" ]; then
           args+=(--legend "$BONSAI_LEGEND")
         fi
-        gitbonsai render "$RUNNER_TEMP/bonsai.snapshot.json" "${args[@]}"
+        gitbonsai render "$BONSAI_SNAPSHOT" "${args[@]}"
         echo "light=$BONSAI_OUTPUT_DIR/bonsai-light.svg" >> "$GITHUB_OUTPUT"
         echo "dark=$BONSAI_OUTPUT_DIR/bonsai-dark.svg" >> "$GITHUB_OUTPUT"

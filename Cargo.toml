@@ -1,8 +1,8 @@
 [package]
 name = "gitbonsai"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
-rust-version = "1.99.0"
+rust-version = "1.88"
 license = "MIT OR Apache-2.0"
 authors = ["S.T. Grond"]
 description = "Grow a Japanese maple bonsai from your GitHub activity: an animated SVG for your profile README."

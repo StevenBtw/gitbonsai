@@ -88,7 +88,7 @@ pub struct Tuft {
     pub samara: bool,
     /// Size factor.
     pub size: f64,
-    /// Work without language data: drawn in the private tone.
+    /// Private work: drawn in the private tone.
     pub private: bool,
 }
 

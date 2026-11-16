@@ -2,6 +2,35 @@
 
 All notable changes to gitbonsai, a Japanese maple bonsai grown from GitHub activity. Any change to how a tree grows or looks is at least a minor version, because people notice their tree changing.
 
+## [0.2.1] - Unreleased
+
+Honesty and safety release: silver leaves now mean private work only, issues and reviews grow their language, and weekly runs fetch only recent months. Trees with silver change, which would make this a minor version; it ships as a patch because the change is small. The first run after upgrading collects the whole history once.
+
+### Added
+
+- **Weekly runs fetch only recent months**: `gitbonsai collect --output <file>` reuses a snapshot from the same version there and fetches again from the start of the previous quarter; `--full` fetches everything. The Action keeps it as `bonsai.snapshot.json` in `output-dir` (new `snapshot` input and output, and `full` to fetch everything once), and the example workflow commits it.
+- **Issues, reviews and created repositories grow their language**: each counts one for its repository's primary language, as opened pull requests do.
+- **A gallery reference**: `gallery.sha256` holds the hash of every gallery SVG, and CI fails when a tree changes without it. `scripts/gallery-hashes.sh` writes it.
+
+### Changed
+
+- **Silver leaves are private work only**: GitHub's private count is spread over the days it covers, and public work without a language (discussions, repositories without one) takes the colors of that week's languages. Snapshots are now schema 2; schema 1 snapshots still load and render as before.
+- **The example workflow runs on Mondays** (`17 6 * * 1`): the week just ended is complete, so new growth shows a week sooner.
+- **The minimum Rust version is 1.88** (was 1.99), checked in CI.
+- **`explain` and the README name silver as private work**, shown only when a profile includes private contributions.
+
+### Fixed
+
+- **Achievement pages with non-ASCII text no longer stop collection**: a card cut inside a multibyte character panicked, so `collect` and the Action failed every run.
+- **`timelapse --every` rejects a non-ASCII unit**: `4é` was a panic and is now an error.
+- **A missing config file named with `--config` is reported**: it prints a warning and uses the defaults; a missing default `bonsai.toml` stays silent.
+- **The crate docs describe the 0.2.0 growth**: girth, spread and fullness, not height.
+
+### Security
+
+- **Release builds run without write access**: only the publishing job can write, checkouts keep no credentials, and every action is pinned to a commit.
+- **The Action checks where its binary came from**: `gh release verify-asset` checks the release's attestation before the sha256 check. Releases are immutable from 0.2.1.
+
 ## [0.2.0] - 2026-11-16
 
 Growth release: every tree is regrown as an exhibition maple, short, wide and full instead of tall, with its history in its trunks, limbs and crown. Every existing tree changes shape and some leaf colors change; there is no setting for the old growth, so stay on 0.1.2 to keep it.

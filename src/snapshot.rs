@@ -14,7 +14,11 @@ use crate::color::Rgb;
 use crate::date::{Date, DateRange};
 
 /// The schema version this crate reads and writes.
-pub const SCHEMA: u32 = 1;
+pub const SCHEMA: u32 = 2;
+
+/// Snapshots before 0.2.1: no private count, so every contribution the
+/// languages leave is taken as private work.
+pub const LEGACY_SCHEMA: u32 = 1;
 
 /// An account's contribution history.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -57,9 +61,22 @@ pub struct Day {
     pub date: Date,
     /// The calendar count: every kind of contribution, private ones included.
     pub total: u32,
-    /// Commits plus opened PRs, by the repository's primary language.
+    /// Commits, opened PRs and issues, reviews and created repositories, by
+    /// the repository's primary language.
     #[serde(default)]
     pub by_language: BTreeMap<String, u32>,
+    /// Private contributions (schema 2): GitHub's private count for the
+    /// window, spread over its days. Zero is left out of the file.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub private: u32,
+}
+
+#[allow(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "serde's skip_serializing_if passes a reference"
+)]
+fn is_zero(n: &u32) -> bool {
+    *n == 0
 }
 
 impl Snapshot {
@@ -101,9 +118,9 @@ impl Snapshot {
     /// When the schema, range or day order is wrong.
     pub fn validate(&self) -> Result<(), Error> {
         let fail = |msg: String| Err(Error::Snapshot(msg));
-        if self.schema != SCHEMA {
+        if !(LEGACY_SCHEMA..=SCHEMA).contains(&self.schema) {
             return fail(format!(
-                "schema {} is not supported; this gitbonsai reads schema {SCHEMA}. Re-run `gitbonsai collect`",
+                "schema {} is not supported; this gitbonsai reads schemas {LEGACY_SCHEMA} and {SCHEMA}. Re-run `gitbonsai collect`",
                 self.schema
             ));
         }
@@ -161,5 +178,53 @@ impl Snapshot {
     /// The last day with a contribution.
     pub fn last_active(&self) -> Option<Date> {
         self.days.iter().rev().find(|d| d.total > 0).map(|d| d.date)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn minimal(schema: u32) -> Snapshot {
+        let day: Date = "2026-10-05".parse().unwrap();
+        Snapshot {
+            schema,
+            login: "t".into(),
+            account_id: 1,
+            range: DateRange { from: day, to: day },
+            observed_on: day,
+            collected_with: "test".into(),
+            language_colors: BTreeMap::new(),
+            days: vec![Day {
+                date: day,
+                total: 3,
+                by_language: BTreeMap::new(),
+                private: 0,
+            }],
+            truncated_windows: Vec::new(),
+            achievements: BTreeMap::new(),
+            archived_repos: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn schema_one_and_two_load() {
+        assert!(minimal(LEGACY_SCHEMA).validate().is_ok());
+        assert!(minimal(SCHEMA).validate().is_ok());
+        assert!(minimal(SCHEMA + 1).validate().is_err());
+        assert_eq!(SCHEMA, 2);
+    }
+
+    #[test]
+    fn a_day_without_private_work_leaves_the_key_out() {
+        let json = minimal(SCHEMA).to_json();
+        assert!(!json.contains("private"), "{json}");
+        let mut with = minimal(SCHEMA);
+        with.days[0].private = 2;
+        let back: Snapshot = serde_json::from_str(&with.to_json()).unwrap();
+        assert_eq!(back.days[0].private, 2);
+        let old = json.replace("\"schema\": 2", "\"schema\": 1");
+        let legacy: Snapshot = serde_json::from_str(&old).unwrap();
+        assert_eq!(legacy.days[0].private, 0, "schema 1 has no private field");
     }
 }

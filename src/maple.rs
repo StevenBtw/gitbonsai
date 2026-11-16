@@ -11,7 +11,7 @@ use std::collections::BTreeMap;
 use crate::color::{self, Oklch, Rgb};
 use crate::foliage::Window;
 
-/// The leaf color of contributions without language data: private or
+/// The leaf color of private contributions: private or
 /// corporate work, silver grey.
 pub const PRIVATE_GREY: Rgb = Rgb::hex(0xb8bcc2);
 
@@ -127,7 +127,7 @@ pub struct MaplePalette {
     pub colors: BTreeMap<String, Rgb>,
     /// The crown's languages by share of the foliage window.
     pub crown: Vec<(String, f64)>,
-    /// The color of work without language data.
+    /// The color of private work.
     pub private: Rgb,
 }
 

@@ -4,8 +4,10 @@ on:
   push:
     tags: ['v*']
 
+# Read-only by default: the build jobs run dependency build scripts, so only
+# the publishing job gets write access.
 permissions:
-  contents: write
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
@@ -29,11 +31,14 @@ jobs:
           - target: x86_64-pc-windows-msvc
             os: windows-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.99.0
+        uses: dtolnay/rust-toolchain@92e73e19cbfb3981e63ef478a16f95f415e634d3 # 1.99.0
         with:
+          toolchain: 1.99.0
           targets: ${{ matrix.target }}
 
       - name: Install musl tools
@@ -61,7 +66,7 @@ jobs:
           fi
           echo "ARCHIVE=$archive" >> "$GITHUB_ENV"
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: ${{ matrix.target }}
           path: |
@@ -72,16 +77,27 @@ jobs:
     name: Publish the GitHub release
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           merge-multiple: true
 
-      - uses: softprops/action-gh-release@v3
-        with:
-          files: |
-            gitbonsai-*
-          generate_release_notes: true
+      # A draft takes the assets, then publishing makes the release
+      # immutable and attested, which the action verifies on download.
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh release create "$TAG" --repo "$REPO" --draft --generate-notes gitbonsai-*
+          gh release edit "$TAG" --repo "$REPO" --draft=false
+          if [ "$(gh release view "$TAG" --repo "$REPO" --json isImmutable --jq .isImmutable)" != true ]; then
+            echo "::error::$TAG is not immutable; turn on immutable releases in the repository settings, delete the release and tag it again"
+            exit 1
+          fi
 
   # The GitHub Action end to end against the release just published: download,
   # sha256 check, collect, render. A release made with the built-in token
@@ -98,7 +114,9 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - uses: ./
         id: bonsai

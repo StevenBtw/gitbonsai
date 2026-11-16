@@ -8,7 +8,7 @@
 name: bonsai
 on:
   schedule:
-    - cron: "17 6 * * 0"   # Sundays 06:17 UTC
+    - cron: "17 6 * * 1"   # Mondays 06:17 UTC: the week just ended is complete
   workflow_dispatch:        # run it once by hand
 
 permissions:
@@ -20,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: StevenBtw/gitbonsai@v0.2.0
+      - uses: StevenBtw/gitbonsai@v0.2.1
         id: bonsai
         with:
           output-dir: assets
@@ -30,6 +30,8 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add "${{ steps.bonsai.outputs.light }}" "${{ steps.bonsai.outputs.dark }}"
+          # The snapshot too: the next run then fetches only recent months.
+          git add "${{ steps.bonsai.outputs.light }}" "${{ steps.bonsai.outputs.dark }}" \
+            "${{ steps.bonsai.outputs.snapshot }}"
           git diff --cached --quiet || git commit -m "Grow bonsai"
           git push

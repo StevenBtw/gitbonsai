@@ -24,6 +24,8 @@ pub fn snap(days: &[(Date, u32, &[(&str, u32)])], observed: Date) -> Snapshot {
                 date: *date,
                 total: *total,
                 by_language: langs.iter().map(|(l, v)| ((*l).to_string(), *v)).collect(),
+                // What the languages leave is private work, as in fixtures.
+                private: total.saturating_sub(langs.iter().map(|(_, v)| v).sum()),
             })
             .collect(),
         truncated_windows: Vec::new(),

@@ -117,6 +117,7 @@ impl Builder {
                     date: day_date,
                     total: 0,
                     by_language: BTreeMap::new(),
+                    private: 0,
                 });
                 day.total += share;
                 let attributed = f64::from(share) * (1.0 - private);
@@ -145,7 +146,16 @@ impl Builder {
     }
 
     fn build(self) -> Snapshot {
-        let days: Vec<Day> = self.days.into_values().filter(|d| d.total > 0).collect();
+        // What a spell leaves without a language is its private work.
+        let days: Vec<Day> = self
+            .days
+            .into_values()
+            .filter(|d| d.total > 0)
+            .map(|mut d| {
+                d.private = d.total.saturating_sub(d.by_language.values().sum());
+                d
+            })
+            .collect();
         let language_colors = days
             .iter()
             .flat_map(|d| d.by_language.keys())

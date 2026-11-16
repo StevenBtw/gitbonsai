@@ -455,6 +455,7 @@ fn a_dormant_tree_grows_leaves_again() {
             date: start.add_days(i),
             total: 4,
             by_language,
+            private: 0,
         });
     }
     snapshot.observed_on = start.add_days(56);
@@ -508,14 +509,16 @@ fn the_firefly_hovers_in_the_open() {
             .collect();
         let (x, y) = (xy[0], xy[1]);
         let scene = Scene::build(&bonsai);
-        let (s, c) = (TILT.sin(), TILT.cos());
+        let (s, c) = (gitbonsai::math::sin(TILT), gitbonsai::math::cos(TILT));
         for (c3, rx, ry, rz, _, _) in &scene.masses {
             let (cx, cy, _) = project(*c3);
             let hw = rx * WORLD;
-            let up = ((ry * c).powi(2) + (rz * s).powi(2)).sqrt() * WORLD;
+            let up = (gitbonsai::math::sq(ry * c) + gitbonsai::math::sq(rz * s)).sqrt() * WORLD;
             let down = rz * s * WORLD;
             let v = if y < cy { up } else { down };
-            let inside = ((x - cx) / hw).powi(2) + ((y - cy) / v.max(1e-6)).powi(2) < 1.0;
+            let inside = gitbonsai::math::sq((x - cx) / hw)
+                + gitbonsai::math::sq((y - cy) / v.max(1e-6))
+                < 1.0;
             assert!(
                 !inside,
                 "{name}: firefly at {x} {y} sits in a cloud at {cx} {cy}"
@@ -598,7 +601,9 @@ fn declared_recent_work_keeps_a_language_alive() {
     let from: gitbonsai::date::Date = "2026-06-01".parse().unwrap();
     for d in &mut snapshot.days {
         if d.date >= from {
+            // Private work: no language, and counted as private.
             d.by_language.clear();
+            d.private = d.total;
         }
     }
     let config =
@@ -678,6 +683,7 @@ fn a_language_picked_up_this_week_is_alive() {
             date: day,
             total: 5,
             by_language,
+            private: 0,
         }),
     }
     let b = Bonsai::grow(&snapshot, &Config::default(), None);

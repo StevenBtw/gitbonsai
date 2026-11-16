@@ -13,7 +13,7 @@ const TRUNK_SHARE: f64 = 0.23;
 /// One trunk: its language, lifetime share, and whether it was dropped.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Trunk {
-    /// The language; `None` for an account without language data.
+    /// The language; `None` for an account with only private work.
     pub lang: Lang,
     /// Share of lifetime contributions with a language; 1 when no language
     /// reaches a trunk's share.

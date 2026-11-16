@@ -78,7 +78,7 @@ pub fn report(b: &Bonsai) -> String {
         let names = |t: &[Trunk]| {
             t.iter()
                 .map(|t| {
-                    let name = t.lang.as_deref().unwrap_or("(no language data)");
+                    let name = t.lang.as_deref().unwrap_or("(private work)");
                     if t.dropped {
                         format!("{name} (dead)")
                     } else {
@@ -111,7 +111,7 @@ pub fn report(b: &Bonsai) -> String {
     if total > 0.0 && private > 0.0 {
         let _ = writeln!(
             out,
-            "  private work        {} of contributions have no language data: silver leaves",
+            "  private work        {} of contributions are private: silver leaves",
             pct(private / total)
         );
     }

@@ -94,7 +94,7 @@ fn branch_spots(scene: &Scene) -> Vec<(usize, f64, f64)> {
             }
             let mut crowd = leaves
                 .iter()
-                .filter(|l| (l.0 - x).powi(2) + (l.1 - y).powi(2) < reach * reach)
+                .filter(|l| math::sq(l.0 - x) + math::sq(l.1 - y) < reach * reach)
                 .count();
             // Nothing hangs over or in front of a cloud, so small accent
             // clouds stay in view.
@@ -217,7 +217,7 @@ fn take_spot(
         .find(|s| {
             taken
                 .iter()
-                .all(|t| (t.0 - s.1).powi(2) + (t.1 - s.2).powi(2) > gap * gap)
+                .all(|t| math::sq(t.0 - s.1) + math::sq(t.1 - s.2) > gap * gap)
         })
         .map(|s| (s.1, s.2));
     if let Some(p) = found {
@@ -250,7 +250,7 @@ fn moon_spot(scene: &Scene, frame: &mut Frame, k: f64, legend: Legend) -> (f64, 
     }
     let clearance = |c: (f64, f64)| {
         pts.iter()
-            .map(|p| ((p.0 - c.0).powi(2) + (p.1 - c.1).powi(2)).sqrt())
+            .map(|p| (math::sq(p.0 - c.0) + math::sq(p.1 - c.1)).sqrt())
             .fold(f64::INFINITY, f64::min)
     };
     let top = frame.1 + inset;
