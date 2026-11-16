@@ -79,6 +79,12 @@ runs:
           exit 1
         fi
         cd "$install_dir"
+        # Where it came from: the release's signed attestation (immutable
+        # releases). The sha256 below only shows it arrived intact.
+        if ! gh release verify-asset "v$version" "$archive" --repo "$repository"; then
+          echo "$archive is not attested by release v$version of $repository" >&2
+          exit 1
+        fi
         if command -v sha256sum > /dev/null; then
           sha256sum -c "$archive.sha256"
         else
