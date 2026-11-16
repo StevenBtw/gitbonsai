@@ -8,7 +8,11 @@ Release fix: 0.2.1 was published without its binaries, so its Action cannot run.
 
 ### Fixed
 
-- **Releases are created from the tag only**: the release job creates the release, uploads the binaries and publishes it, and fails if a release for the tag already exists. A release published by hand is immutable before its binaries arrive.
+- **A release created in the GitHub UI gets its binaries again**: the release job uploads them to it, or creates the release when only a tag was pushed, and fails when binaries are missing.
+
+### Removed
+
+- **The Action's attestation check**: releases are no longer immutable, so `gh release verify-asset` is gone; the sha256 check stays.
 
 ## [0.2.1] - 2026-11-16
 
