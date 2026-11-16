@@ -78,10 +78,19 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      # Signed build provenance for each binary, which the action verifies:
+      # release assets can be replaced, so the checksum alone proves nothing
+      # about where a binary came from.
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           merge-multiple: true
+
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: gitbonsai-*
 
       # Create the release in the GitHub UI with a new tag, or push only the
       # tag: either way this job attaches the binaries. A release created by
