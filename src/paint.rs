@@ -21,6 +21,7 @@ use crate::Bonsai;
 use crate::color::Rgb;
 use crate::config::Config;
 use crate::eggs;
+use crate::maple::private_tone;
 use crate::math;
 use crate::noise::hash01;
 use crate::render::{Num, PathData, Theme};
@@ -37,6 +38,8 @@ pub struct Paints {
     pub bark: Rgb,
     /// Deadwood.
     pub jin: Rgb,
+    /// The inked edge around deadwood, so bleached wood reads on any page.
+    pub jin_ink: Rgb,
     /// The soil surface.
     pub soil: Rgb,
     /// Two moss tones.
@@ -62,7 +65,8 @@ impl Paints {
             Theme::Light => Self {
                 dark: false,
                 bark: Rgb::hex(0x6e4c36),
-                jin: Rgb::hex(0xd9d4c7),
+                jin: Rgb::hex(0xcdc7ba),
+                jin_ink: Rgb::hex(0x9a9182),
                 soil: Rgb::hex(0x5a4632),
                 moss: [Rgb::hex(0x5f7f35), Rgb::hex(0x84a34a)],
                 tubing: Rgb::hex(0x22272b),
@@ -76,6 +80,7 @@ impl Paints {
                 dark: true,
                 bark: Rgb::hex(0x8a6a50),
                 jin: Rgb::hex(0xc4beb0),
+                jin_ink: Rgb::hex(0x4e4941),
                 soil: Rgb::hex(0x4d3c2c),
                 moss: [Rgb::hex(0x6d8f3c), Rgb::hex(0x93b356)],
                 tubing: Rgb::hex(0xb9c0c7),
@@ -412,6 +417,12 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
         let back = (-depth / 140.0).clamp(0.0, 1.0);
         c.shift(0.05 * back, -0.03 * back)
     };
+    // Leaves and clouds at the back fade into the air; front ones darken.
+    let air = if paints.dark {
+        Rgb::hex(0x3a4250)
+    } else {
+        Rgb::hex(0xb9c3cf)
+    };
     let mut out = Painted::default();
     let mut items: Vec<(f64, String)> = Vec::new();
     let mut extent = (f64::MAX, f64::MIN, SOIL_Y);
@@ -430,7 +441,7 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
         // outline is drawn as curves, so few points carry a smooth branch.
         let relaxed = relax(&relax(&relax(&pts)));
         let thick = pts.iter().any(|p| p.2 > 3.2);
-        let mut fine = simplify(&chaikin(&relaxed), if thick { 1.0 } else { 0.6 });
+        let mut fine = simplify(&chaikin(&relaxed), if thick { 1.3 } else { 1.2 });
         taper_tip(&mut fine);
         for p in &fine {
             extent = (
@@ -445,7 +456,7 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
             twigs[usize::from(*jin)].push_str(tube(&seg, true, false).as_str());
             continue;
         }
-        let piece = 20;
+        let piece = 36;
         let mut start = 0;
         while start + 1 < fine.len() {
             let end = (start + piece).min(fine.len() - 1);
@@ -464,11 +475,19 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
             let depth =
                 fine[start..=end].iter().map(|p| p.3).sum::<f64>() / (end - start + 1) as f64;
             let base = haze(if *jin { paints.jin } else { paints.bark }, depth);
-            let mut s = format!(
-                r#"<path d="{}" fill="{base}"/>"#,
-                tube(&seg, last, true).as_str()
-            );
-            if seg.iter().any(|p| p.2 > 4.5) {
+            let d = tube(&seg, last, true);
+            // Deadwood gets an inked edge, the way jin is drawn: bleached
+            // wood alone is invisible on a white page.
+            let mut s = if *jin {
+                format!(
+                    r#"<path d="{}" fill="{base}" stroke="{}" stroke-width="0.8" stroke-linejoin="round"/>"#,
+                    d.as_str(),
+                    paints.jin_ink
+                )
+            } else {
+                format!(r#"<path d="{}" fill="{base}"/>"#, d.as_str())
+            };
+            if seg.iter().any(|p| p.2 > 6.5) {
                 // The shadow falls on whichever side faces away from the light.
                 let m = seg.len();
                 let away = |i: usize| {
@@ -509,18 +528,37 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                     d.z();
                     d
                 };
+                // Jin is bleached: push its shadow and light further apart.
+                let (shade, lit) = if *jin {
+                    (base.shift(-0.14, -0.01), base.shift(0.10, 0.0))
+                } else {
+                    (base.shift(-0.09, 0.0), base.shift(0.07, 0.0))
+                };
                 let _ = write!(
                     s,
-                    r#"<path d="{}" fill="{}"/>"#,
+                    r#"<path d="{}" fill="{shade}"/>"#,
                     strip(0.05, 0.98).as_str(),
-                    base.shift(-0.09, 0.0)
                 );
                 let _ = write!(
                     s,
-                    r#"<path d="{}" fill="{}"/>"#,
+                    r#"<path d="{}" fill="{lit}"/>"#,
                     strip(-0.35, -0.72).as_str(),
-                    base.shift(0.07, 0.0)
                 );
+                if *jin && start == 0 {
+                    // The dark line where dead wood meets living bark.
+                    let n = away(0);
+                    let (x, y, r) = seg[0];
+                    let _ = write!(
+                        s,
+                        r#"<path d="M{} {}L{} {}" fill="none" stroke="{}" stroke-width="{}" stroke-linecap="round"/>"#,
+                        Num::coarse(x - n.0 * r * 1.05),
+                        Num::coarse(y - n.1 * r * 1.05),
+                        Num::coarse(x + n.0 * r * 1.05),
+                        Num::coarse(y + n.1 * r * 1.05),
+                        paints.jin_ink,
+                        Num::coarse((r * 0.4).max(0.9))
+                    );
+                }
                 if ci == 0 && seg.iter().any(|p| p.2 > 6.0) {
                     // Bark on the trunk: a long line that follows the wood.
                     let mut grain = PathData::coarse();
@@ -544,37 +582,48 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                     );
                 }
             }
+            if *jin && seg.iter().any(|p| p.2 > 1.4) {
+                // Weathered grain that spirals along the dead wood.
+                let m = seg.len();
+                for (k, off) in [(0.0, -0.32), (2.1, 0.28)] {
+                    let mut grain = PathData::coarse();
+                    for (i, p) in seg.iter().enumerate() {
+                        let (nb, pb) = (seg[(i + 1).min(m - 1)], seg[i.saturating_sub(1)]);
+                        let t = norm((nb.0 - pb.0, nb.1 - pb.1));
+                        let o = off + 0.22 * math::sin(i as f64 * 0.7 + k);
+                        let q = (p.0 - t.1 * p.2 * o, p.1 + t.0 * p.2 * o);
+                        if i == 0 {
+                            grain.m(q)
+                        } else {
+                            grain.l(q)
+                        };
+                    }
+                    let _ = write!(
+                        s,
+                        r#"<path d="{}" fill="none" stroke="{}" stroke-width=".4" stroke-linecap="round" opacity=".55"/>"#,
+                        grain.as_str(),
+                        paints.jin_ink
+                    );
+                }
+            }
             items.push((depth, s));
             start = end;
         }
     }
 
-    // Twiglets from the wood out to leaves that sit clear of it: one hairline
-    // path behind the leaves.
-    let mut twiglets = PathData::coarse();
-    for t in &scene.tufts {
-        if let Some(q) = t.stem {
-            let (x0, y0, _) = project(q);
-            let (x1, y1, _) = project(t.p);
-            twiglets.m((x0, y0));
-            twiglets.l((x1, y1));
-        }
-    }
-    if !twiglets.is_empty() {
-        items.push((
-            f64::MIN,
-            format!(
-                r#"<path d="{}" fill="none" stroke="{}" stroke-width="{}" stroke-linecap="round"/>"#,
-                twiglets.as_str(),
-                paints.bark,
-                Num::coarse(0.8 * WORLD)
-            ),
-        ));
-    }
     for (k, d) in twigs.iter().enumerate() {
         if !d.is_empty() {
             let color = if k == 1 { paints.jin } else { paints.bark };
-            items.push((f64::MIN, format!(r#"<path d="{d}" fill="{color}"/>"#)));
+            // Ink the deadwood twigs too, or they vanish on a white page.
+            let s = if k == 1 {
+                format!(
+                    r#"<path d="{d}" fill="{color}" stroke="{}" stroke-width="0.7" stroke-linejoin="round"/>"#,
+                    paints.jin_ink
+                )
+            } else {
+                format!(r#"<path d="{d}" fill="{color}"/>"#)
+            };
+            items.push((f64::MIN, s));
         }
     }
 
@@ -592,7 +641,11 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
         // Light from the pad's ball normal and height in the pad, then a
         // ramp: cool shadow, the leaf color, warm light, with soft steps.
         let s = 0.62 * diffuse + 0.38 * t.q;
-        let base = t.color.shift(paints.leaf_shift, 0.0);
+        let base = if t.private {
+            private_tone(t.color, paints.dark)
+        } else {
+            t.color.shift(paints.leaf_shift, 0.0)
+        };
         let dark = base.shift(-0.15, -0.01).mix(Rgb::hex(0x2f3d63), 0.28);
         let lit = base.shift(0.09, -0.005).mix(Rgb::hex(0xfff0c2), 0.22);
         let mut c = base
@@ -603,6 +656,9 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
             c = c.mix(Rgb::hex(0xc8553d), 0.45).shift(0.06, 0.0);
         }
         c = haze(c, depth);
+        let back = (-t.p[2] / 70.0).clamp(0.0, 1.0);
+        let front = (t.p[2] / 70.0).clamp(0.0, 1.0);
+        c = c.mix(air, 0.34 * back).shift(-0.04 * front, 0.0);
         let h = hash01(seed, j as i64 + 7);
         let (sx, sy, _) = project(v_add(t.p, t.n));
         let angle = math::deg(math::atan2(sy - y, sx - x)) + 90.0 + (h - 0.5) * 50.0;
@@ -644,6 +700,48 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
         {
             fallen.push((x, y, h));
         }
+    }
+
+    // ---- solid cloud masses behind each cloud's leaves ----
+    for (mi, (c3, rx, ry, rz, color, private)) in scene.masses.iter().enumerate() {
+        let (cx, cy, depth) = project(*c3);
+        let (s, c) = (math::sin(TILT), math::cos(TILT));
+        let up = ((ry * c) * (ry * c) + (rz * s) * (rz * s)).sqrt() * WORLD * 0.95;
+        let down = rz * s * WORLD * 0.9;
+        let hw = rx * WORLD * 0.97;
+        let ph = hash01(seed ^ 0xb1, mi as i64) * math::TAU;
+        let n = 40;
+        let pts: Vec<(f64, f64)> = (0..=n)
+            .map(|i| {
+                let a = math::TAU * f64::from(i % n) / f64::from(n);
+                let lobe =
+                    1.0 + 0.07 * math::sin(7.0 * a + ph) + 0.05 * math::sin(11.0 * a + 2.0 * ph);
+                let (ca, sa) = (math::cos(a), math::sin(a));
+                let v = if sa < 0.0 { up } else { down };
+                (cx + ca * hw * lobe, cy + sa * v * lobe)
+            })
+            .collect();
+        let mut d = PathData::coarse();
+        d.m(pts[0]);
+        smooth_through(&mut d, &pts);
+        d.z();
+        let base = if *private {
+            private_tone(*color, paints.dark)
+        } else {
+            color.shift(paints.leaf_shift, 0.0)
+        };
+        let dark = base.shift(-0.15, -0.01).mix(Rgb::hex(0x2f3d63), 0.28);
+        let back = (-c3[2] / 70.0).clamp(0.0, 1.0);
+        let fill = haze(base.mix(dark, 0.55), depth).mix(air, 0.34 * back);
+        extent = (
+            extent.0.min(cx - hw),
+            extent.1.max(cx + hw),
+            extent.2.min(cy - up),
+        );
+        items.push((
+            depth - 0.3 * rz * c - 0.5,
+            format!(r#"<path d="{}" fill="{fill}"/>"#, d.as_str()),
+        ));
     }
 
     // ---- level 11: drip tubing along the wood ----
@@ -745,7 +843,7 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
     );
     body.push_str(&moss(b, &paints, &pot));
     body.push_str(&egg.back);
-    body.push_str(&nebari(b, &paints, base_r));
+    body.push_str(&nebari(b, &paints, base_r, pot.hw));
     for (_, s) in &items {
         body.push_str(s);
     }
@@ -820,24 +918,36 @@ fn pot_glaze(tier: u8, config: &Config, paints: &Paints) -> Rgb {
     }
 }
 
-/// Surface roots, spreading with age.
-fn nebari(b: &Bonsai, paints: &Paints, base_r: f64) -> String {
+/// How far a surface root at azimuth `az` reaches: longer with a stout
+/// trunk and old nebari, shorter toward the viewer, and always inside the pot
+/// rim (half-width `hw`). `u` in `[0, 1)` varies it.
+fn root_reach(base_r: f64, nebari: f64, hw: f64, az: f64, u: f64) -> f64 {
+    let reach = base_r * (1.35 + u * (0.25 + 0.5 * nebari.clamp(0.0, 1.0)));
+    reach.min(hw * 0.78 * (0.45 + 0.55 * math::cos(az).abs()))
+}
+
+/// Surface roots, spreading around the trunk with age, curving and tapering
+/// into the soil.
+fn nebari(b: &Bonsai, paints: &Paints, base_r: f64, hw: f64) -> String {
     let mut roots = String::new();
-    let spread = 1.3 + 1.1 * b.extras.nebari.min(1.0);
-    for i in 0..b.extras.roots.max(3) {
+    let n = b.extras.roots.max(3) + 2;
+    for i in 0..n {
         let mut r = Rng::keyed(b.account_id, &format!("root/{i}"));
-        let az = r.range(0.0, math::TAU);
-        let reach = base_r * r.range(spread, spread + 1.0);
-        let pts: Vec<(f64, f64, f64)> = (0..=6)
+        // Spread round the trunk, mostly to the sides, never straight at us.
+        let az = f64::from(i) / f64::from(n) * math::TAU + r.range(-0.3, 0.3);
+        let reach = root_reach(base_r, b.extras.nebari, hw, az, r.unit());
+        let bend = r.range(-0.35, 0.35);
+        let pts: Vec<(f64, f64, f64)> = (0..=8)
             .map(|j| {
-                let t = f64::from(j) / 6.0;
+                let t = f64::from(j) / 8.0;
+                let a = az + bend * t;
                 let p3: V3 = [
-                    math::cos(az) * reach * t / WORLD,
-                    base_r / WORLD * 0.3 * (1.0 - t).powi(2),
-                    math::sin(az) * reach * t / WORLD,
+                    math::cos(a) * reach * t / WORLD,
+                    base_r / WORLD * 0.45 * math::pow(1.0 - t, 2.5),
+                    math::sin(a) * reach * t / WORLD,
                 ];
                 let (x, y, _) = project(p3);
-                (x, y, base_r * 0.42 * (1.0 - t) + 0.5)
+                (x, y, base_r * 0.36 * math::pow(1.0 - t, 1.6) + 0.6)
             })
             .collect();
         roots.push_str(tube(&pts, true, false).as_str());
@@ -1074,4 +1184,29 @@ fn drip_ends(scene: &Scene, paints: &Paints, pot: &Pot, animate: bool) -> String
         t = paints.tubing
     );
     s
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn roots_stay_inside_the_pot() {
+        for base_r in [4.0, 12.0, 30.0] {
+            for nebari in [0.0, 0.5, 1.0] {
+                for hw in [60.0, 100.0, 140.0] {
+                    for i in 0..16 {
+                        let az = f64::from(i) / 16.0 * math::TAU;
+                        for u in [0.0, 0.5, 0.999] {
+                            let reach = root_reach(base_r, nebari, hw, az, u);
+                            assert!(
+                                reach * math::cos(az).abs() <= hw * 0.78 + 1e-9,
+                                "{base_r} {nebari} {hw} {az}: {reach}"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
 }

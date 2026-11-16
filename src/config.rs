@@ -12,7 +12,52 @@ use serde::{Deserialize, Serialize};
 
 use crate::Error;
 use crate::color::Rgb;
+use crate::date::Date;
 use crate::snapshot::Snapshot;
+
+/// A private period key: `"2019..2023"` (whole years) or
+/// `"2019-03..2021-06"` (months), both ends included.
+///
+/// # Errors
+///
+/// When the key is malformed or ends before it starts.
+pub fn parse_period(key: &str) -> Result<(Date, Date), Error> {
+    let bad = || {
+        Error::Config(format!(
+            "[leaves.private_periods] `{key}`: write \"2019..2023\" or \"2019-03..2021-06\""
+        ))
+    };
+    let (a, b) = key.split_once("..").ok_or_else(bad)?;
+    let start = |s: &str| -> Option<(i32, u32)> {
+        match s.split_once('-') {
+            None => Some((s.trim().parse().ok()?, 1)),
+            Some((y, m)) => Some((y.trim().parse().ok()?, m.trim().parse().ok()?)),
+        }
+    };
+    let (ya, ma) = start(a).ok_or_else(bad)?;
+    let (yb, mb) = match b.split_once('-') {
+        None => (b.trim().parse().map_err(|_| bad())?, 12),
+        Some((y, m)) => (
+            y.trim().parse().map_err(|_| bad())?,
+            m.trim().parse().map_err(|_| bad())?,
+        ),
+    };
+    let year = |y: i32| (1..=9999).contains(&y);
+    if !(1..=12).contains(&ma) || !(1..=12).contains(&mb) || !year(ya) || !year(yb) {
+        return Err(bad());
+    }
+    let from = Date::from_ymd(ya, ma, 1).ok_or_else(bad)?;
+    let next = if mb == 12 {
+        yb.checked_add(1).and_then(|y| Date::from_ymd(y, 1, 1))
+    } else {
+        Date::from_ymd(yb, mb + 1, 1)
+    };
+    let to = next.ok_or_else(bad)?.add_days(-1);
+    if to < from {
+        return Err(bad());
+    }
+    Ok((from, to))
+}
 
 /// The most languages that can be pinned to a leaf color slot.
 pub const MAX_PINS: usize = 5;
@@ -53,6 +98,12 @@ pub struct LeavesConfig {
     pub other: Rgb,
     /// Colors used verbatim, without the foliage tint.
     pub colors: BTreeMap<String, Rgb>,
+    /// The color of work GitHub reports without a language (private or
+    /// corporate repositories).
+    pub private: Rgb,
+    /// Languages to show for private work in a period, keyed `"2019..2023"`
+    /// (whole years) or `"2019-03..2021-06"` (months).
+    pub private_periods: BTreeMap<String, Vec<String>>,
 }
 
 impl Default for LeavesConfig {
@@ -61,6 +112,8 @@ impl Default for LeavesConfig {
             pins: Vec::new(),
             other: Rgb::hex(0x9AA58A),
             colors: BTreeMap::new(),
+            private: crate::maple::PRIVATE_GREY,
+            private_periods: BTreeMap::new(),
         }
     }
 }
@@ -253,7 +306,30 @@ impl Config {
         if self.render.size == 0 {
             return Err(Error::Config("[render] size must be at least 1".into()));
         }
+        let mut periods: Vec<(Date, Date, &String)> = Vec::new();
+        for key in self.leaves.private_periods.keys() {
+            let (from, to) = parse_period(key)?;
+            periods.push((from, to, key));
+        }
+        periods.sort();
+        for pair in periods.windows(2) {
+            if pair[1].0 <= pair[0].1 {
+                return Err(Error::Config(format!(
+                    "[leaves.private_periods] `{}` and `{}` overlap; each month belongs to one period",
+                    pair[0].2, pair[1].2
+                )));
+            }
+        }
         Ok(())
+    }
+
+    /// The declared private periods: first day, last day, languages.
+    pub fn private_periods(&self) -> Vec<(Date, Date, Vec<String>)> {
+        self.leaves
+            .private_periods
+            .iter()
+            .filter_map(|(k, langs)| parse_period(k).ok().map(|(a, b)| (a, b, langs.clone())))
+            .collect()
     }
 
     /// Warnings for settings that name a language the snapshot never uses.
@@ -287,6 +363,48 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn d(s: &str) -> crate::date::Date {
+        s.parse().unwrap()
+    }
+
+    #[test]
+    fn private_grey_is_configurable() {
+        assert_eq!(Config::default().leaves.private, Rgb::hex(0x00b8_bcc2));
+        let c = Config::from_toml("[leaves]\nprivate = \"#aabbcc\"\n").unwrap();
+        assert_eq!(c.leaves.private, Rgb::hex(0x00aa_bbcc));
+    }
+
+    #[test]
+    fn private_periods_parse_years_and_months() {
+        assert_eq!(
+            parse_period("2019..2023").unwrap(),
+            (d("2019-01-01"), d("2023-12-31"))
+        );
+        assert_eq!(
+            parse_period("2019-03..2021-06").unwrap(),
+            (d("2019-03-01"), d("2021-06-30"))
+        );
+        assert!(parse_period("2023..2019").is_err());
+        assert!(parse_period("2019..2020-00").is_err(), "no month 0");
+        assert!(parse_period("2019-13..2020").is_err(), "no month 13");
+        assert!(
+            parse_period("2019..2147483647").is_err(),
+            "no year overflow"
+        );
+        assert!(parse_period("2147483647..2147483647").is_err());
+        assert!(parse_period("soon").is_err());
+        let bad = Config::from_toml("[leaves.private_periods]\n\"2023..2019\" = [\"Go\"]\n");
+        assert!(bad.is_err());
+        let overlap = Config::from_toml(
+            "[leaves.private_periods]\n\"2019..2023\" = [\"Go\"]\n\"2021-03..2024\" = [\"Rust\"]\n",
+        );
+        assert!(overlap.is_err(), "overlapping periods are reported");
+        let apart = Config::from_toml(
+            "[leaves.private_periods]\n\"2019..2020\" = [\"Go\"]\n\"2021..2022\" = [\"Rust\"]\n",
+        );
+        assert!(apart.is_ok());
+    }
 
     #[test]
     fn an_empty_file_is_all_defaults() {

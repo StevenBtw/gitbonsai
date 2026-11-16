@@ -220,9 +220,10 @@ const ANIMATION_CSS: &str = concat!(
     ".tw{animation:tw 3.2s ease-in-out infinite}@keyframes tw{0%,100%{opacity:.35}50%{opacity:1}}",
     ".dp{animation:dr 3s linear infinite}@keyframes dr{0%{opacity:0;transform:translate(0,0)}12%{opacity:1}75%{opacity:1}100%{opacity:0;transform:translate(0,14px)}}",
     ".gl{animation:gl 4.4s ease-in-out infinite}@keyframes gl{0%,100%{opacity:.35}55%{opacity:1}}",
-    ".fs{transform-box:fill-box;transform-origin:50% 0;animation:fs 3.6s ease-in-out infinite alternate}@keyframes fs{from{transform:rotate(-9deg)}to{transform:rotate(9deg)}}",
+    ".fs{transform-box:fill-box;transform-origin:50% 0;animation:fs 2.4s ease-in-out infinite alternate}@keyframes fs{from{transform:rotate(-10deg)}to{transform:rotate(10deg)}}",
+    ".fw{transform-box:fill-box;transform-origin:50% 0;animation:fw 5.2s ease-in-out infinite alternate}@keyframes fw{from{transform:rotate(-6deg)}to{transform:rotate(6deg)}}",
     ".ff{animation:ff 9s ease-in-out infinite}@keyframes ff{0%,100%{transform:translate(0,0)}25%{transform:translate(7px,-4px)}50%{transform:translate(2px,-10px)}75%{transform:translate(-6px,-3px)}}",
-    "@media (prefers-reduced-motion:reduce){.mf{animation:none;opacity:0}.tw,.dp,.gl,.fs,.ff{animation:none}}",
+    "@media (prefers-reduced-motion:reduce){.mf{animation:none;opacity:0}.tw,.dp,.gl,.fs,.fw,.ff{animation:none}}",
     "</style>",
 );
 

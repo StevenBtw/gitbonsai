@@ -1,0 +1,103 @@
+//! Wood: how an account's history becomes a tree.
+//!
+//! The account is read as calendar years, months and languages ([`life`]).
+//! Languages with a large lifetime share become trunks ([`trunks`]). The
+//! newest years are a domed crown of clouds, older ones low era limbs, and a
+//! pause a bare window of trunk ([`dome`]); a first-year account is a single
+//! seedling stem ([`seedling`]). Age shows as girth, spread and fullness,
+//! never as height. A tree is composed from its whole history each time, so
+//! it is restyled as it matures; its history is never erased.
+
+pub mod clouds;
+pub mod dome;
+pub mod life;
+pub mod seedling;
+#[cfg(test)]
+mod testkit;
+pub mod trunks;
+pub mod wood;
+
+use crate::date::Date;
+use crate::style::Leader;
+use crate::timeline::Timeline;
+
+/// The golden angle in degrees.
+pub const GOLDEN: f64 = 137.507_764;
+
+/// A point on the canvas.
+pub type P = (f64, f64);
+
+/// A node of the skeleton. Its parent always has a smaller index.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Node {
+    /// Position on the canvas.
+    pub p: P,
+    /// The node it grew from.
+    pub parent: Option<usize>,
+    /// Contributions deposited here.
+    pub own: f64,
+    /// The language whose points it grew toward; `None` for the leader.
+    pub language: Option<String>,
+}
+
+/// The grown wood.
+#[derive(Debug, Clone, Default)]
+pub struct Skeleton {
+    /// Every node, parents before children.
+    pub nodes: Vec<Node>,
+    /// Where the crown sits: the leader's tip.
+    pub apex: P,
+    /// Trunk height in world units.
+    pub height: f64,
+    /// Depth of each node (toward the viewer is positive); empty means flat.
+    pub node_z: Vec<f64>,
+    /// Domed foliage clouds.
+    pub clouds: Vec<Cloud>,
+    /// The account has been silent for a year: the tree stands bare.
+    pub dormant: bool,
+}
+
+/// The language that marks deadwood (jin) in the skeleton.
+pub const JIN: &str = "__jin__";
+
+/// A flat-bottomed, domed foliage cloud.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Cloud {
+    /// Center of the flat bottom, on the canvas.
+    pub c: P,
+    /// Depth of the center.
+    pub z: f64,
+    /// Half-width.
+    pub rx: f64,
+    /// Dome height.
+    pub ry: f64,
+    /// Half-depth.
+    pub rz: f64,
+    /// Color patches: anchor (canvas), anchor depth, language, weight.
+    pub patches: Vec<(P, f64, Option<String>, f64)>,
+}
+
+impl Skeleton {
+    /// The total contributions carried by each node: its own plus everything
+    /// above it (the pipe model's flow).
+    pub fn flows(&self) -> Vec<f64> {
+        let mut flow: Vec<f64> = self.nodes.iter().map(|n| n.own).collect();
+        for i in (0..self.nodes.len()).rev() {
+            if let Some(p) = self.nodes[i].parent {
+                flow[p] += flow[i];
+            }
+        }
+        flow
+    }
+}
+
+/// Grows the skeleton of `timeline`, seeded by the account id; `periods`
+/// declare languages for private work (first day, last day, languages).
+pub fn grow(
+    timeline: &Timeline,
+    seed: u64,
+    leader: &Leader,
+    periods: &[(Date, Date, Vec<String>)],
+) -> Skeleton {
+    dome::grow(timeline, seed, leader, periods)
+}

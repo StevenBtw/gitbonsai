@@ -26,8 +26,9 @@ pub struct Fixture {
 }
 
 /// Linguist colors for the languages the fixtures use.
-const LINGUIST: [(&str, u32); 17] = [
+const LINGUIST: [(&str, u32); 18] = [
     ("C", 0x555555),
+    ("C#", 0x178600),
     ("C++", 0xf34b7d),
     ("Elixir", 0x6e4a7e),
     ("Go", 0x00add8),
@@ -61,6 +62,12 @@ impl Builder {
             observed_on: date(OBSERVED_ON),
             days: BTreeMap::new(),
         }
+    }
+
+    /// The day the snapshot was collected; before any spell.
+    fn observed(mut self, day: &str) -> Self {
+        self.observed_on = date(day);
+        self
     }
 
     /// `per_week` contributions every week from `from` to `to`, split over
@@ -251,6 +258,7 @@ fn eggs_for(name: &str) -> (&'static [(&'static str, u8)], usize) {
             ],
             0,
         ),
+        "showcase" => (&[("starstruck", 2), ("pull-shark", 2)], 0),
         _ => (&[], 0),
     }
 }
@@ -273,6 +281,81 @@ pub fn all() -> Vec<Fixture> {
         }
     };
     vec![
+        fixture(
+            "newbie",
+            "The README's newcomer: four months of Python and some TypeScript, no achievements.",
+            Builder::new("newbie", 100_021)
+                .observed("2022-03-06")
+                .spell(
+                    "2021-11-03",
+                    "2022-03-06",
+                    26.0,
+                    &[("Python", 3.0), ("TypeScript", 1.0)],
+                    0.03,
+                )
+                .build(),
+        ),
+        fixture(
+            "showcase",
+            "The README's example: 14 years; C# swapped for Java (a dead C# trunk), early private work, then Python, Rust and TypeScript; a 40-week streak.",
+            Builder::new("showcase", 42)
+                .spell(
+                    "2012-09-03",
+                    "2014-12-31",
+                    12.0,
+                    &[("C#", 1.0), ("Java", 0.3)],
+                    0.6,
+                )
+                .spell(
+                    "2015-01-05",
+                    "2018-06-30",
+                    40.0,
+                    &[("C#", 9.0), ("Java", 1.0)],
+                    0.12,
+                )
+                .spell("2018-07-02", "2019-03-31", 30.0, &[("Java", 1.0)], 0.1)
+                .spell("2019-04-01", "2019-10-31", 90.0, &[("Java", 1.0)], 0.1)
+                .spell("2019-11-04", "2020-08-31", 25.0, &[("Java", 1.0)], 0.1)
+                .spell("2020-09-07", "2021-04-30", 95.0, &[("Java", 1.0)], 0.1)
+                .spell("2021-05-03", "2021-12-31", 20.0, &[("Java", 1.0)], 0.1)
+                .spell(
+                    "2022-01-03",
+                    "2024-12-31",
+                    32.0,
+                    &[
+                        ("Java", 8.0),
+                        ("Python", 3.0),
+                        ("Rust", 0.6),
+                        ("TypeScript", 0.4),
+                    ],
+                    0.08,
+                )
+                .spell(
+                    "2025-01-06",
+                    "2026-01-18",
+                    38.0,
+                    &[
+                        ("Java", 7.0),
+                        ("Python", 4.0),
+                        ("Rust", 1.2),
+                        ("TypeScript", 0.9),
+                    ],
+                    0.06,
+                )
+                .spell(
+                    "2026-01-26",
+                    "2026-10-31",
+                    38.0,
+                    &[
+                        ("Java", 7.0),
+                        ("Python", 4.0),
+                        ("Rust", 1.2),
+                        ("TypeScript", 0.9),
+                    ],
+                    0.06,
+                )
+                .build(),
+        ),
         fixture(
             "veteran",
             "Since 2010 at ~3/week, then 120/week from 2023. Ruby went quiet in 2018: jin.",

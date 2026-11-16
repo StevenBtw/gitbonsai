@@ -16,7 +16,7 @@ use crate::Bonsai;
 use crate::color::Rgb;
 use crate::config::Legend;
 use crate::foliage::LanguageState;
-use crate::maple::MAPLE_GREEN;
+use crate::maple::{MAPLE_GREEN, private_tone};
 use crate::paint::{Frame, Paints};
 use crate::render::{Num, escape};
 
@@ -179,7 +179,24 @@ fn rows(b: &Bonsai, paints: &Paints, signs: Signs) -> Vec<Row> {
         ));
     }
 
+    // Silver leaves, when the tree shows any; a bare tree shows none.
+    if !b.dormant()
+        && b.skeleton
+            .clouds
+            .iter()
+            .any(|c| c.patches.iter().any(|p| p.2.is_none()))
+    {
+        let silver = private_tone(b.maple.private(), paints.dark);
+        rows.push(Row::sign(Mark::Leaf(silver), "private work".into()));
+    }
+
     rows.push(Row::heading("Signs"));
+    if b.dormant() {
+        rows.push(Row::sign(
+            Mark::Twig(paints.bark),
+            "bare for the winter: a year without contributions".into(),
+        ));
+    }
     rows.push(Row::sign(
         Mark::Trunk,
         format!(
