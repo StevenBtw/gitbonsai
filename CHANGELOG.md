@@ -2,7 +2,7 @@
 
 All notable changes to gitbonsai, a Japanese maple bonsai grown from GitHub activity. Any change to how a tree grows or looks is at least a minor version, because people notice their tree changing.
 
-## [0.2.1] - Unreleased
+## [0.2.1] - 2026-11-16
 
 Honesty and safety release: silver leaves now mean private work only, issues and reviews grow their language, and weekly runs fetch only recent months. Trees with silver change, which would make this a minor version; it ships as a patch because the change is small. The first run after upgrading collects the whole history once.
 
