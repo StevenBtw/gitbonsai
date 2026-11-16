@@ -84,38 +84,28 @@ jobs:
         with:
           merge-multiple: true
 
-      # A draft takes the assets, then publishing makes the release
-      # immutable and attested, which the action verifies on download.
+      # Create the release in the GitHub UI with a new tag, or push only the
+      # tag: either way this job attaches the binaries. A release created by
+      # hand gets them added; for a bare tag the release is created here.
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
           REPO: ${{ github.repository }}
-        # Release by pushing only the tag. A release published by hand locks
-        # before the assets arrive, so one that already exists is an error.
         run: |
           if gh release view "$TAG" --repo "$REPO" > /dev/null 2>&1; then
-            echo "::error::release $TAG already exists; push only the tag and let this job create the release"
-            exit 1
+            if [ "$(gh release view "$TAG" --repo "$REPO" --json isImmutable --jq .isImmutable)" = true ]; then
+              echo "::error::release $TAG is immutable, so no binaries can be added; turn off immutable releases in the repository settings"
+              exit 1
+            fi
+            gh release upload "$TAG" gitbonsai-* --repo "$REPO" --clobber
+          else
+            gh release create "$TAG" gitbonsai-* --repo "$REPO" --title "Release ${TAG#v}" --generate-notes
           fi
-          # The draft is addressed by its id throughout: a draft's tag does
-          # not exist until it is published.
-          id=$(gh api "repos/$REPO/releases" -f tag_name="$TAG" -f name="Release ${TAG#v}" \
-            -F draft=true -F generate_release_notes=true --jq .id)
-          for f in gitbonsai-*; do
-            gh api --method POST -H "Content-Type: application/octet-stream" \
-              "https://uploads.github.com/repos/$REPO/releases/$id/assets?name=$f" \
-              --input "$f" --jq .name
-          done
-          gh api --method PATCH "repos/$REPO/releases/$id" -F draft=false --jq .html_url
           want=$(ls gitbonsai-* | wc -l)
-          got=$(gh api "repos/$REPO/releases/$id" --jq '.assets | length')
-          if [ "$got" -ne "$want" ]; then
-            echo "::error::$TAG has $got of $want assets"
-            exit 1
-          fi
-          if [ "$(gh api "repos/$REPO/releases/$id" --jq .immutable)" != true ]; then
-            echo "::error::$TAG is not immutable; turn on immutable releases in the repository settings"
+          got=$(gh release view "$TAG" --repo "$REPO" --json assets --jq '.assets | length')
+          if [ "$got" -lt "$want" ]; then
+            echo "::error::release $TAG has $got of $want binaries"
             exit 1
           fi
 
