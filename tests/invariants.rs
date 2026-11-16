@@ -455,6 +455,7 @@ fn a_dormant_tree_grows_leaves_again() {
             date: start.add_days(i),
             total: 4,
             by_language,
+            private: 0,
         });
     }
     snapshot.observed_on = start.add_days(56);
@@ -598,7 +599,9 @@ fn declared_recent_work_keeps_a_language_alive() {
     let from: gitbonsai::date::Date = "2026-06-01".parse().unwrap();
     for d in &mut snapshot.days {
         if d.date >= from {
+            // Private work: no language, and counted as private.
             d.by_language.clear();
+            d.private = d.total;
         }
     }
     let config =
@@ -678,6 +681,7 @@ fn a_language_picked_up_this_week_is_alive() {
             date: day,
             total: 5,
             by_language,
+            private: 0,
         }),
     }
     let b = Bonsai::grow(&snapshot, &Config::default(), None);

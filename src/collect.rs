@@ -165,6 +165,7 @@ pub fn collect(
             date: *date,
             total: *total,
             by_language: acc.by_language.remove(date).unwrap_or_default(),
+            private: 0,
         })
         .collect();
     progress("archived repositories and achievements");

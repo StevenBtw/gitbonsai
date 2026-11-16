@@ -1,14 +1,15 @@
 //! Days to capped ISO weeks.
 //!
-//! Attribution happens per day: what the languages don't explain is
-//! `unattributed` and feeds the trunk only. Then each Monday-to-Sunday week
+//! Attribution happens per day: private work the languages don't explain is
+//! `unattributed` (silver leaves); other work without a language joins the
+//! week's languages. Then each Monday-to-Sunday week
 //! is capped at [`WEEKLY_CAP`], scaling every amount in it alike, fractions
 //! kept. Every lifetime number downstream is a sum of capped amounts.
 
 use std::collections::BTreeMap;
 
 use crate::date::{Date, WeekNo};
-use crate::snapshot::Snapshot;
+use crate::snapshot::{LEGACY_SCHEMA, Snapshot};
 
 /// The top of every activity scale: contributions per week.
 pub const WEEKLY_CAP: f64 = 1000.0;
@@ -28,7 +29,7 @@ pub struct CappedDay {
     pub total: f64,
     /// Contributions explained by a repository language.
     pub by_language: BTreeMap<String, f64>,
-    /// The rest: private work, issues, reviews, repos without a language.
+    /// Private work: contributions without a language, shown silver.
     pub unattributed: f64,
 }
 
@@ -68,13 +69,14 @@ impl Timeline {
     /// Attributes and caps a snapshot.
     pub fn new(snapshot: &Snapshot) -> Self {
         let observed_on = snapshot.observed_on;
-        let attributed: Vec<CappedDay> = snapshot
+        let legacy = snapshot.schema == LEGACY_SCHEMA;
+        let attributed: Vec<(CappedDay, f64)> = snapshot
             .days
             .iter()
             .filter(|d| d.total > 0 && d.date <= observed_on)
-            .map(attribute)
+            .map(|d| attribute(d, legacy))
             .collect();
-        let attributed = fold_strays(attributed);
+        let attributed = fold_strays(spread_rest(attributed));
         let first_active = attributed.first().map(|d| d.date);
 
         // Raw weekly totals decide each week's scale factor.
@@ -206,7 +208,10 @@ fn fold_strays(days: Vec<CappedDay>) -> Vec<CappedDay> {
 
 /// Attribution for one day: languages explain what they can,
 /// scaled down if GitHub counted them above the calendar total.
-fn attribute(day: &crate::snapshot::Day) -> CappedDay {
+/// What the languages leave splits into private work (silver) and the rest,
+/// returned beside the day: work in public without a language (discussions,
+/// repositories without one). A schema 1 day takes all of it as private.
+fn attribute(day: &crate::snapshot::Day, legacy: bool) -> (CappedDay, f64) {
     let total = f64::from(day.total);
     let explained: f64 = day.by_language.values().map(|&v| f64::from(v)).sum();
     let scale = if explained > total {
@@ -220,28 +225,181 @@ fn attribute(day: &crate::snapshot::Day) -> CappedDay {
         .filter(|(_, v)| **v > 0)
         .map(|(language, &v)| (language.clone(), f64::from(v) * scale))
         .collect();
-    let unattributed = (total - explained * scale).max(0.0);
-    CappedDay {
-        date: day.date,
-        total,
-        by_language,
-        unattributed,
+    let leftover = (total - explained * scale).max(0.0);
+    let private = if legacy {
+        leftover
+    } else {
+        f64::from(day.private).min(leftover)
+    };
+    (
+        CappedDay {
+            date: day.date,
+            total,
+            by_language,
+            unattributed: private,
+        },
+        leftover - private,
+    )
+}
+
+/// Each day's public work without a language joins its week's languages,
+/// in their shares that week; a week without any borrows the nearest week
+/// that has some, the earlier one on a tie. Only an account without any
+/// language keeps it unattributed.
+fn spread_rest(days: Vec<(CappedDay, f64)>) -> Vec<CappedDay> {
+    let mut shares: BTreeMap<WeekNo, BTreeMap<String, f64>> = BTreeMap::new();
+    for (day, _) in &days {
+        for (language, amount) in &day.by_language {
+            *shares
+                .entry(day.date.week())
+                .or_default()
+                .entry(language.clone())
+                .or_default() += amount;
+        }
     }
+    days.into_iter()
+        .map(|(mut day, rest)| {
+            if rest <= 0.0 {
+                return day;
+            }
+            let week = day.date.week();
+            let nearest = shares
+                .iter()
+                .filter(|(_, langs)| langs.values().sum::<f64>() > 0.0)
+                .min_by_key(|(no, _)| ((**no - week).abs(), **no > week))
+                .map(|(_, langs)| langs);
+            match nearest {
+                Some(langs) => {
+                    let sum: f64 = langs.values().sum();
+                    for (language, amount) in langs {
+                        *day.by_language.entry(language.clone()).or_default() +=
+                            rest * amount / sum;
+                    }
+                }
+                None => day.unattributed += rest,
+            }
+            day
+        })
+        .collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::date::DateRange;
-    use crate::snapshot::{Day, SCHEMA};
+    use crate::snapshot::{Day, LEGACY_SCHEMA, SCHEMA};
 
+    fn day<'a>(t: &'a Timeline, date: &str) -> &'a CappedDay {
+        let date: Date = date.parse().unwrap();
+        t.days.iter().find(|d| d.date == date).unwrap()
+    }
+
+    fn near(a: f64, b: f64) -> bool {
+        (a - b).abs() < 1e-9
+    }
+
+    #[test]
+    fn schema_one_keeps_all_leftover_silver() {
+        let t = Timeline::new(&snapshot(
+            &[("2026-10-05", 10, &[("Rust", 6)])],
+            "2026-10-11",
+        ));
+        assert!(near(day(&t, "2026-10-05").unattributed, 4.0));
+    }
+
+    #[test]
+    fn only_private_work_is_silver() {
+        let t = Timeline::new(&snapshot2(
+            &[("2026-10-05", 10, 1, &[("Rust", 6)])],
+            "2026-10-11",
+        ));
+        let d = day(&t, "2026-10-05");
+        assert!(near(d.unattributed, 1.0), "{d:?}");
+        assert!(near(d.by_language["Rust"], 9.0), "{d:?}");
+        // GitHub may count more private work than is left: silver takes
+        // only what the languages leave.
+        let t = Timeline::new(&snapshot2(
+            &[("2026-10-05", 5, 3, &[("Rust", 4)])],
+            "2026-10-11",
+        ));
+        assert!(near(day(&t, "2026-10-05").unattributed, 1.0));
+    }
+
+    #[test]
+    fn language_less_work_joins_the_week_languages() {
+        let t = Timeline::new(&snapshot2(
+            &[
+                ("2026-10-05", 4, 0, &[("Rust", 4)]),
+                ("2026-10-06", 6, 0, &[("Go", 2)]),
+            ],
+            "2026-10-11",
+        ));
+        let d = day(&t, "2026-10-06");
+        assert!(near(d.unattributed, 0.0), "{d:?}");
+        assert!(near(d.by_language["Rust"], 8.0 / 3.0), "{d:?}");
+        assert!(near(d.by_language["Go"], 2.0 + 4.0 / 3.0), "{d:?}");
+        assert!(near(d.total, 6.0));
+    }
+
+    #[test]
+    fn a_week_without_languages_borrows_the_nearest() {
+        let t = Timeline::new(&snapshot2(
+            &[
+                ("2026-09-28", 3, 0, &[("Rust", 3)]),
+                ("2026-10-05", 5, 0, &[]),
+                ("2026-10-12", 2, 0, &[("Go", 2)]),
+            ],
+            "2026-10-18",
+        ));
+        let d = day(&t, "2026-10-05");
+        assert!(
+            near(d.by_language["Rust"], 5.0),
+            "the earlier week wins a tie: {d:?}"
+        );
+        assert!(!d.by_language.contains_key("Go"));
+    }
+
+    #[test]
+    fn an_account_without_languages_stays_silver() {
+        let t = Timeline::new(&snapshot2(&[("2026-10-05", 5, 0, &[])], "2026-10-11"));
+        let d = day(&t, "2026-10-05");
+        assert!(
+            near(d.unattributed, 5.0) && d.by_language.is_empty(),
+            "{d:?}"
+        );
+    }
+
+    #[test]
+    fn private_is_capped_with_the_week() {
+        let t = Timeline::new(&snapshot2(
+            &[("2026-10-05", 2000, 400, &[("Rust", 1600)])],
+            "2026-10-11",
+        ));
+        let d = day(&t, "2026-10-05");
+        assert!(
+            near(d.unattributed, 200.0) && near(d.by_language["Rust"], 800.0),
+            "{d:?}"
+        );
+    }
+
+    /// A schema 1 snapshot: everything the languages leave is silver.
     fn snapshot(days: &[(&str, u32, &[(&str, u32)])], observed_on: &str) -> Snapshot {
+        let days: Vec<(&str, u32, u32, &[(&str, u32)])> =
+            days.iter().map(|(d, t, l)| (*d, *t, 0, *l)).collect();
+        let mut s = snapshot2(&days, observed_on);
+        s.schema = LEGACY_SCHEMA;
+        s
+    }
+
+    /// A schema 2 snapshot from `(date, total, private, languages)` days.
+    fn snapshot2(days: &[(&str, u32, u32, &[(&str, u32)])], observed_on: &str) -> Snapshot {
         let days: Vec<Day> = days
             .iter()
-            .map(|(date, total, langs)| Day {
+            .map(|(date, total, private, langs)| Day {
                 date: date.parse().unwrap(),
                 total: *total,
                 by_language: langs.iter().map(|(l, v)| ((*l).to_string(), *v)).collect(),
+                private: *private,
             })
             .collect();
         let observed_on: Date = observed_on.parse().unwrap();
