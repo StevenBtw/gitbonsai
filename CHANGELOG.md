@@ -4,15 +4,12 @@ All notable changes to gitbonsai, a Japanese maple bonsai grown from GitHub acti
 
 ## [0.2.3] - Unreleased
 
-Release process release: a release created in the GitHub UI gets its binaries again. Trees do not change.
+Maintenance release: a release created in the GitHub UI gets its binaries again, and the Action checks each binary's build provenance instead of the release's attestation. Trees do not change.
 
 ### Changed
 
 - **A release created in the GitHub UI gets its binaries**: the release job uploads them to it, or creates the release when only a tag was pushed, and fails when binaries are missing.
-
-### Removed
-
-- **The Action's attestation check**: releases are no longer immutable, so `gh release verify-asset` is gone; the sha256 check stays.
+- **The Action checks build provenance**: each binary carries a signed attestation from the release workflow, checked with `gh attestation verify` before the sha256 check. Releases are no longer immutable, so this replaces `gh release verify-asset`.
 
 ## [0.2.2] - 2026-11-16
 
@@ -20,7 +17,7 @@ Release fix: 0.2.1 was published without its binaries, so its Action cannot run.
 
 ### Fixed
 
-- **Releases are created from the tag**: the release job creates the release, uploads the binaries and publishes it, and fails if a release for the tag already exists. A release published by hand is immutable before its binaries arrive.
+- **Releases are created from the tag only**: the release job creates the release, uploads the binaries and publishes it, and fails if a release for the tag already exists. A release published by hand is immutable before its binaries arrive.
 
 ## [0.2.1] - 2026-11-16
 
