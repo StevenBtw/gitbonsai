@@ -69,7 +69,8 @@ impl Window {
 
 /// Every language's state, and the order languages first appeared in.
 /// Languages declared for private work in `periods` count as used then, as
-/// they do in the tree, and come after the public ones.
+/// they do in the tree. Languages without a complete week yet (picked up this
+/// week, or only declared) come after the others.
 pub fn language_states(
     timeline: &Timeline,
     window: &Window,
@@ -109,7 +110,9 @@ pub fn language_states(
     if let Some(life) = &life {
         for (language, _) in &life.lang {
             if !states.contains_key(language) {
-                let state = if dropped(language) {
+                let state = if window.of_language(Some(language)) > 0.0 {
+                    LanguageState::Alive
+                } else if dropped(language) {
                     LanguageState::Jin
                 } else {
                     LanguageState::Bare

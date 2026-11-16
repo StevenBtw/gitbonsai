@@ -132,7 +132,7 @@ fn prefix_ids(body: &str, prefix: &str) -> String {
 ///
 /// # Errors
 ///
-/// When the name or the day is missing or malformed.
+/// When the name, the snapshot or the day is missing or malformed.
 pub fn spec(text: &str) -> Result<(String, String, Option<Date>), Error> {
     let bad = |why: &str| {
         Error::Config(format!(

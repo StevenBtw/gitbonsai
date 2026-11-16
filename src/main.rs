@@ -279,7 +279,8 @@ fn run(cli: Cli) -> Result<()> {
             for text in &trees {
                 let (name, source, day) = gitbonsai::row::spec(text)?;
                 let snapshot = load_snapshot(&source)?;
-                for warning in config.warnings(&snapshot) {
+                let shown = day.map_or_else(|| snapshot.clone(), |d| snapshot.truncated(d));
+                for warning in config.warnings(&shown) {
                     status(&format!("warning: {name}: {warning}"));
                 }
                 grown.push((name, Bonsai::grow(&snapshot, &config, day)));

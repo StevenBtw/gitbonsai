@@ -626,9 +626,22 @@ fn the_legend_and_the_drawing_agree_on_winter() {
     later.range.to = later.observed_on;
     let mut config = Config::default();
     config.render.legend = Legend::Left;
+    // Around the one-year mark the legend says winter exactly when the
+    // drawing has no leaves.
     for k in 355..=372 {
         let b = Bonsai::grow(&later, &config, Some(last.add_days(k)));
-        assert_eq!(b.dormant(), b.skeleton.dormant, "day {k}");
+        let svg = render::svg(&b, &config, Theme::Light).to_lowercase();
+        let leaves = gitbonsai::scene::Scene::build(&b).tufts.len();
+        assert_eq!(
+            svg.contains("winter"),
+            leaves == 0,
+            "day {k}: {leaves} leaves"
+        );
+        assert_eq!(
+            b.dormant(),
+            k >= 364,
+            "day {k}: a year without contributions"
+        );
     }
     let bare = Bonsai::grow(&later, &config, None);
     assert!(bare.skeleton.dormant);
@@ -645,4 +658,29 @@ fn the_lifetime_level_shows_as_samaras() {
     let scene = gitbonsai::scene::Scene::build(&b);
     let samaras = scene.tufts.iter().filter(|t| t.samara).count();
     assert!(samaras >= 5, "{samaras} samaras");
+}
+
+/// A language first used this week, before the week is complete, already
+/// has leaves, so it is alive, not resting.
+#[test]
+fn a_language_picked_up_this_week_is_alive() {
+    let mut snapshot = fixtures::by_name("mono").unwrap().snapshot;
+    let day = snapshot.observed_on;
+    let entry = snapshot.days.iter_mut().find(|d| d.date == day);
+    let mut by_language = std::collections::BTreeMap::new();
+    by_language.insert("Zig".to_string(), 5);
+    match entry {
+        Some(d) => {
+            d.total += 5;
+            d.by_language.insert("Zig".to_string(), 5);
+        }
+        None => snapshot.days.push(gitbonsai::snapshot::Day {
+            date: day,
+            total: 5,
+            by_language,
+        }),
+    }
+    let b = Bonsai::grow(&snapshot, &Config::default(), None);
+    assert!(b.window.of_language(Some("Zig")) > 0.0, "the window has it");
+    assert_eq!(b.state(Some("Zig")), LanguageState::Alive);
 }
