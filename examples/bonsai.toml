@@ -7,6 +7,10 @@ style = "moyogi"        # chokkan | moyogi | shakan | fukinagashi (kengai comes 
 [leaves]
 pins = []               # at most 5 languages, e.g. ["Rust", "Python"]; they take color slots first
 other = "#9AA58A"       # every language outside the 5 named slots
+private = "#B8BCC2"     # work GitHub reports without a language (private repos)
+
+[leaves.private_periods] # optional: languages to show for private work
+# "2019..2023" = ["Python"]        # whole years, or "2019-03..2021-06" for months
 
 [leaves.colors]         # used verbatim, no foliage tint; names are GitHub's, case-sensitive
 # Rust = "#C0703A"

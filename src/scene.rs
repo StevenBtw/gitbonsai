@@ -1,9 +1,11 @@
 //! The scene: the grown skeleton lifted into 3D, ready to be lit and drawn.
 //!
 //! Wood becomes chains of `(point, radius)` (each chain follows the child
-//! carrying the most flow, Murray's law sets the girth). Living pads become
-//! ellipsoids whose upper shell is covered in leaf tufts, sampled on a
-//! Fibonacci sphere, each with a normal for lighting and an occlusion value.
+//! carrying the most flow, Murray's law sets the girth); deadwood is marked
+//! in the skeleton. Every cloud becomes a solid mass and flat-bottomed domes
+//! whose shell is covered in leaf tufts, sampled on a Fibonacci sphere, each
+//! with a normal for lighting and an exposure value. A resting tree has no
+//! leaves.
 
 #![allow(
     clippy::cast_precision_loss,
@@ -15,8 +17,7 @@
 
 use crate::Bonsai;
 use crate::color::Rgb;
-use crate::foliage::{LanguageState, density};
-use crate::growth::{GOLDEN, P};
+use crate::growth::{Cloud, GOLDEN, JIN, P};
 use crate::math;
 use crate::noise::hash01;
 use crate::style::{CENTER_X, SOIL_Y};
@@ -51,8 +52,6 @@ pub const TILT: f64 = 0.32;
 /// One fixed scale from world units to the canvas: big enough to fill a
 /// README, and fixed so a tree never zooms between weeks.
 pub const WORLD: f64 = 1.4;
-/// The most leaf tufts drawn; the most hidden (least lit) go first.
-pub const TUFT_BUDGET: usize = 900;
 
 /// A world point on the canvas: `(x, y, depth)`, depth growing toward the viewer.
 pub fn project(p: V3) -> (f64, f64, f64) {
@@ -91,6 +90,8 @@ pub struct Tuft {
     pub size: f64,
     /// Where a twiglet joins the wood, when the leaf sits clear of it.
     pub stem: Option<V3>,
+    /// Work without language data: drawn in the private tone.
+    pub private: bool,
 }
 
 /// A chain of wood: points with radii, and whether it is deadwood.
@@ -103,10 +104,13 @@ pub struct Scene {
     pub chains: Vec<Chain>,
     /// Leaves.
     pub tufts: Vec<Tuft>,
-    /// Visible pads: center, half-width, half-height.
+    /// Visible clouds: center, half-width, half-height.
     pub pads: Vec<(V3, f64, f64)>,
     /// Level 11: tubing from the soil out to every pad.
     pub drip: Vec<Vec<(V3, f64)>>,
+    /// Solid cloud masses behind the leaves: center, rx, ry, rz, color,
+    /// and whether it is private work.
+    pub masses: Vec<(V3, f64, f64, f64, Rgb, bool)>,
 }
 
 /// The share of leaf tufts carrying samaras at a lifetime level: none before
@@ -119,56 +123,10 @@ pub fn samara_share(level: u8) -> f64 {
     }
 }
 
-/// Leaves farther than this from the wood (world units) get a twiglet.
-const STEM_AFTER: f64 = 3.0;
-
-/// A leaf drawn back toward the nearest wood, as the viewer sees it, so no
-/// leaf floats free of its branch. Leaves within 60% of `reach` stay put;
-/// farther ones are pulled in smoothly and never end up beyond `reach`.
-/// Also returns where a twiglet would join the wood, if the leaf needs one.
-fn hug(wood: &[(P, P)], p: V3, reach: f64) -> (V3, Option<V3>) {
-    // Depth shifts a point on screen through the tilt; wood lies at z = 0.
-    let lean = math::sin(TILT) / math::cos(TILT);
-    let at = (p[0], p[1] - p[2] * lean);
-    let mut best = (f64::INFINITY, at);
-    for &(a, b) in wood {
-        let (dx, dy) = (b.0 - a.0, b.1 - a.1);
-        let len = dx * dx + dy * dy;
-        let t = if len > 0.0 {
-            (((at.0 - a.0) * dx + (at.1 - a.1) * dy) / len).clamp(0.0, 1.0)
-        } else {
-            0.0
-        };
-        let q = (a.0 + t * dx, a.1 + t * dy);
-        let dist = ((at.0 - q.0).powi(2) + (at.1 - q.1).powi(2)).sqrt();
-        if dist < best.0 {
-            best = (dist, q);
-        }
-    }
-    let (dist, q) = best;
-    if !dist.is_finite() {
-        return (p, None);
-    }
-    let stem = (dist > STEM_AFTER).then_some([q.0, q.1, 0.0]);
-    let keep = 0.6 * reach;
-    if dist <= keep {
-        return (p, stem);
-    }
-    let e = (dist - keep) / (reach - keep);
-    let k = (keep + (reach - keep) * e / (1.0 + e)) / dist;
-    let p = [
-        q.0 + (at.0 - q.0) * k,
-        q.1 + (at.1 - q.1) * k + p[2] * lean,
-        p[2],
-    ];
-    (p, stem)
-}
-
 impl Scene {
     /// The scene of a grown tree.
     pub fn build(b: &Bonsai) -> Self {
         let sk = &b.skeleton;
-        let seed = b.account_id;
         let n = sk.nodes.len();
         let mut scene = Self::default();
         if n == 0 {
@@ -182,6 +140,7 @@ impl Scene {
             }
         }
         let lift = |p: P| -> V3 { [p.0 - CENTER_X, SOIL_Y - p.1, 0.0] };
+        let nz = |i: usize| sk.node_z.get(i).copied().unwrap_or(0.0);
 
         // Chains: follow the child carrying the most flow; every other child
         // starts a chain of its own.
@@ -202,14 +161,23 @@ impl Scene {
                 starts.extend_from_slice(&kids[1..]);
                 cur = kids[0];
             }
+            // Deadwood is marked in the skeleton; the trunk never is.
             let last = chain[chain.len() - 1];
-            // The trunk never becomes jin, whichever branch its heaviest path leads into.
-            let jin =
-                chain[0] != 0 && b.state(sk.nodes[last].language.as_deref()) == LanguageState::Jin;
+            let jin = chain[0] != 0 && sk.nodes[last].language.as_deref() == Some(JIN);
             let mut wood: Vec<(V3, f64)> = chain
                 .iter()
-                .map(|&i| (lift(sk.nodes[i].p), radius(flow[i])))
+                .map(|&i| {
+                    let mut v = lift(sk.nodes[i].p);
+                    v[2] = nz(i);
+                    (v, radius(flow[i]))
+                })
                 .collect();
+            if chain[0] == 0 {
+                // Root flare.
+                for (j, w) in wood.iter_mut().enumerate() {
+                    w.1 *= 1.0 + 0.35 * math::exp(-(j as f64) / 1.2);
+                }
+            }
             // A side branch starts inside its parent at its own girth, a
             // little flared, not the parent's: else short stubs become thorns.
             if chain[0] != s0 && wood.len() > 1 {
@@ -217,138 +185,169 @@ impl Scene {
             }
             scene.chains.push((wood, jin));
         }
-
-        let seeds = samara_share(b.extras.level);
-        let fresh_share = (b.last_week_total / (b.window.total.max(1.0) * 6.0)).min(0.15);
-        let mut pads: Vec<(P, f64, f64, Option<&str>)> = sk
-            .pads
-            .iter()
-            .filter(|p| !p.retired)
-            .map(|p| (p.c, p.rx, p.ry, p.language.as_deref()))
-            .collect();
-        if b.window.total > 0.0 && !b.dormant() {
-            let crown = 11.0 + 9.0 * density(b.window.total);
-            pads.push((sk.apex, crown, crown * 0.55, None));
+        // A resting tree stands bare for the winter.
+        if !sk.dormant {
+            cloud_leaves(b, &mut scene);
         }
-        let mut tufts = Vec::new();
-        let mut tubed = std::collections::BTreeSet::new();
-        for (pi, &(c, prx, pry, language)) in pads.iter().enumerate() {
-            if b.state(language) != LanguageState::Alive {
-                continue;
-            }
-            // Leaves only where this pad's own branches arrived: centered on
-            // their ends and just covering them, so no leaf ever floats.
-            let inside: Vec<usize> = (0..n)
-                // Any branch wood counts; the leader only feeds the crown.
-                .filter(|&i| sk.nodes[i].language.is_some() == language.is_some())
-                .filter(|&i| {
-                    let p = sk.nodes[i].p;
-                    ((p.0 - c.0) / prx).powi(2) + ((p.1 - c.1) / pry).powi(2) < 1.0
-                })
-                .collect();
-            let arrived: Vec<P> = inside.iter().map(|&i| sk.nodes[i].p).collect();
-            // The same wood as segments, for holding every leaf close to it.
-            let flat = |p: P| (p.0 - CENTER_X, SOIL_Y - p.1);
-            let wood: Vec<(P, P)> = inside
-                .iter()
-                .map(|&i| {
-                    let a = sk.nodes[i].p;
-                    (
-                        flat(a),
-                        flat(sk.nodes[i].parent.map_or(a, |q| sk.nodes[q].p)),
-                    )
-                })
-                .collect();
-            if arrived.is_empty() {
-                continue;
-            }
-            let count = arrived.len() as f64;
-            let centroid = (
-                arrived.iter().map(|p| p.0).sum::<f64>() / count,
-                arrived.iter().map(|p| p.1).sum::<f64>() / count,
-            );
-            let spread_x = arrived
-                .iter()
-                .map(|p| (p.0 - centroid.0).abs())
-                .fold(0.0, f64::max);
-            let spread_y = arrived
-                .iter()
-                .map(|p| (p.1 - centroid.1).abs())
-                .fold(0.0, f64::max);
-            let c = (centroid.0, centroid.1 - 2.0);
-            let d = density(b.window.of_language(language));
-            let c3 = lift(c);
-            let rx = (prx * (0.75 + 0.25 * d)).min(spread_x + 9.0);
-            let ry = (pry * 1.2).min(spread_y + 7.0);
-            let rz = rx;
-            scene.pads.push((c3, rx, ry));
-            if b.extras.drip {
-                // Tubing follows the wood from the pad's nearest node down to the soil.
-                let near = (0..n)
-                    .min_by(|&a, &e| {
-                        let da = (sk.nodes[a].p.0 - c.0).powi(2) + (sk.nodes[a].p.1 - c.1).powi(2);
-                        let de = (sk.nodes[e].p.0 - c.0).powi(2) + (sk.nodes[e].p.1 - c.1).powi(2);
-                        da.total_cmp(&de)
-                    })
-                    .unwrap_or(0);
-                // Walk down only until the tubing joins a line already laid.
-                let mut line = Vec::new();
-                let mut cur = Some(near);
-                while let Some(i) = cur {
-                    line.push((lift(sk.nodes[i].p), radius(flow[i])));
-                    if !tubed.insert(i) {
-                        break;
-                    }
-                    cur = sk.nodes[i].parent;
-                }
-                line.reverse();
-                scene.drip.push(line);
-            }
-            // A Fibonacci sphere over the pad's upper shell.
-            let k = (40.0 + 90.0 * d) as usize;
-            let reach = 7.0 + 5.0 * d;
-            let phase = hash01(seed, pi as i64) * math::TAU;
-            for i in 0..k {
-                let y = 1.0 - 2.0 * (i as f64 + 0.5) / k as f64;
-                if y < -0.35 {
-                    continue;
-                }
-                let r = (1.0 - y * y).sqrt();
-                let th = math::rad(i as f64 * GOLDEN) + phase;
-                let u = [math::cos(th) * r, y, math::sin(th) * r];
-                let (p, stem) = hug(&wood, v_add(c3, [u[0] * rx, u[1] * ry, u[2] * rz]), reach);
-                let normal = v_norm([u[0] / rx, u[1] / ry, u[2] / rz]);
-                let salt = (pi * 1000 + i) as i64;
-                let h = hash01(seed ^ 0x51, salt);
-                tufts.push(Tuft {
-                    p,
-                    n: normal,
-                    q: 0.35 + 0.65 * (y + 1.0) / 2.0,
-                    color: b.maple.leaf(language, hash01(seed ^ 0xc0, salt)),
-                    fresh: y > 0.55 && h < fresh_share * 2.5,
-                    samara: language.is_some()
-                        && (-0.3..0.35).contains(&y)
-                        && h > 1.0 - seeds * 1.4,
-                    size: 1.05 + 0.55 * d,
-                    stem,
-                });
-            }
-        }
-        // Keep within budget: drop the most hidden leaves first.
-        if tufts.len() > TUFT_BUDGET {
-            let mut order: Vec<usize> = (0..tufts.len()).collect();
-            order.sort_by(|&a, &c| tufts[c].q.total_cmp(&tufts[a].q).then(a.cmp(&c)));
-            let mut keep = vec![false; tufts.len()];
-            for &i in &order[..TUFT_BUDGET] {
-                keep[i] = true;
-            }
-            tufts = tufts
-                .into_iter()
-                .zip(keep)
-                .filter_map(|(t, k)| k.then_some(t))
-                .collect();
-        }
-        scene.tufts = tufts;
         scene
     }
+}
+
+/// A leaf's color: its language's, or silver for work without one.
+fn leaf_color(b: &Bonsai, lang: Option<&str>, pick: f64) -> Rgb {
+    match lang {
+        Some(_) => b.maple.leaf(lang, pick),
+        None => b.maple.private().shift(0.05 * (pick - 0.5), 0.0),
+    }
+}
+
+/// Leaf tufts over every cloud of the tree.
+const CLOUD_TUFTS: f64 = 900.0;
+/// The cloud area that earns the full tuft budget.
+const FULL_AREA: f64 = 6500.0;
+/// A quarter turn.
+const PI_HALF: f64 = math::TAU / 4.0;
+
+/// Leaves on the clouds: each cloud a flat-bottomed dome (big ones several
+/// domes side by side, like cumulus), densely covered, every tuft colored by
+/// the nearest color patch. A small tree gets fewer leaves, not denser ones.
+fn cloud_leaves(b: &Bonsai, scene: &mut Scene) {
+    let sk = &b.skeleton;
+    let seed = b.account_id;
+    let seeds = samara_share(b.extras.level);
+    let fresh_share = (b.last_week_total / (b.window.total.max(1.0) * 6.0)).min(0.15);
+    let (s, c) = (math::sin(TILT), math::cos(TILT));
+    let area = |cl: &Cloud| PI_HALF * cl.rx * (cl.ry * c + cl.rz * s) + PI_HALF * cl.rx * cl.rz * s;
+    let mut lobes: Vec<(usize, Cloud)> = Vec::new();
+    for (ci, cl) in sk.clouds.iter().enumerate() {
+        let count = ((cl.rx / 17.0).floor() as usize).clamp(1, 3);
+        if count == 1 {
+            lobes.push((ci, cl.clone()));
+            continue;
+        }
+        let lrx = cl.rx / count as f64 * 1.45;
+        for j in 0..count {
+            let f = j as f64 / (count - 1) as f64 * 2.0 - 1.0;
+            let hj = hash01(seed ^ 0x10b, (ci * 10 + j) as i64);
+            let mut l = cl.clone();
+            l.c.0 += f * (cl.rx - lrx);
+            l.c.1 += hash01(seed ^ 0x10c, (ci * 10 + j) as i64) * 4.0 - 2.0;
+            l.z += (hj - 0.5) * cl.rz * 0.5;
+            l.rx = lrx;
+            l.rz = cl.rz * (0.8 + 0.25 * hj);
+            // The middle dome stands highest.
+            l.ry = cl.ry
+                * (1.0 - 0.3 * f.abs())
+                * (0.85 + 0.3 * hj).max(0.5)
+                * (lrx / cl.rx).sqrt()
+                * 1.25;
+            lobes.push((ci, l));
+        }
+    }
+    let total_area: f64 = lobes.iter().map(|l| area(&l.1)).sum::<f64>().max(1.0);
+    let total = (CLOUD_TUFTS * (total_area / FULL_AREA).min(1.0)).max(90.0);
+    let flow = sk.flows();
+    let mut tubed = std::collections::BTreeSet::new();
+    let mut tufts = Vec::new();
+    for (li, (ci, cl)) in lobes.iter().enumerate() {
+        let c3 = [cl.c.0 - CENTER_X, SOIL_Y - cl.c.1, cl.z];
+        let a = area(cl);
+        let k = (total * a / total_area).max(14.0);
+        // Tufts sized so k of them cover the cloud about twice over.
+        let size = (a * 2.8 / (k * 30.0)).sqrt().clamp(0.9, 2.6);
+        let dom = cl
+            .patches
+            .iter()
+            .map(|p| (p.3 / (1.0 + (p.0.0 - cl.c.0).abs() / cl.rx), p))
+            .max_by(|x, y| x.0.total_cmp(&y.0))
+            .and_then(|p| p.1.2.clone());
+        scene.masses.push((
+            c3,
+            cl.rx,
+            cl.ry,
+            cl.rz,
+            leaf_color(b, dom.as_deref(), 0.5),
+            dom.is_none(),
+        ));
+        scene.pads.push((c3, cl.rx, cl.ry));
+        if b.extras.drip && (li == 0 || lobes[li - 1].0 != *ci) {
+            // Tubing follows the wood from the cloud's nearest node down to
+            // the soil, until it joins a line already laid.
+            let d = |i: usize| {
+                let p = sk.nodes[i].p;
+                (p.0 - cl.c.0) * (p.0 - cl.c.0) + (p.1 - cl.c.1) * (p.1 - cl.c.1)
+            };
+            let near = (0..sk.nodes.len())
+                .min_by(|&x, &y| d(x).total_cmp(&d(y)))
+                .unwrap_or(0);
+            let mut line = Vec::new();
+            let mut cur = Some(near);
+            while let Some(i) = cur {
+                let p = sk.nodes[i].p;
+                let z = sk.node_z.get(i).copied().unwrap_or(0.0);
+                line.push(([p.0 - CENTER_X, SOIL_Y - p.1, z], radius(flow[i])));
+                if !tubed.insert(i) {
+                    break;
+                }
+                cur = sk.nodes[i].parent;
+            }
+            line.reverse();
+            scene.drip.push(line);
+        }
+        let anchors: Vec<(V3, Option<&str>, f64)> = cl
+            .patches
+            .iter()
+            .map(|(p, z, l, w)| ([p.0 - CENTER_X, SOIL_Y - p.1, *z], l.as_deref(), *w))
+            .collect();
+        let nn = (k / 0.36) as usize;
+        let phase = hash01(seed, li as i64) * math::TAU;
+        let ph2 = hash01(seed ^ 0x77, li as i64) * math::TAU;
+        for i in 0..nn {
+            let y = 1.0 - 2.0 * (i as f64 + 0.5) / nn as f64;
+            if y < -0.04 {
+                continue;
+            }
+            let r = (1.0 - y * y).sqrt();
+            let th = math::rad(i as f64 * GOLDEN) + phase;
+            let u = [math::cos(th) * r, y.max(0.0), math::sin(th) * r];
+            if u[2] < -0.3 {
+                continue;
+            }
+            let salt = (li * 1000 + i) as i64;
+            let h = hash01(seed ^ 0x51, salt);
+            let bump =
+                1.0 + 0.1 * math::sin(3.0 * th + ph2) + 0.06 * math::sin(5.0 * th + 2.0 * ph2);
+            let lift = 0.85 + 0.3 * hash01(seed ^ 0x3c, salt);
+            let p = v_add(
+                c3,
+                [
+                    u[0] * cl.rx * bump,
+                    u[1] * cl.ry * bump * lift,
+                    u[2] * cl.rz * bump,
+                ],
+            );
+            let normal = v_norm([u[0] / cl.rx, u[1] / cl.ry, u[2] / cl.rz]);
+            let jit = hash01(seed ^ 0x99, salt);
+            let lang = anchors
+                .iter()
+                .map(|(a, l, w)| {
+                    let d = (p[0] - a[0]) * (p[0] - a[0]) + 0.5 * (p[2] - a[2]) * (p[2] - a[2]);
+                    (d * (0.7 + 0.6 * jit) / math::pow(w.max(1.0), 0.2), *l)
+                })
+                .min_by(|x, y| x.0.total_cmp(&y.0))
+                .and_then(|x| x.1);
+            tufts.push(Tuft {
+                p,
+                n: normal,
+                q: 0.35 + 0.65 * u[1],
+                color: leaf_color(b, lang, hash01(seed ^ 0xc0, salt)),
+                fresh: u[1] > 0.55 && h < fresh_share * 2.5,
+                samara: lang.is_some() && u[1] > 0.1 && u[1] < 0.35 && h > 1.0 - seeds * 0.08,
+                size,
+                stem: None,
+                private: lang.is_none(),
+            });
+        }
+    }
+    scene.tufts = tufts;
 }

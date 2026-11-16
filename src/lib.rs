@@ -46,6 +46,7 @@ pub mod paint;
 pub mod raster;
 pub mod render;
 pub mod rng;
+pub mod row;
 pub mod scene;
 pub mod snapshot;
 pub mod style;
@@ -120,13 +121,19 @@ impl Bonsai {
         let timeline = Timeline::new(&snapshot);
         let window = Window::of(&timeline);
         let (states, order) = foliage::language_states(&timeline, &window);
-        let skeleton = growth::grow(&timeline, snapshot.account_id, &leader, &order);
-        let maple = MaplePalette::new(
+        let skeleton = growth::grow(
+            &timeline,
+            snapshot.account_id,
+            &leader,
+            &config.private_periods(),
+        );
+        let mut maple = MaplePalette::new(
             &window,
             &order,
             &snapshot.language_colors,
             &config.leaves.colors,
         );
+        maple.private = config.leaves.private;
         let extras = Extras::new(&timeline, timeline.age_weeks());
         Self {
             login: snapshot.login.clone(),

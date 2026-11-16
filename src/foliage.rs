@@ -6,6 +6,8 @@
 
 use std::collections::BTreeMap;
 
+use crate::date::Date;
+use crate::growth::life::dropped;
 use crate::math;
 use crate::timeline::{Timeline, WEEKLY_CAP, WINDOW_WEEKS};
 
@@ -82,12 +84,31 @@ pub fn language_states(
             }
         }
     }
+    // Dropped means the account kept working without it; a resting account
+    // drops nothing.
+    let active: Vec<Date> = timeline
+        .days
+        .iter()
+        .filter(|d| d.total > 0.0)
+        .map(|d| d.date)
+        .collect();
+    let mut last_used: BTreeMap<&str, Date> = BTreeMap::new();
+    for d in &timeline.days {
+        for (language, amount) in &d.by_language {
+            if *amount > 0.0 {
+                last_used.insert(language.as_str(), d.date);
+            }
+        }
+    }
     let states = last_active
         .into_iter()
         .map(|(language, week)| {
+            let dropped = last_used
+                .get(language.as_str())
+                .is_some_and(|day| dropped(*day, timeline.observed_on, &active));
             let state = if window.of_language(Some(&language)) > 0.0 {
                 LanguageState::Alive
-            } else if last - week >= JIN_AFTER {
+            } else if last - week >= JIN_AFTER && dropped {
                 LanguageState::Jin
             } else {
                 LanguageState::Bare

@@ -3,3 +3,4 @@
 /frames
 /bonsai
 *.snapshot.json
+target*/

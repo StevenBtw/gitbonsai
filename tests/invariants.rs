@@ -2,7 +2,8 @@
 
 use gitbonsai::config::{Legend, Wind};
 use gitbonsai::foliage::LanguageState;
-use gitbonsai::growth::H_REF;
+use gitbonsai::growth::dome;
+use gitbonsai::timeline::Timeline;
 use gitbonsai::{Bonsai, Config, Style, Theme, fixtures, render};
 
 fn config(style: Style) -> Config {
@@ -19,40 +20,38 @@ fn grow(name: &str) -> Bonsai {
     )
 }
 
-/// Next season's tree is this season's tree plus growth: no node ever moves,
-/// and no branch ever carries less than before.
+/// History is never erased: as the tree is restyled over the years, every
+/// active year keeps its place in it, and the trunk never thins.
 #[test]
-fn wood_only_grows() {
+fn history_is_never_erased() {
+    use gitbonsai::growth::life::Life;
     for name in [
-        "veteran", "comeback", "polyglot", "bot", "mossgap", "steady",
+        "veteran", "comeback", "polyglot", "bot", "mossgap", "steady", "showcase",
     ] {
         let snapshot = fixtures::by_name(name).unwrap().snapshot;
-        for style in Style::ALL {
-            let config = config(style);
-            let first = snapshot.first_active().unwrap();
-            let mut day = first.add_days(13 * 7);
-            let mut previous = Bonsai::grow(&snapshot, &config, Some(first)).skeleton;
-            while day <= snapshot.observed_on {
-                let now = Bonsai::grow(&snapshot, &config, Some(day)).skeleton;
-                assert!(
-                    now.nodes.len() >= previous.nodes.len(),
-                    "{name}/{style} {day}: lost nodes"
-                );
-                for (old, new) in previous.nodes.iter().zip(&now.nodes) {
-                    assert_eq!(
-                        (old.p, old.parent),
-                        (new.p, new.parent),
-                        "{name}/{style} {day}: wood moved"
-                    );
-                }
-                let (old_flow, new_flow) = (previous.flows(), now.flows());
-                for (i, (a, b)) in old_flow.iter().zip(&new_flow).enumerate() {
-                    assert!(b + 1e-6 >= *a, "{name}/{style} {day}: node {i} thinned");
-                }
-                assert!(now.height >= previous.height);
-                previous = now;
-                day = day.add_days(26 * 7);
-            }
+        let first = snapshot.first_active().unwrap();
+        let mut day = first.add_days(13 * 7);
+        let mut before = 0.0;
+        while day <= snapshot.observed_on {
+            let bonsai = Bonsai::grow(&snapshot, &Config::default(), Some(day));
+            let root = bonsai.skeleton.flows()[0];
+            assert!(
+                root + 1e-6 >= before,
+                "{name} {day}: trunk thinned {before} -> {root}"
+            );
+            let timeline = Timeline::new(&snapshot.truncated(day));
+            let life = Life::of(&timeline, &[]).unwrap();
+            let active: std::collections::BTreeSet<i32> = (0..life.years.len())
+                .filter(|&i| life.is_active_year(i))
+                .map(|i| life.years[i].y)
+                .collect();
+            assert_eq!(
+                dome::years_grown(&timeline),
+                active,
+                "{name} {day}: a year went missing"
+            );
+            before = root;
+            day = day.add_days(26 * 7);
         }
     }
 }
@@ -136,6 +135,7 @@ fn every_output_stays_within_budget() {
                     "class=\"dp\"",
                     "class=\"gl\"",
                     "class=\"fs\"",
+                    "class=\"fw\"",
                     "class=\"ff\"",
                 ]
                 .iter()
@@ -258,12 +258,10 @@ fn the_legend_explains_without_spoiling() {
     }
 }
 
-/// The veteran: tall from age, level 8, Ruby turned to jin.
+/// The veteran: level 8, Ruby turned to jin.
 #[test]
 fn the_veteran_matches_worked_example_a() {
     let bonsai = grow("veteran");
-    let height = bonsai.skeleton.height / H_REF;
-    assert!((0.88..0.92).contains(&height), "{height}");
     assert_eq!(bonsai.extras.level, 8);
     assert_eq!(bonsai.state(Some("Ruby")), LanguageState::Jin);
     assert_eq!(bonsai.state(Some("Rust")), LanguageState::Alive);
@@ -322,9 +320,23 @@ fn edge_accounts_still_grow_something() {
 
     let private = grow("private");
     assert!(
-        private.skeleton.pads.is_empty(),
-        "no languages, no language pads"
+        !private.skeleton.clouds.is_empty(),
+        "private work grows leaves"
     );
+    assert!(
+        private
+            .skeleton
+            .clouds
+            .iter()
+            .all(|c| c.patches.iter().all(|p| p.2.is_none())),
+        "and they carry no language"
+    );
+
+    let mut one_day = fixtures::by_name("steady").unwrap().snapshot;
+    one_day.days.truncate(1);
+    one_day.observed_on = one_day.days[0].date;
+    let tiny = Bonsai::grow(&one_day, &Config::default(), None);
+    assert!(tiny.skeleton.nodes.len() > 1, "a single day still sprouts");
 
     let dormant = grow("dormant");
     assert!(dormant.dormant());
@@ -352,4 +364,206 @@ fn as_of_equals_a_snapshot_collected_that_day() {
         render::svg(&b, &Config::default(), Theme::Light)
     );
     assert_eq!(a.observed_on, day);
+}
+
+/// Age shows as girth, spread and fullness, never as height.
+#[test]
+fn the_tree_is_never_tall() {
+    for fixture in fixtures::all() {
+        let snapshot = &fixture.snapshot;
+        let Some(first) = snapshot.first_active() else {
+            continue;
+        };
+        let span = snapshot.observed_on.days_since(first);
+        for k in 1..=4 {
+            let day = first.add_days(span * k / 4);
+            let bonsai = Bonsai::grow(snapshot, &Config::default(), Some(day));
+            assert!(
+                bonsai.skeleton.height <= 230.0,
+                "{} on {day}: {}",
+                fixture.name,
+                bonsai.skeleton.height
+            );
+        }
+    }
+    let newbie = fixtures::by_name("steady").unwrap().snapshot;
+    let sprout = Bonsai::grow(
+        &newbie,
+        &Config::default(),
+        Some("2022-03-06".parse().unwrap()),
+    );
+    assert!(sprout.skeleton.height >= 80.0, "a sprout is tall and thin");
+}
+
+#[test]
+fn the_crown_holds_three_to_six_years() {
+    let timeline = |name: &str| Timeline::new(&fixtures::by_name(name).unwrap().snapshot);
+    let veteran = dome::crown_years(&timeline("veteran"));
+    assert!((3..=6).contains(&veteran.len()), "{veteran:?}");
+    assert_eq!(
+        dome::crown_years(&timeline("comeback")),
+        [2022, 2023, 2024, 2025, 2026]
+    );
+}
+
+#[test]
+fn a_pause_leaves_a_window() {
+    let snapshot = fixtures::by_name("comeback").unwrap().snapshot;
+    let (lo, hi) = dome::window_band(&Timeline::new(&snapshot)).expect("comeback paused");
+    assert!(hi - lo > 10.0, "{lo}..{hi}");
+    let bonsai = Bonsai::grow(&snapshot, &Config::default(), None);
+    for c in &bonsai.skeleton.clouds {
+        let h = gitbonsai::style::SOIL_Y - c.c.1;
+        assert!(
+            !(lo..hi).contains(&h),
+            "a cloud at {h} fills the window {lo}..{hi}"
+        );
+    }
+}
+
+#[test]
+fn a_dormant_tree_stands_bare() {
+    let dormant = grow("dormant");
+    let scene = gitbonsai::scene::Scene::build(&dormant);
+    assert!(scene.tufts.is_empty(), "no leaves in winter");
+    assert!(
+        scene.chains.len() > 50,
+        "but fine twigs: {}",
+        scene.chains.len()
+    );
+}
+
+#[test]
+fn private_accounts_grow_silver() {
+    let private = grow("private");
+    let scene = gitbonsai::scene::Scene::build(&private);
+    assert!(scene.tufts.len() > 100, "{}", scene.tufts.len());
+    let silver = gitbonsai::color::Rgb::hex(0xb8bcc2);
+    for t in &scene.tufts {
+        assert!(t.color.delta_e(silver) < 0.05, "{}", t.color);
+    }
+}
+
+#[test]
+fn a_dormant_tree_grows_leaves_again() {
+    let mut snapshot = fixtures::by_name("dormant").unwrap().snapshot;
+    let before = Bonsai::grow(&snapshot, &Config::default(), None);
+    let start = snapshot.observed_on.add_days(1);
+    for i in 0..56 {
+        let mut by_language = std::collections::BTreeMap::new();
+        by_language.insert("Rust".to_string(), 4);
+        snapshot.days.push(gitbonsai::snapshot::Day {
+            date: start.add_days(i),
+            total: 4,
+            by_language,
+        });
+    }
+    snapshot.observed_on = start.add_days(56);
+    snapshot.range.to = snapshot.observed_on;
+    let after = Bonsai::grow(&snapshot, &Config::default(), None);
+    assert!(!gitbonsai::scene::Scene::build(&after).tufts.is_empty());
+    assert!(after.skeleton.flows()[0] >= before.skeleton.flows()[0]);
+}
+
+/// Both painted wind chimes dance: the blue one slowly, the golden one faster.
+#[test]
+fn the_wind_chimes_sway_at_their_own_pace() {
+    let render = |name: &str| render::svg(&grow(name), &Config::default(), Theme::Light);
+    let blue = render("polyglot");
+    let golden = render("veteran");
+    assert!(blue.contains("class=\"fw\""), "the blue chime sways");
+    assert!(golden.contains("class=\"fs\""), "the golden chime sways");
+    let period = |svg: &str, class: &str| -> f64 {
+        let rule = svg.split(&format!(".{class}{{")).nth(1).unwrap();
+        let anim = rule.split("animation:").nth(1).unwrap();
+        anim.split_whitespace()
+            .nth(1)
+            .unwrap()
+            .trim_end_matches('s')
+            .parse()
+            .unwrap()
+    };
+    assert!(
+        period(&blue, "fw") > period(&golden, "fs"),
+        "blue is the slower"
+    );
+}
+
+/// The firefly glows in open air near the leaves, never lost inside a cloud.
+#[test]
+fn the_firefly_hovers_in_the_open() {
+    use gitbonsai::scene::{Scene, TILT, WORLD, project};
+    for name in ["polyglot", "steady"] {
+        let bonsai = grow(name);
+        let svg = render::svg(&bonsai, &Config::default(), Theme::Light);
+        let at = svg
+            .split("<g class=\"ff\"><g transform=\"translate(")
+            .nth(1)
+            .unwrap_or_else(|| panic!("{name} has no firefly"));
+        let xy: Vec<f64> = at
+            .split(')')
+            .next()
+            .unwrap()
+            .split(' ')
+            .map(|v| v.parse().unwrap())
+            .collect();
+        let (x, y) = (xy[0], xy[1]);
+        let scene = Scene::build(&bonsai);
+        let (s, c) = (TILT.sin(), TILT.cos());
+        for (c3, rx, ry, rz, _, _) in &scene.masses {
+            let (cx, cy, _) = project(*c3);
+            let hw = rx * WORLD;
+            let up = ((ry * c).powi(2) + (rz * s).powi(2)).sqrt() * WORLD;
+            let down = rz * s * WORLD;
+            let v = if y < cy { up } else { down };
+            let inside = ((x - cx) / hw).powi(2) + ((y - cy) / v.max(1e-6)).powi(2) < 1.0;
+            assert!(
+                !inside,
+                "{name}: firefly at {x} {y} sits in a cloud at {cx} {cy}"
+            );
+        }
+    }
+}
+
+/// A resting account drops nothing: its last languages rest, they don't die.
+#[test]
+fn a_resting_account_drops_no_language() {
+    let dormant = grow("dormant");
+    for language in ["Java", "Kotlin"] {
+        assert_ne!(
+            dormant.state(Some(language)),
+            LanguageState::Jin,
+            "{language}"
+        );
+    }
+}
+
+#[test]
+fn the_legend_names_private_work_and_winter() {
+    let mut config = Config::default();
+    config.render.legend = Legend::Left;
+    let text = |name: &str| -> String {
+        let svg = render::svg(&grow(name), &config, Theme::Light);
+        svg.split("<text")
+            .skip(1)
+            .map(|t| t.split("</text>").next().unwrap_or("").to_lowercase())
+            .collect()
+    };
+    assert!(text("private").contains("private work"));
+    assert!(text("showcase").contains("private work"));
+    assert!(
+        !text("mono").contains("private work"),
+        "only when there is some"
+    );
+    assert!(text("dormant").contains("winter"));
+}
+
+#[test]
+fn explain_shows_private_work() {
+    let report = gitbonsai::explain::report(&grow("showcase"));
+    let line = report
+        .lines()
+        .find(|l| l.contains("private work"))
+        .expect("a private work line");
+    assert!(line.contains('%'), "{line}");
 }

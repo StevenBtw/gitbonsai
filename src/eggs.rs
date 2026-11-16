@@ -34,7 +34,7 @@ use crate::noise::{fbm, hash01, noise1};
 use crate::paint::{Frame, Paints, Pot, norm};
 use crate::render::{Num, PathData};
 use crate::rng::{Rng, siphash13};
-use crate::scene::{Scene, WORLD, project};
+use crate::scene::{Scene, TILT, WORLD, project};
 use crate::style::{CENTER_X, SOIL_Y};
 
 /// At most this many archived repositories become kintsugi breaks; about half
@@ -92,10 +92,21 @@ fn branch_spots(scene: &Scene) -> Vec<(usize, f64, f64)> {
             if !(50.0..=462.0).contains(&x) || y > SOIL_Y - 40.0 || y < 50.0 {
                 continue;
             }
-            let crowd = leaves
+            let mut crowd = leaves
                 .iter()
                 .filter(|l| (l.0 - x).powi(2) + (l.1 - y).powi(2) < reach * reach)
                 .count();
+            // Nothing hangs over or in front of a cloud, so small accent
+            // clouds stay in view.
+            let (s, c) = (math::sin(TILT), math::cos(TILT));
+            for (c3, rx, ry, rz, _, _) in &scene.masses {
+                let (cx, cy, _) = project(*c3);
+                let hw = rx * WORLD + 10.0;
+                let up = ((ry * c) * (ry * c) + (rz * s) * (rz * s)).sqrt() * WORLD + 8.0;
+                if (x - cx).abs() < hw && y > cy - up - 34.0 && y < cy + rz * s * WORLD + 6.0 {
+                    crowd += 1000;
+                }
+            }
             if y < SOIL_Y - 90.0 {
                 upper.push((crowd, x, y));
             } else {
@@ -115,6 +126,74 @@ fn branch_spots(scene: &Scene) -> Vec<(usize, f64, f64)> {
     });
     upper.extend(lower);
     upper
+}
+
+/// Where the firefly hovers: in open air close to the leaves, never inside
+/// a cloud, preferably in the shade just under the crown. Its own drift
+/// stays clear of the leaves.
+fn firefly_spot(scene: &Scene, taken: &mut Vec<(f64, f64)>) -> Option<(f64, f64)> {
+    let leaves: Vec<(f64, f64)> = scene
+        .tufts
+        .iter()
+        .map(|t| {
+            let (x, y, _) = project(t.p);
+            (x, y)
+        })
+        .collect();
+    if leaves.is_empty() {
+        return None;
+    }
+    let (s, c) = (math::sin(TILT), math::cos(TILT));
+    let clouds: Vec<(f64, f64, f64, f64, f64)> = scene
+        .masses
+        .iter()
+        .map(|(c3, rx, ry, rz, _, _)| {
+            let (cx, cy, _) = project(*c3);
+            let up = ((ry * c) * (ry * c) + (rz * s) * (rz * s)).sqrt() * WORLD;
+            (cx, cy, rx * WORLD, up, rz * s * WORLD)
+        })
+        .collect();
+    let in_cloud = |x: f64, y: f64| {
+        clouds.iter().any(|&(cx, cy, hw, up, down)| {
+            let v = if y < cy { up } else { down } + 9.0;
+            let dx = (x - cx) / (hw + 9.0);
+            let dy = (y - cy) / v;
+            dx * dx + dy * dy < 1.0
+        })
+    };
+    // The crown's underside: the lowest cloud bottoms, on average.
+    let under = clouds.iter().map(|q| q.1 + q.4).sum::<f64>() / clouds.len().max(1) as f64;
+    let (x0, x1) = leaves
+        .iter()
+        .fold((f64::MAX, f64::MIN), |a, l| (a.0.min(l.0), a.1.max(l.0)));
+    let y0 = leaves.iter().map(|l| l.1).fold(f64::MAX, f64::min);
+    let mut best: Option<(f64, f64, f64)> = None;
+    let mut y = y0;
+    while y <= SOIL_Y - 34.0 {
+        let mut x = x0;
+        while x <= x1 {
+            let clear = leaves
+                .iter()
+                .map(|l| ((l.0 - x) * (l.0 - x) + (l.1 - y) * (l.1 - y)).sqrt())
+                .fold(f64::MAX, f64::min);
+            let free = taken
+                .iter()
+                .all(|t| (t.0 - x) * (t.0 - x) + (t.1 - y) * (t.1 - y) > 900.0);
+            if (16.0..=40.0).contains(&clear) && free && !in_cloud(x, y) {
+                let score = (clear - 20.0).abs()
+                    + 0.08 * (y - under - 18.0).abs()
+                    + 0.02 * (x - CENTER_X).abs();
+                if best.is_none_or(|b| score < b.0) {
+                    best = Some((score, x, y));
+                }
+            }
+            x += 6.0;
+        }
+        y += 6.0;
+    }
+    let (_, x, y) = best?;
+    taken.push((x, y));
+    Some((x, y))
 }
 
 /// The first spot at least `gap` from every spot already taken.
@@ -338,8 +417,14 @@ pub fn eggs(
                 g.push_str(r##"<g fill="#fff3c4"><use href="#star5" transform="translate(1.4 6) scale(.32)"/><use href="#star5" transform="translate(-.6 7.8) scale(.24)"/><use href="#star5" transform="translate(2.6 8.2) scale(.2)"/><circle cx="-1.6" cy="5.6" r=".22"/><circle cx="3" cy="5.2" r=".18"/></g>"##);
             }
             // The clapper and the paper strip that catches the wind.
-            let sway = if t >= 4 { r#" class="fs""# } else { "" };
-            e.animated += usize::from(t >= 4);
+            // The painted chimes dance in the wind: the blue one slowly,
+            // the golden one faster.
+            let sway = match t {
+                3 => r#" class="fw""#,
+                t if t >= 4 => r#" class="fs""#,
+                _ => "",
+            };
+            e.animated += usize::from(t >= 3);
             let _ = write!(
                 g,
                 r##"<g{sway}><path d="M0 4.2V12" stroke="#8a7a5a" stroke-width=".3"/><circle cy="8.6" r=".7" fill="{edge}"/><rect x="-1.2" y="12" width="2.4" height="7.4" fill="{strip}" stroke="#00000022" stroke-width=".2"/></g>"##
@@ -351,13 +436,13 @@ pub fn eggs(
     if let Some(t) = tier("galaxy-brain") {
         // The firefly stays from x2 on; the moon joins it at x3 (crescent) and x4 (full).
         if t >= 2
-            && let Some((x, y)) = take_spot(&spots, &mut taken, 30.0)
+            && let Some((x, y)) = firefly_spot(scene, &mut taken)
         {
             let _ = write!(
                 e.front,
                 r##"<g class="ff"><g transform="translate({} {}) scale({})"><use href="#firefly"/></g></g>"##,
-                Num(x + 18.0),
-                Num(y - 16.0),
+                Num(x),
+                Num(y),
                 Num(w)
             );
             e.animated += 2;

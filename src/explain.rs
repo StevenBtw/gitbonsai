@@ -7,7 +7,10 @@ use std::fmt::Write as _;
 use crate::Bonsai;
 use crate::eggs::{DRAWN, MAX_SEAMS};
 use crate::foliage::{LanguageState, density};
-use crate::growth::H_REF;
+use crate::growth::clouds::lead_of;
+use crate::growth::dome::crown_years;
+use crate::growth::life::Life;
+use crate::growth::trunks::{Trunk, trunks};
 use crate::scene::{radius, samara_share};
 
 /// The report, as plain text.
@@ -44,9 +47,8 @@ pub fn report(b: &Bonsai) -> String {
     );
     let _ = writeln!(
         out,
-        "  height              {:.1} units, {} of H_ref",
-        sk.height,
-        pct(sk.height / H_REF)
+        "  height              {:.1} units (age shows as girth and spread)",
+        sk.height
     );
     let _ = writeln!(
         out,
@@ -59,17 +61,45 @@ pub fn report(b: &Bonsai) -> String {
         radius(flows.first().copied().unwrap_or(0.0)),
         flows.first().copied().unwrap_or(0.0)
     );
-    let shed = sk.pads.iter().filter(|p| p.retired).count();
     let _ = writeln!(
         out,
-        "  skeleton            {} nodes, {} pads ({shed} shed by crown recession)",
+        "  skeleton            {} nodes, {} clouds",
         sk.nodes.len(),
-        sk.pads.len()
+        sk.clouds.len()
     );
     if b.dormant() {
         let _ = writeln!(
             out,
             "  dormant             a year without contributions; the canopy is bare"
+        );
+    }
+    if let Some(life) = Life::of(&b.timeline, &[]) {
+        let names = |t: &[Trunk]| {
+            t.iter()
+                .map(|t| {
+                    let name = t.lang.as_deref().unwrap_or("(no language data)");
+                    if t.dropped {
+                        format!("{name} (dead)")
+                    } else {
+                        name.to_string()
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        let _ = writeln!(out, "  trunks              {}", names(&trunks(&life)));
+        let crown = crown_years(&b.timeline);
+        if let (Some(a), Some(z)) = (crown.first(), crown.last()) {
+            let _ = writeln!(out, "  crown               {a} to {z}");
+        }
+    }
+    let total: f64 = b.timeline.days.iter().map(|d| d.total).sum();
+    let private: f64 = b.timeline.days.iter().map(|d| d.unattributed).sum();
+    if total > 0.0 && private > 0.0 {
+        let _ = writeln!(
+            out,
+            "  private work        {} of contributions have no language data: silver leaves",
+            pct(private / total)
         );
     }
 
@@ -89,9 +119,9 @@ pub fn report(b: &Bonsai) -> String {
         };
         let v = b.window.of_language(Some(language));
         let pads = sk
-            .pads
+            .clouds
             .iter()
-            .filter(|p| !p.retired && p.language.as_deref() == Some(language.as_str()))
+            .filter(|c| lead_of(c).as_deref() == Some(language.as_str()))
             .count();
         let _ = writeln!(
             out,

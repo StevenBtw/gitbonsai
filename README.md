@@ -4,31 +4,46 @@ Grow a Japanese maple bonsai from your GitHub activity: an animated SVG for your
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/veteran-legend-dark.svg" />
-    <img src="assets/veteran-legend-light.svg" width="640" alt="A Japanese maple bonsai grown from synthetic GitHub activity, with a legend of its leaf colors and signs" />
+    <source media="(prefers-color-scheme: dark)" srcset="assets/showcase-legend-dark.svg" />
+    <img src="assets/showcase-legend-light.svg" width="640" alt="An example bonsai from simulated activity: a Java trunk under a red and green crown beside the bleached snag of a C# trunk it replaced, with a legend of its leaf colors and signs" />
   </picture>
 </p>
 
-The tree is yours: it grows from your own GitHub activity, week by week. The trunk rises with the years you've been active and thickens with every contribution you've ever made. Each language you write grows branches on its own side, with leaves in that language's color. Your last few months decide how full the leaves are, so busy stretches show and quiet ones thin the crown. Wood never shrinks, so the tree remembers everything.
+The tree is yours: it grows from your own GitHub activity. A newcomer is a thin sprout; years of work make it short, thick and wide, the way a prize bonsai is, never tall. Every language you've used for a large part of your work grows its own trunk, and each one owns its side of the crown, in that language's color. The crown is your last few years; older years sit lower as limbs, and a long pause leaves a gap of bare trunk. Work in private repositories shows as silver leaves. A language you've dropped turns to deadwood, and a year without contributions leaves the tree bare for the winter. Nothing is ever erased: the tree is restyled as it matures, and its trunk only grows.
 
-| Newbie | Comeback | Veteran |
-| :---: | :---: | :---: |
-| <picture><source media="(prefers-color-scheme: dark)" srcset="assets/newbie-dark.svg" /><img src="assets/newbie-light.svg" width="260" alt="A newcomer bonsai: a young tree in its first pot" /></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="assets/comeback-dark.svg" /><img src="assets/comeback-light.svg" width="260" alt="A comeback bonsai: deadwood from the quiet years, new growth since" /></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="assets/veteran-dark.svg" /><img src="assets/veteran-light.svg" width="260" alt="A veteran bonsai: tall, thick and full" /></picture> |
-| a few months in | quiet for two years, then back | 16 years, busier the last few years |
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/row-dark.svg" />
+    <img src="assets/row-light.svg" width="100%" alt="Five bonsai at one scale: a simulated newbie sprout, then the trees of StevenBtw, tj, torvalds and steipete" />
+  </picture>
+</p>
+
+From left:
+
+- **Newbie** (simulated): a few months in, two languages: a thin sprout in its first pot.
+- **[@StevenBtw](https://github.com/StevenBtw)**: around 9 years, mainly Python and Rust, each in their own trunk; recently picked up TypeScript.
+- **[@tj](https://github.com/tj)**: around 19 years: JavaScript, later Go; resting since 2021, so bare for the winter.
+- **[@torvalds](https://github.com/torvalds)**: around 16 years of C, every single week: one steady trunk.
+- **[@steipete](https://github.com/steipete)**: around 17 years, mostly TypeScript; early private work in silver on the lower limbs.
+
+The four real trees are grown from their public GitHub activity with `gitbonsai collect <login>` and `gitbonsai render`. Look closely: a tree may hide a few small surprises of its own.
 
 <details>
 <summary>What every part shows</summary>
 
 | What you see | What it shows |
 | --- | --- |
-| Height | Age, from your first sustained activity |
-| Girth | Every contribution ever, flowing down the branches |
-| Branches | One side of the tree per language; your top language feeds the crown |
+| Trunks | Each language with at least 23% of your work; the busiest is the main trunk |
+| Girth | Every contribution ever, and your age |
+| The crown | Your last three to six years, a sector per trunk language |
+| Low limbs | Earlier eras, oldest lowest |
+| A gap of bare trunk | A long pause before your recent years |
 | Leaf color | The language, on the Japanese maple palette |
-| Leaf density | Your last 13 weeks |
+| Silver leaves | Work GitHub reports without a language (private repositories) |
+| Fullness | How busy your recent years were; old leaves thin out |
 | Bronze tips | New growth from last week |
-| Bare wood | A language unused for 13 weeks |
-| Bleached deadwood | A language silent for a year |
+| Bleached deadwood | A language you stopped using while you kept working |
+| A bare tree | A year without contributions: resting for the winter |
 | Winged seeds | Your lifetime level |
 | Falling leaves | You crossed a level this week |
 | Moss | Your current weekly streak |
@@ -41,7 +56,7 @@ The tree is yours: it grows from your own GitHub activity, week by week. The tru
 Add the action to a weekly workflow in your profile repository (`<you>/<you>`); [examples/profile-workflow.yml](examples/profile-workflow.yml) is a complete one to copy to `.github/workflows/bonsai.yml`:
 
 ```yaml
-- uses: StevenBtw/gitbonsai@v0.1.2
+- uses: StevenBtw/gitbonsai@v0.2.0
   with:
     output-dir: assets   # bonsai-light.svg and bonsai-dark.svg
     legend: left         # optional: off (default), left or right
@@ -75,7 +90,7 @@ gitbonsai explain me.snapshot.json    # every number behind the tree
 
 ## Credits
 
-Growth is space colonization (Runions, Lane and Prusinkiewicz, 2007). Inspired by [git-koi](https://github.com/yalongwastaken/git-koi).
+The tree is shaped after exhibition Japanese maples. Inspired by [git-koi](https://github.com/yalongwastaken/git-koi).
 
 ## License
 

@@ -123,6 +123,21 @@ enum Command {
         config: PathBuf,
     },
 
+    /// Render several trees side by side at one scale: row-light.svg and row-dark.svg
+    Row {
+        /// Trees as `Name=snapshot` or `Name=snapshot@YYYY-MM-DD`; a snapshot is a file or `fixture:<name>`
+        #[arg(required = true)]
+        trees: Vec<String>,
+
+        /// Config file; a missing file means all defaults
+        #[arg(long, default_value = "bonsai.toml")]
+        config: PathBuf,
+
+        /// Output folder
+        #[arg(long, default_value = "bonsai")]
+        output_dir: PathBuf,
+    },
+
     /// Write a synthetic snapshot, or list them
     Fixture {
         /// Fixture name; omit to list them all
@@ -253,6 +268,30 @@ fn run(cli: Cli) -> Result<()> {
                 "wrote {}",
                 output_dir.join("index.html").display()
             ));
+        }
+        Command::Row {
+            trees,
+            config,
+            output_dir,
+        } => {
+            let config = Config::load(&config)?;
+            let mut grown = Vec::new();
+            for text in &trees {
+                let (name, source, day) = gitbonsai::row::spec(text)?;
+                let snapshot = load_snapshot(&source)?;
+                grown.push((name, Bonsai::grow(&snapshot, &config, day)));
+            }
+            for theme in Theme::ALL {
+                let svgs: Vec<(String, String)> = grown
+                    .iter()
+                    .map(|(name, b)| (name.clone(), render::svg(b, &config, theme)))
+                    .collect();
+                output::write_atomic(
+                    &output_dir.join(format!("row-{}.svg", theme.name())),
+                    gitbonsai::row::row(&svgs, theme).as_bytes(),
+                )?;
+            }
+            status(&format!("wrote {}", output_dir.display()));
         }
         Command::Fixture { name, output } => match name {
             None => {
@@ -453,10 +492,10 @@ fn write_pair(dir: &Path, base: &str, bonsai: &Bonsai, config: &Config) -> Resul
 
 fn summary(b: &Bonsai) -> String {
     format!(
-        "{}w · {:.0} lifetime · {} pads · L{} · pot {} · {:.0}/wk",
+        "{}w · {:.0} lifetime · {} clouds · L{} · pot {} · {:.0}/wk",
         b.timeline.age_weeks(),
         b.timeline.capped_lifetime(),
-        b.skeleton.pads.iter().filter(|p| !p.retired).count(),
+        b.skeleton.clouds.len(),
         b.extras.level,
         b.extras.pot_tier,
         b.window.total
