@@ -247,7 +247,7 @@ pub fn decay(years_ago: f64) -> f64 {
 }
 
 /// Shares of a set of months: each language, plus `None` for contributions
-/// without language data. Largest first.
+/// that are private. Largest first.
 pub fn shares_of(months: &BTreeMap<u32, Month>, total: f64) -> Vec<(Lang, f64)> {
     let mut langs: BTreeMap<String, f64> = BTreeMap::new();
     for m in months.values() {
