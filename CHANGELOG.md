@@ -14,7 +14,7 @@ Growth release: every tree is regrown as an exhibition maple, short, wide and fu
 - **Silver private work**: contributions without language data, such as work in private repositories, grow silver leaves. The legend shows a "private work" row and `explain` prints its share.
 - **Private work settings**: `[leaves] private` sets the silver, and `[leaves.private_periods]` declares languages for a period, for example `"2019..2023" = ["Python"]`.
 - **Bare winter trees**: after a year without contributions the crown stands bare, a dome of fine twigs, and the legend says so.
-- **`gitbonsai row`**: several trees side by side at one scale, written as `row-light.svg` and `row-dark.svg`.
+- **`gitbonsai row`**: `gitbonsai row Name=snapshot[@YYYY-MM-DD] ...` puts several trees side by side at one scale, written as `row-light.svg` and `row-dark.svg`.
 - **`newbie` and `showcase` fixtures**: the README's example trees, reproducible with `gitbonsai render fixture:showcase` and `gitbonsai row`.
 
 ### Changed
