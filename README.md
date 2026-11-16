@@ -88,6 +88,8 @@ gitbonsai render me.snapshot.json     # bonsai/: light and dark SVG, PNG, previe
 gitbonsai explain me.snapshot.json    # every number behind the tree
 ```
 
+A change to how trees look updates the gallery reference, which CI checks: `scripts/gallery-hashes.sh > gallery.sha256`.
+
 ## Credits
 
 The tree is shaped after exhibition Japanese maples. Inspired by [git-koi](https://github.com/yalongwastaken/git-koi).
