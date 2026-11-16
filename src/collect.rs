@@ -110,6 +110,9 @@ impl GraphQl for GhCli {
 }
 
 /// Collects `login`'s history through `observed_on`, reporting progress.
+/// With a usable `previous` snapshot ([`reusable`]), only the days from the
+/// start of the previous calendar quarter are fetched again; older days are
+/// kept as they were.
 ///
 /// # Errors
 ///
@@ -119,6 +122,7 @@ pub fn collect(
     api: &dyn GraphQl,
     login: &str,
     observed_on: Date,
+    previous: Option<&Snapshot>,
     progress: &mut dyn FnMut(&str),
 ) -> Result<Snapshot, Error> {
     let data = api.query(USER_QUERY, &[("login", login)])?;
@@ -147,8 +151,25 @@ pub fn collect(
         .and_then(|y| Date::from_ymd(y, 1, 1))
         .unwrap_or(observed_on)
         .min(observed_on);
+    // Reuse what an earlier run of this version collected, up to the
+    // previous quarter.
+    let cut = refetch_from(observed_on);
+    let kept = previous.filter(|p| reusable(p, account_id, cut));
+    if let Some(p) = kept {
+        progress(&format!(
+            "reusing {} days before {cut}",
+            p.days.iter().filter(|d| d.date < cut).count()
+        ));
+        acc.truncated = p
+            .truncated_windows
+            .iter()
+            .filter(|w| w.to < cut)
+            .copied()
+            .collect();
+    }
+    let fetch_from = if kept.is_some() { cut.max(from) } else { from };
     if first_year.is_some() {
-        let quarters = quarters(from, observed_on);
+        let quarters = quarters(fetch_from, observed_on);
         for (i, window) in quarters.iter().enumerate() {
             progress(&format!(
                 "{} .. {} ({}/{})",
@@ -161,7 +182,14 @@ pub fn collect(
         }
     }
 
-    let days: Vec<Day> = acc
+    // Fresh colors win; languages only in older days keep theirs.
+    for (language, color) in kept.iter().flat_map(|p| &p.language_colors) {
+        acc.colors.entry(language.clone()).or_insert(*color);
+    }
+    let older = kept
+        .into_iter()
+        .flat_map(|p| p.days.iter().filter(|d| d.date < cut).cloned());
+    let fresh = acc
         .totals
         .iter()
         .filter(|(_, total)| **total > 0)
@@ -170,8 +198,9 @@ pub fn collect(
             total: *total,
             by_language: acc.by_language.remove(date).unwrap_or_default(),
             private: acc.private.get(date).copied().unwrap_or(0),
-        })
-        .collect();
+        });
+    let days: Vec<Day> = older.chain(fresh).collect();
+    let from = kept.map_or(from, |p| p.range.from.min(from));
     progress("archived repositories and achievements");
     let archived_repos = archived(api, &login)?;
     let achievements = api
@@ -196,6 +225,29 @@ pub fn collect(
     };
     snapshot.validate()?;
     Ok(snapshot)
+}
+
+/// The first day collection fetches again when it reuses a snapshot: the
+/// start of the calendar quarter before `observed_on`'s.
+fn refetch_from(observed_on: Date) -> Date {
+    let (year, month, _) = observed_on.ymd();
+    let start = (month - 1) / 3 * 3 + 1;
+    let (year, month) = if start == 1 {
+        (year - 1, 10)
+    } else {
+        (year, start - 3)
+    };
+    Date::from_ymd(year, month, 1).unwrap_or(observed_on)
+}
+
+/// Whether `previous` can stand in for the days before `cut`: this schema,
+/// this account, collected by this gitbonsai version (a release that changes
+/// collection always starts clean), and reaching up to `cut`.
+pub fn reusable(previous: &Snapshot, account_id: u64, cut: Date) -> bool {
+    previous.schema == SCHEMA
+        && previous.account_id == account_id
+        && previous.collected_with == format!("gitbonsai {}", crate::VERSION)
+        && previous.observed_on >= cut.add_days(-1)
 }
 
 const ARCHIVED_QUERY: &str = "query($login:String!){user(login:$login){repositories(first:100,ownerAffiliations:OWNER,isArchived:true){nodes{name archivedAt}}}}";
@@ -798,7 +850,7 @@ mod tests {
             calls: RefCell::new(0),
         };
         let observed: Date = "2026-03-31".parse().unwrap();
-        let snapshot = collect(&fake, "octo", observed, &mut |_| {}).unwrap();
+        let snapshot = collect(&fake, "octo", observed, None, &mut |_| {}).unwrap();
         assert_eq!(snapshot.account_id, 42);
         assert_eq!(snapshot.days.len(), 90);
         assert!(
@@ -809,5 +861,64 @@ mod tests {
         );
         assert_eq!(snapshot.truncated_windows, []);
         assert!(*fake.calls.borrow() > 2, "the quarter was split");
+    }
+
+    /// A snapshot collected through 2026-10-31 by the fake, with a marker:
+    /// 2026-02-10 holds 99 contributions.
+    fn earlier() -> Snapshot {
+        let fake = Fake {
+            split_above: 1000,
+            calls: RefCell::new(0),
+        };
+        let mut s = collect(&fake, "octo", d("2026-10-31"), None, &mut |_| {}).unwrap();
+        let day = s
+            .days
+            .iter_mut()
+            .find(|x| x.date == d("2026-02-10"))
+            .unwrap();
+        day.total = 99;
+        s
+    }
+
+    /// Window queries a collect through 2026-11-15 makes with `previous`,
+    /// and whether the marker survived.
+    fn again(previous: &Snapshot) -> (usize, bool) {
+        let fake = Fake {
+            split_above: 1000,
+            calls: RefCell::new(0),
+        };
+        let s = collect(&fake, "octo", d("2026-11-15"), Some(previous), &mut |_| {}).unwrap();
+        let marker = s
+            .days
+            .iter()
+            .any(|x| x.date == d("2026-02-10") && x.total == 99);
+        // Minus the user and archived queries.
+        (*fake.calls.borrow() - 2, marker)
+    }
+
+    #[test]
+    fn a_previous_snapshot_is_refetched_from_the_quarter_before() {
+        let (windows, marker) = again(&earlier());
+        assert_eq!(windows, 2, "2026-07..09 and 2026-10..11-15 only");
+        assert!(marker, "older days are kept as they were");
+    }
+
+    #[test]
+    fn an_unusable_snapshot_means_a_full_collect() {
+        let full = 4; // the four quarters of 2026
+        let mut other = earlier();
+        other.account_id = 7;
+        assert_eq!(again(&other), (full, false), "another account");
+        let mut old = earlier();
+        old.schema = crate::snapshot::LEGACY_SCHEMA;
+        assert_eq!(again(&old), (full, false), "schema 1");
+        let mut version = earlier();
+        version.collected_with = "gitbonsai 0.0.1".into();
+        assert_eq!(again(&version), (full, false), "another version");
+        let mut stale = earlier();
+        stale.days.retain(|x| x.date < d("2026-03-01"));
+        stale.observed_on = d("2026-03-31");
+        stale.range.to = stale.observed_on;
+        assert_eq!(again(&stale), (full, false), "it ends before the refetch");
     }
 }

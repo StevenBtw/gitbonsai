@@ -52,9 +52,15 @@ enum Command {
         /// GitHub login
         login: String,
 
-        /// Write here instead of stdout; replaced only after success
+        /// Write here instead of stdout; replaced only after success. A
+        /// snapshot already there from this version is reused: only recent
+        /// months are fetched again
         #[arg(long, short)]
         output: Option<PathBuf>,
+
+        /// Fetch the whole history, even with a reusable snapshot at --output
+        #[arg(long)]
+        full: bool,
     },
 
     /// Render light and dark SVGs, a PNG and preview.html
@@ -169,12 +175,21 @@ fn run(cli: Cli) -> Result<()> {
         }
     };
     match cli.command {
-        Command::Collect { login, output } => {
+        Command::Collect {
+            login,
+            output,
+            full,
+        } => {
             let observed_on = Date::today_utc().add_days(-1);
             status(&format!("collecting @{login} through {observed_on}"));
-            let snapshot = collect::collect(&collect::GhCli, &login, observed_on, &mut |line| {
-                status(line);
-            })?;
+            let previous = previous_snapshot(output.as_deref(), full, &mut |line| status(line));
+            let snapshot = collect::collect(
+                &collect::GhCli,
+                &login,
+                observed_on,
+                previous.as_ref(),
+                &mut |line| status(line),
+            )?;
             let json = snapshot.to_json();
             match output {
                 Some(path) => {
@@ -352,6 +367,24 @@ fn as_of(args: &TreeArgs) -> Result<Option<Date>> {
         .map_err(Into::into)
 }
 
+/// The snapshot at `output` to reuse, unless `full`: `None` for stdout, a
+/// first run, or a file that isn't a valid snapshot (reported, then
+/// replaced).
+fn previous_snapshot(
+    output: Option<&Path>,
+    full: bool,
+    status: &mut dyn FnMut(&str),
+) -> Option<Snapshot> {
+    let path = output.filter(|p| !full && p.exists())?;
+    match Snapshot::load(path) {
+        Ok(snapshot) => Some(snapshot),
+        Err(e) => {
+            status(&format!("not reusing {}: {e}", path.display()));
+            None
+        }
+    }
+}
+
 fn parse_interval(text: &str) -> Result<i32> {
     let invalid = || {
         Error::Config(format!(
@@ -510,7 +543,38 @@ fn summary(b: &Bonsai) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_interval;
+    use super::{parse_interval, previous_snapshot};
+
+    #[test]
+    fn a_missing_or_corrupt_previous_snapshot_is_ignored() {
+        let dir = std::env::temp_dir().join(format!("gitbonsai-prev-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut said = Vec::new();
+        let missing = dir.join("none.json");
+        assert!(
+            previous_snapshot(Some(&missing), false, &mut |s| said.push(s.to_string())).is_none()
+        );
+        assert!(said.is_empty(), "a first run says nothing");
+        let corrupt = dir.join("bad.json");
+        std::fs::write(&corrupt, "{not json").unwrap();
+        assert!(
+            previous_snapshot(Some(&corrupt), false, &mut |s| said.push(s.to_string())).is_none()
+        );
+        assert_eq!(said.len(), 1, "a corrupt file is reported: {said:?}");
+        let good = dir.join("good.json");
+        let snapshot = gitbonsai::fixtures::by_name("mono").unwrap().snapshot;
+        std::fs::write(&good, snapshot.to_json()).unwrap();
+        assert!(previous_snapshot(Some(&good), false, &mut |_| {}).is_some());
+        assert!(
+            previous_snapshot(Some(&good), true, &mut |_| {}).is_none(),
+            "--full"
+        );
+        assert!(
+            previous_snapshot(None, false, &mut |_| {}).is_none(),
+            "stdout"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
 
     #[test]
     fn an_interval_with_a_multibyte_unit_is_an_error() {

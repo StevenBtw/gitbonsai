@@ -28,6 +28,12 @@ inputs:
   config:
     description: A bonsai.toml in the workspace; a missing file means defaults.
     default: bonsai.toml
+  snapshot:
+    description:
+      Where the collected history is kept, relative to the workspace; empty
+      means bonsai.snapshot.json in output-dir. Commit it, and the next run
+      fetches only recent months instead of the whole history.
+    default: ""
   token:
     description:
       Token for reading the account's public data; the built-in token is enough.
@@ -40,6 +46,9 @@ outputs:
   dark:
     description: Path of the dark SVG.
     value: ${{ steps.render.outputs.dark }}
+  snapshot:
+    description: Path of the snapshot, to commit with the SVGs.
+    value: ${{ steps.collect.outputs.snapshot }}
 
 runs:
   using: composite
@@ -78,11 +87,20 @@ runs:
         tar -xzf "$archive"
         echo "$install_dir" >> "$GITHUB_PATH"
     - name: Collect the account's activity
+      id: collect
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.token }}
         BONSAI_LOGIN: ${{ inputs.login }}
-      run: gitbonsai collect "$BONSAI_LOGIN" --output "$RUNNER_TEMP/bonsai.snapshot.json"
+        BONSAI_SNAPSHOT: ${{ inputs.snapshot }}
+        BONSAI_OUTPUT_DIR: ${{ inputs.output-dir }}
+      run: |
+        # A snapshot from an earlier run of this version is reused: only
+        # recent months are fetched again.
+        snapshot="${BONSAI_SNAPSHOT:-$BONSAI_OUTPUT_DIR/bonsai.snapshot.json}"
+        mkdir -p "$(dirname "$snapshot")"
+        gitbonsai collect "$BONSAI_LOGIN" --output "$snapshot"
+        echo "snapshot=$snapshot" >> "$GITHUB_OUTPUT"
     - name: Grow the bonsai
       id: render
       shell: bash
@@ -91,6 +109,7 @@ runs:
         BONSAI_STYLE: ${{ inputs.style }}
         BONSAI_LEGEND: ${{ inputs.legend }}
         BONSAI_CONFIG: ${{ inputs.config }}
+        BONSAI_SNAPSHOT: ${{ steps.collect.outputs.snapshot }}
       run: |
         # Style and legend override the config only when given.
         args=(--output-dir "$BONSAI_OUTPUT_DIR" --config "$BONSAI_CONFIG")
@@ -100,6 +119,6 @@ runs:
         if [ -n "$BONSAI_LEGEND" ]; then
           args+=(--legend "$BONSAI_LEGEND")
         fi
-        gitbonsai render "$RUNNER_TEMP/bonsai.snapshot.json" "${args[@]}"
+        gitbonsai render "$BONSAI_SNAPSHOT" "${args[@]}"
         echo "light=$BONSAI_OUTPUT_DIR/bonsai-light.svg" >> "$GITHUB_OUTPUT"
         echo "dark=$BONSAI_OUTPUT_DIR/bonsai-dark.svg" >> "$GITHUB_OUTPUT"
