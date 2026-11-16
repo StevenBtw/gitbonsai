@@ -9,6 +9,13 @@
 /// A full turn in radians.
 pub const TAU: f64 = core::f64::consts::TAU;
 
+/// `x` squared: a plain product, the same bits everywhere (`powi` has no
+/// such promise).
+#[inline]
+pub fn sq(x: f64) -> f64 {
+    x * x
+}
+
 /// The natural logarithm.
 #[inline]
 pub fn ln(x: f64) -> f64 {

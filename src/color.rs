@@ -117,7 +117,7 @@ impl Rgb {
     pub fn delta_e(self, other: Self) -> f64 {
         let a = self.to_oklab();
         let b = other.to_oklab();
-        ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt()
+        (math::sq(a[0] - b[0]) + math::sq(a[1] - b[1]) + math::sq(a[2] - b[2])).sqrt()
     }
 }
 

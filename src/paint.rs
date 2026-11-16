@@ -256,14 +256,14 @@ pub fn taper_tip(pts: &mut [(f64, f64, f64, f64)]) {
     };
     let length: f64 = pts
         .windows(2)
-        .map(|w| ((w[1].0 - w[0].0).powi(2) + (w[1].1 - w[0].1).powi(2)).sqrt())
+        .map(|w| (math::sq(w[1].0 - w[0].0) + math::sq(w[1].1 - w[0].1)).sqrt())
         .sum();
     if length < tr * 10.0 {
         return;
     }
     let reach = (tr * 3.0).max(1e-9);
     for p in pts.iter_mut().rev() {
-        let d = ((p.0 - tx).powi(2) + (p.1 - ty).powi(2)).sqrt();
+        let d = (math::sq(p.0 - tx) + math::sq(p.1 - ty)).sqrt();
         if d >= reach {
             break;
         }
@@ -510,8 +510,8 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                     let mut idx = vec![0];
                     let mut run = 0.0;
                     for i in 1..m {
-                        run += ((seg[i].0 - seg[i - 1].0).powi(2)
-                            + (seg[i].1 - seg[i - 1].1).powi(2))
+                        run += (math::sq(seg[i].0 - seg[i - 1].0)
+                            + math::sq(seg[i].1 - seg[i - 1].1))
                         .sqrt();
                         if run >= 14.0 || i == m - 1 {
                             idx.push(i);
@@ -1062,7 +1062,10 @@ fn pot_front(b: &Bonsai, pot: &Pot) -> String {
             let mut ribs = PathData::new();
             for k in 0..7 {
                 let x = CENTER_X + hw * 0.8 * (f64::from(k) / 3.0 - 1.0);
-                let y = SOIL_Y + ry * (1.0 - (x - CENTER_X).powi(2) / hw.powi(2)).max(0.0).sqrt();
+                let y = SOIL_Y
+                    + ry * (1.0 - math::sq(x - CENTER_X) / math::sq(hw))
+                        .max(0.0)
+                        .sqrt();
                 ribs.m((x, y + 3.0))
                     .l((x * 0.98 + CENTER_X * 0.02, bottom + ry * 0.6));
             }

@@ -509,14 +509,16 @@ fn the_firefly_hovers_in_the_open() {
             .collect();
         let (x, y) = (xy[0], xy[1]);
         let scene = Scene::build(&bonsai);
-        let (s, c) = (TILT.sin(), TILT.cos());
+        let (s, c) = (gitbonsai::math::sin(TILT), gitbonsai::math::cos(TILT));
         for (c3, rx, ry, rz, _, _) in &scene.masses {
             let (cx, cy, _) = project(*c3);
             let hw = rx * WORLD;
-            let up = ((ry * c).powi(2) + (rz * s).powi(2)).sqrt() * WORLD;
+            let up = (gitbonsai::math::sq(ry * c) + gitbonsai::math::sq(rz * s)).sqrt() * WORLD;
             let down = rz * s * WORLD;
             let v = if y < cy { up } else { down };
-            let inside = ((x - cx) / hw).powi(2) + ((y - cy) / v.max(1e-6)).powi(2) < 1.0;
+            let inside = gitbonsai::math::sq((x - cx) / hw)
+                + gitbonsai::math::sq((y - cy) / v.max(1e-6))
+                < 1.0;
             assert!(
                 !inside,
                 "{name}: firefly at {x} {y} sits in a cloud at {cx} {cy}"
