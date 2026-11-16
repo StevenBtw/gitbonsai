@@ -230,11 +230,15 @@ pub fn parse_achievements(page: &str, login: &str) -> BTreeMap<String, u8> {
         let Some(slug) = rest.split(['&', '"']).next().filter(|s| !s.is_empty()) else {
             continue;
         };
-        let end = starts
+        let mut end = starts
             .get(k + 1)
             .copied()
             .unwrap_or(page.len())
             .min(start + 4000);
+        // A page is not ASCII: never cut a character in half.
+        while !page.is_char_boundary(end) {
+            end -= 1;
+        }
         let card = &page[start..end];
         let tier = card
             .find("achievement-tier-label--")
@@ -511,6 +515,23 @@ mod tests {
         assert_eq!(found["pull-shark"], 3);
         assert_eq!(found["public-sponsor"], 1);
         assert_eq!(found.len(), 2);
+    }
+
+    #[test]
+    fn achievements_survive_a_cut_inside_a_character() {
+        let head = r#"<a href="/octo?achievement=starstruck&amp;tab=achievements">"#;
+        // Pad so byte 4000 after the card's start (after `<a `) falls inside
+        // an e-acute.
+        let pad = "a".repeat(3 + 3999 - head.len());
+        let page = format!(
+            "{head}{pad}\u{e9}\u{e9}<span class=\"achievement-tier-label--gold\">x4</span></a>"
+        );
+        assert!(
+            !page.is_char_boundary(3 + 4000),
+            "the cut lands inside a character"
+        );
+        let found = parse_achievements(&page, "octo");
+        assert_eq!(found["starstruck"], 1, "the tier label lies past the cut");
     }
 
     #[test]

@@ -358,7 +358,9 @@ fn parse_interval(text: &str) -> Result<i32> {
             "`{text}` is not an interval; use for example 4w or 10d"
         ))
     };
-    let (number, unit) = text.split_at(text.len().saturating_sub(1));
+    // The unit is the last character, which need not be one byte.
+    let cut = text.char_indices().last().map_or(0, |(i, _)| i);
+    let (number, unit) = text.split_at(cut);
     let n: i32 = number.parse().map_err(|_| invalid())?;
     let days = match unit {
         "w" => n * 7,
@@ -504,4 +506,17 @@ fn summary(b: &Bonsai) -> String {
         b.extras.pot_tier,
         b.window.total
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_interval;
+
+    #[test]
+    fn an_interval_with_a_multibyte_unit_is_an_error() {
+        assert!(parse_interval("4\u{e9}").is_err());
+        assert!(parse_interval("\u{e9}").is_err());
+        assert_eq!(parse_interval("4w").unwrap(), 28);
+        assert_eq!(parse_interval("10d").unwrap(), 10);
+    }
 }
