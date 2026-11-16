@@ -2,7 +2,7 @@
 
 All notable changes to gitbonsai, a Japanese maple bonsai grown from GitHub activity. Any change to how a tree grows or looks is at least a minor version, because people notice their tree changing.
 
-## [0.2.0] - Unreleased
+## [0.2.0] - 2026-11-16
 
 Growth release: every tree is regrown as an exhibition maple, short, wide and full instead of tall, with its history in its trunks, limbs and crown. Every existing tree changes shape and some leaf colors change; there is no setting for the old growth, so stay on 0.1.2 to keep it.
 
