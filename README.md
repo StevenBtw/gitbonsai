@@ -20,10 +20,10 @@ The tree is yours: it grows from your own GitHub activity. A newcomer is a thin 
 
 From left:
 
-- **Newbie** (simulated): a few months in, two languages: a thin sprout in its first pot.
-- **[@StevenBtw](https://github.com/StevenBtw)**: around 9 years, mainly Python and Rust, each in their own trunk; recently picked up TypeScript.
-- **[@tj](https://github.com/tj)**: around 19 years: JavaScript, later Go; resting since 2021, so bare for the winter.
-- **[@torvalds](https://github.com/torvalds)**: around 16 years of C, every single week: one steady trunk.
+- **Newbie** (simulated); a few months in, two languages: a thin sprout in its first pot.
+- **[@StevenBtw](https://github.com/StevenBtw)**: around 9 years; mainly Python and Rust, each in their own trunk; recently picked up TypeScript.
+- **[@tj](https://github.com/tj)**: around 19 years; JavaScript, later Go; resting since 2021, so bare for the winter.
+- **[@torvalds](https://github.com/torvalds)**: around 16 years of C, every single week; one steady trunk.
 - **[@steipete](https://github.com/steipete)**: around 17 years, mostly TypeScript; early private work in silver on the lower limbs.
 
 The four real trees are grown from their public GitHub activity with `gitbonsai collect <login>` and `gitbonsai render`. Look closely: a tree may hide a few small surprises of its own.
