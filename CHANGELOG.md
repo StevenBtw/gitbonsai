@@ -2,7 +2,19 @@
 
 All notable changes to gitbonsai, a Japanese maple bonsai grown from GitHub activity. Any change to how a tree grows or looks is at least a minor version, because people notice their tree changing.
 
-## [0.2.2] - Unreleased
+## [0.2.3] - Unreleased
+
+Release process release: a release created in the GitHub UI gets its binaries again. Trees do not change.
+
+### Changed
+
+- **A release created in the GitHub UI gets its binaries**: the release job uploads them to it, or creates the release when only a tag was pushed, and fails when binaries are missing.
+
+### Removed
+
+- **The Action's attestation check**: releases are no longer immutable, so `gh release verify-asset` is gone; the sha256 check stays.
+
+## [0.2.2] - 2026-11-16
 
 Release fix: 0.2.1 was published without its binaries, so its Action cannot run. 0.2.2 ships the same changes; use `@v0.2.2`.
 
