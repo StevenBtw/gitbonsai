@@ -8,7 +8,7 @@ Honesty and safety release: silver leaves now mean private work only, issues and
 
 ### Added
 
-- **Weekly runs fetch only recent months**: `gitbonsai collect --output <file>` reuses a snapshot from the same version there and fetches again from the start of the previous quarter; `--full` fetches everything. The Action keeps it as `bonsai.snapshot.json` in `output-dir` (new `snapshot` input and output), and the example workflow commits it.
+- **Weekly runs fetch only recent months**: `gitbonsai collect --output <file>` reuses a snapshot from the same version there and fetches again from the start of the previous quarter; `--full` fetches everything. The Action keeps it as `bonsai.snapshot.json` in `output-dir` (new `snapshot` input and output, and `full` to fetch everything once), and the example workflow commits it.
 - **Issues, reviews and created repositories grow their language**: each counts one for its repository's primary language, as opened pull requests do.
 - **A gallery reference**: `gallery.sha256` holds the hash of every gallery SVG, and CI fails when a tree changes without it. `scripts/gallery-hashes.sh` writes it.
 
@@ -22,7 +22,7 @@ Honesty and safety release: silver leaves now mean private work only, issues and
 ### Fixed
 
 - **Achievement pages with non-ASCII text no longer stop collection**: a card cut inside a multibyte character panicked, so `collect` and the Action failed every run.
-- **`timelapse --every` rejects a non-ASCII unit**: `4Ã©` was a panic and is now an error.
+- **`timelapse --every` rejects a non-ASCII unit**: `4é` was a panic and is now an error.
 - **A missing config file named with `--config` is reported**: it prints a warning and uses the defaults; a missing default `bonsai.toml` stays silent.
 - **The crate docs describe the 0.2.0 growth**: girth, spread and fullness, not height.
 
