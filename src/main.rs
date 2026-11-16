@@ -32,9 +32,9 @@ struct Cli {
 /// Options that shape a tree, shared by the rendering commands.
 #[derive(clap::Args, Clone)]
 struct TreeArgs {
-    /// Config file; a missing file means all defaults
-    #[arg(long, default_value = "bonsai.toml")]
-    config: PathBuf,
+    /// Config file [default: bonsai.toml, all defaults when absent]
+    #[arg(long)]
+    config: Option<PathBuf>,
 
     /// Override [tree] style: chokkan, moyogi, shakan, fukinagashi
     #[arg(long)]
@@ -124,9 +124,9 @@ enum Command {
         #[arg(long = "snapshot")]
         snapshots: Vec<PathBuf>,
 
-        /// Config file; a missing file means all defaults
-        #[arg(long, default_value = "bonsai.toml")]
-        config: PathBuf,
+        /// Config file [default: bonsai.toml, all defaults when absent]
+        #[arg(long)]
+        config: Option<PathBuf>,
     },
 
     /// Render several trees side by side at one scale: row-light.svg and row-dark.svg
@@ -135,9 +135,9 @@ enum Command {
         #[arg(required = true)]
         trees: Vec<String>,
 
-        /// Config file; a missing file means all defaults
-        #[arg(long, default_value = "bonsai.toml")]
-        config: PathBuf,
+        /// Config file [default: bonsai.toml, all defaults when absent]
+        #[arg(long)]
+        config: Option<PathBuf>,
 
         /// Output folder
         #[arg(long, default_value = "bonsai")]
@@ -277,7 +277,7 @@ fn run(cli: Cli) -> Result<()> {
             snapshots,
             config,
         } => {
-            let config = Config::load(&config)?;
+            let config = config_file(config.as_deref(), &mut |s| status(s))?;
             gallery(&output_dir, &snapshots, &config)?;
             status(&format!(
                 "wrote {}",
@@ -289,7 +289,7 @@ fn run(cli: Cli) -> Result<()> {
             config,
             output_dir,
         } => {
-            let config = Config::load(&config)?;
+            let config = config_file(config.as_deref(), &mut |s| status(s))?;
             let mut grown = Vec::new();
             for text in &trees {
                 let (name, source, day) = gitbonsai::row::spec(text)?;
@@ -348,8 +348,25 @@ fn load_snapshot(source: &str) -> Result<Snapshot> {
     Ok(Snapshot::load(Path::new(source))?)
 }
 
+/// The config at `path`, or `bonsai.toml` when none is given. A missing
+/// `bonsai.toml` means all defaults; a missing file named on the command line
+/// does too, with a warning, since it is likely a typo.
+fn config_file(path: Option<&Path>, status: &mut dyn FnMut(&str)) -> Result<Config> {
+    match path {
+        Some(path) if !path.exists() => {
+            status(&format!(
+                "warning: {} not found; using the defaults",
+                path.display()
+            ));
+            Ok(Config::default())
+        }
+        Some(path) => Ok(Config::load(path)?),
+        None => Ok(Config::load(Path::new("bonsai.toml"))?),
+    }
+}
+
 fn load_config(args: &TreeArgs, snapshot: &Snapshot, status: &dyn Fn(&str)) -> Result<Config> {
-    let mut config = Config::load(&args.config)?;
+    let mut config = config_file(args.config.as_deref(), &mut |s| status(s))?;
     if let Some(style) = &args.style {
         config.tree.style = style.parse::<Style>()?;
     }
@@ -543,7 +560,23 @@ fn summary(b: &Bonsai) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_interval, previous_snapshot};
+    use super::{config_file, parse_interval, previous_snapshot};
+
+    #[test]
+    fn an_explicit_missing_config_warns() {
+        let mut said = Vec::new();
+        let missing = std::path::Path::new("no-such-dir/nope.toml");
+        let config = config_file(Some(missing), &mut |s| said.push(s.to_string())).unwrap();
+        assert_eq!(config, gitbonsai::Config::default());
+        assert_eq!(said.len(), 1, "{said:?}");
+        assert!(said[0].contains("nope.toml"), "{said:?}");
+        // The implicit bonsai.toml may be absent without a word (the tests
+        // run in the crate root, which has none).
+        assert!(!std::path::Path::new("bonsai.toml").exists());
+        said.clear();
+        config_file(None, &mut |s| said.push(s.to_string())).unwrap();
+        assert!(said.is_empty(), "{said:?}");
+    }
 
     #[test]
     fn a_missing_or_corrupt_previous_snapshot_is_ignored() {

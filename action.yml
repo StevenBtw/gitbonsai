@@ -26,7 +26,7 @@ inputs:
       the default (off).
     default: ""
   config:
-    description: A bonsai.toml in the workspace; a missing file means defaults.
+    description: A bonsai.toml in the workspace; a missing bonsai.toml means defaults, any other missing file a warning.
     default: bonsai.toml
   snapshot:
     description:
@@ -118,7 +118,12 @@ runs:
         BONSAI_SNAPSHOT: ${{ steps.collect.outputs.snapshot }}
       run: |
         # Style and legend override the config only when given.
-        args=(--output-dir "$BONSAI_OUTPUT_DIR" --config "$BONSAI_CONFIG")
+        args=(--output-dir "$BONSAI_OUTPUT_DIR")
+        # A config named in the inputs that is missing gets a warning; the
+        # default bonsai.toml may simply not exist.
+        if [ "$BONSAI_CONFIG" != bonsai.toml ] || [ -f "$BONSAI_CONFIG" ]; then
+          args+=(--config "$BONSAI_CONFIG")
+        fi
         if [ -n "$BONSAI_STYLE" ]; then
           args+=(--style "$BONSAI_STYLE")
         fi
