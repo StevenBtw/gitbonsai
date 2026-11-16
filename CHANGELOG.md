@@ -2,7 +2,7 @@
 
 All notable changes to gitbonsai, a Japanese maple bonsai grown from GitHub activity. Any change to how a tree grows or looks is at least a minor version, because people notice their tree changing.
 
-## [0.2.2] - Unreleased
+## [0.2.2] - 2026-11-16
 
 Release fix: 0.2.1 was published without its binaries, so its Action cannot run. 0.2.2 ships the same changes; use `@v0.2.2`.
 
