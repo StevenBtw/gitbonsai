@@ -154,7 +154,7 @@ pub fn collect(
     // Reuse what an earlier run of this version collected, up to the
     // previous quarter.
     let cut = refetch_from(observed_on);
-    let kept = previous.filter(|p| reusable(p, account_id, cut));
+    let kept = previous.filter(|p| reusable(p, account_id, from, cut));
     if let Some(p) = kept {
         progress(&format!(
             "reusing {} days before {cut}",
@@ -240,13 +240,15 @@ fn refetch_from(observed_on: Date) -> Date {
     Date::from_ymd(year, month, 1).unwrap_or(observed_on)
 }
 
-/// Whether `previous` can stand in for the days before `cut`: this schema,
-/// this account, collected by this gitbonsai version (a release that changes
-/// collection always starts clean), and reaching up to `cut`.
-pub fn reusable(previous: &Snapshot, account_id: u64, cut: Date) -> bool {
+/// Whether `previous` can stand in for the days from `from` to before `cut`:
+/// this schema, this account, collected by this gitbonsai version (a release
+/// that changes collection always starts clean), starting no later than the
+/// account's history does now, and reaching up to `cut`.
+pub fn reusable(previous: &Snapshot, account_id: u64, from: Date, cut: Date) -> bool {
     previous.schema == SCHEMA
         && previous.account_id == account_id
         && previous.collected_with == format!("gitbonsai {}", crate::VERSION)
+        && previous.range.from <= from
         && previous.observed_on >= cut.add_days(-1)
 }
 
@@ -920,5 +922,13 @@ mod tests {
         stale.observed_on = d("2026-03-31");
         stale.range.to = stale.observed_on;
         assert_eq!(again(&stale), (full, false), "it ends before the refetch");
+        // The account's history now starts earlier than the snapshot's (an
+        // imported repository, a linked email): fetch it all again.
+        let mut late = earlier();
+        late.days.retain(|x| x.date >= d("2026-02-01"));
+        late.range.from = d("2026-02-01");
+        late.days[0].total = 99;
+        let (windows, _) = again(&late);
+        assert_eq!(windows, full, "history before the snapshot's start");
     }
 }

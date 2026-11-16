@@ -34,9 +34,16 @@ inputs:
       means bonsai.snapshot.json in output-dir. Commit it, and the next run
       fetches only recent months instead of the whole history.
     default: ""
+  full:
+    description:
+      true fetches the whole history again instead of only recent months; use
+      it once after turning private contributions on or off in your profile.
+    default: "false"
   token:
     description:
-      Token for reading the account's public data; the built-in token is enough.
+      Token for reading the account's public data; the built-in token is
+      enough. The snapshot is committed with the SVGs, so a token that sees
+      private repositories would publish their languages and archived names.
     default: ${{ github.token }}
 
 outputs:
@@ -100,12 +107,17 @@ runs:
         BONSAI_LOGIN: ${{ inputs.login }}
         BONSAI_SNAPSHOT: ${{ inputs.snapshot }}
         BONSAI_OUTPUT_DIR: ${{ inputs.output-dir }}
+        BONSAI_FULL: ${{ inputs.full }}
       run: |
         # A snapshot from an earlier run of this version is reused: only
-        # recent months are fetched again.
+        # recent months are fetched again, unless full is true.
         snapshot="${BONSAI_SNAPSHOT:-$BONSAI_OUTPUT_DIR/bonsai.snapshot.json}"
         mkdir -p "$(dirname "$snapshot")"
-        gitbonsai collect "$BONSAI_LOGIN" --output "$snapshot"
+        args=(--output "$snapshot")
+        if [ "$BONSAI_FULL" = true ]; then
+          args+=(--full)
+        fi
+        gitbonsai collect "$BONSAI_LOGIN" "${args[@]}"
         echo "snapshot=$snapshot" >> "$GITHUB_OUTPUT"
     - name: Grow the bonsai
       id: render

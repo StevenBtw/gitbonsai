@@ -413,7 +413,7 @@ fn parse_interval(text: &str) -> Result<i32> {
     let (number, unit) = text.split_at(cut);
     let n: i32 = number.parse().map_err(|_| invalid())?;
     let days = match unit {
-        "w" => n * 7,
+        "w" => n.checked_mul(7).ok_or_else(invalid)?,
         "d" => n,
         _ => return Err(invalid().into()),
     };
@@ -615,5 +615,7 @@ mod tests {
         assert!(parse_interval("\u{e9}").is_err());
         assert_eq!(parse_interval("4w").unwrap(), 28);
         assert_eq!(parse_interval("10d").unwrap(), 10);
+        assert!(parse_interval("400000000w").is_err(), "too many weeks");
+        assert!(parse_interval("613566757w").is_err(), "no wrap-around");
     }
 }
