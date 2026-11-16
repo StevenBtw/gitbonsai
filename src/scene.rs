@@ -88,8 +88,6 @@ pub struct Tuft {
     pub samara: bool,
     /// Size factor.
     pub size: f64,
-    /// Where a twiglet joins the wood, when the leaf sits clear of it.
-    pub stem: Option<V3>,
     /// Work without language data: drawn in the private tone.
     pub private: bool,
 }
@@ -112,6 +110,11 @@ pub struct Scene {
     /// and whether it is private work.
     pub masses: Vec<(V3, f64, f64, f64, Rgb, bool)>,
 }
+
+/// How many of the side leaves (the lower flank of each cloud) carry
+/// samaras, per unit of [`samara_share`]: clouds are dense, so a level shows
+/// without spotting the crown.
+pub const SAMARA_RATE: f64 = 0.4;
 
 /// The share of leaf tufts carrying samaras at a lifetime level: none before
 /// level 3 (maples only seed when mature), more with every level after.
@@ -342,9 +345,11 @@ fn cloud_leaves(b: &Bonsai, scene: &mut Scene) {
                 q: 0.35 + 0.65 * u[1],
                 color: leaf_color(b, lang, hash01(seed ^ 0xc0, salt)),
                 fresh: u[1] > 0.55 && h < fresh_share * 2.5,
-                samara: lang.is_some() && u[1] > 0.1 && u[1] < 0.35 && h > 1.0 - seeds * 0.08,
+                samara: lang.is_some()
+                    && u[1] > 0.1
+                    && u[1] < 0.35
+                    && h > 1.0 - seeds * SAMARA_RATE,
                 size,
-                stem: None,
                 private: lang.is_none(),
             });
         }

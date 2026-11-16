@@ -71,7 +71,7 @@ use timeline::Timeline;
 /// The crate version, as recorded in snapshots and SVG metadata.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// Weeks of total silence before the canopy goes dormant.
+/// Weeks without a contribution before the canopy goes dormant.
 pub const DORMANT_AFTER: u32 = 52;
 
 /// A grown tree: every derived number, before painting.
@@ -107,6 +107,8 @@ pub struct Bonsai {
     pub archived: Vec<String>,
     /// Windows collection could not fully attribute.
     pub truncated_windows: Vec<DateRange>,
+    /// Declared private work: first day, last day, languages.
+    pub periods: Vec<(Date, Date, Vec<String>)>,
 }
 
 impl Bonsai {
@@ -120,20 +122,16 @@ impl Bonsai {
         let leader = Leader::new(config.tree.style, snapshot.account_id, config.tree.wind);
         let timeline = Timeline::new(&snapshot);
         let window = Window::of(&timeline);
-        let (states, order) = foliage::language_states(&timeline, &window);
-        let skeleton = growth::grow(
-            &timeline,
-            snapshot.account_id,
-            &leader,
-            &config.private_periods(),
-        );
-        let mut maple = MaplePalette::new(
+        let periods = config.private_periods();
+        let (states, order) = foliage::language_states(&timeline, &window, &periods);
+        let skeleton = growth::grow(&timeline, snapshot.account_id, &leader, &periods);
+        let maple = MaplePalette::new(
             &window,
             &order,
             &snapshot.language_colors,
             &config.leaves.colors,
+            config.leaves.private,
         );
-        maple.private = config.leaves.private;
         let extras = Extras::new(&timeline, timeline.age_weeks());
         Self {
             login: snapshot.login.clone(),
@@ -151,6 +149,7 @@ impl Bonsai {
             achievements: snapshot.achievements.clone(),
             archived: snapshot.archived_repos.clone(),
             truncated_windows: snapshot.truncated_windows.clone(),
+            periods,
         }
     }
 
@@ -177,8 +176,10 @@ impl Bonsai {
     }
 
     /// A year of total silence: the canopy is bare. The trunk never becomes jin.
+    /// The same rule the drawing follows, so the legend and `explain` agree
+    /// with what the tree shows.
     pub fn dormant(&self) -> bool {
-        self.window.total <= 0.0 && self.silent_weeks().is_some_and(|w| w >= DORMANT_AFTER)
+        self.skeleton.dormant
     }
 
     /// The text of the SVG's `<desc>`, also good for the README's `alt`.

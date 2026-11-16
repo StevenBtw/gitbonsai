@@ -279,6 +279,9 @@ fn run(cli: Cli) -> Result<()> {
             for text in &trees {
                 let (name, source, day) = gitbonsai::row::spec(text)?;
                 let snapshot = load_snapshot(&source)?;
+                for warning in config.warnings(&snapshot) {
+                    status(&format!("warning: {name}: {warning}"));
+                }
                 grown.push((name, Bonsai::grow(&snapshot, &config, day)));
             }
             for theme in Theme::ALL {

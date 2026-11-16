@@ -94,7 +94,9 @@ const APART: f64 = 0.1;
 
 /// `c`, or the nearest color on the maple arc that is at least [`APART`]
 /// from every color already placed: hues along the arc, lightness from deep
-/// to bright, at full maple chroma.
+/// to bright, at full maple chroma. When the arc has no clear color left
+/// (dozens of languages), `c` is kept: a near clash beats an off-palette
+/// leaf.
 fn distinct(c: Rgb, placed: &[Rgb]) -> Rgb {
     let clear = |x: Rgb| placed.iter().all(|p| p.delta_e(x) >= APART);
     if clear(c) {
@@ -144,6 +146,7 @@ impl MaplePalette {
         order: &[String],
         linguist: &BTreeMap<String, Option<Rgb>>,
         overrides: &BTreeMap<String, Rgb>,
+        private: Rgb,
     ) -> Self {
         let mut ranked: Vec<(&String, f64)> =
             window.by_language.iter().map(|(l, v)| (l, *v)).collect();
@@ -155,7 +158,7 @@ impl MaplePalette {
             }
         }
         let mut colors = BTreeMap::new();
-        let mut placed = vec![MAPLE_GREEN, PRIVATE_GREY];
+        let mut placed = vec![MAPLE_GREEN, private];
         for language in all {
             let c = if let Some(&verbatim) = overrides.get(&language) {
                 verbatim
@@ -182,7 +185,7 @@ impl MaplePalette {
         Self {
             colors,
             crown,
-            private: PRIVATE_GREY,
+            private,
         }
     }
 
@@ -257,7 +260,7 @@ mod tests {
         .into_iter()
         .map(|(l, c)| (l.to_string(), Some(Rgb::hex(c))))
         .collect();
-        let p = MaplePalette::new(&window, &[], &linguist, &BTreeMap::new());
+        let p = MaplePalette::new(&window, &[], &linguist, &BTreeMap::new(), PRIVATE_GREY);
         let ts = p.colors["TypeScript"].to_oklch();
         let js = p.colors["JavaScript"].to_oklch();
         let py = p.colors["Python"].to_oklch();
@@ -266,7 +269,7 @@ mod tests {
         assert!((120.0..170.0).contains(&py.h), "Python stays green: {py:?}");
         let mut pinned = BTreeMap::new();
         pinned.insert("TypeScript".to_string(), Rgb::hex(0x0012_3456));
-        let p = MaplePalette::new(&window, &[], &linguist, &pinned);
+        let p = MaplePalette::new(&window, &[], &linguist, &pinned, PRIVATE_GREY);
         assert_eq!(p.colors["TypeScript"], Rgb::hex(0x0012_3456), "config wins");
     }
 
@@ -296,7 +299,23 @@ mod tests {
                 ((*l).to_string(), Some(Rgb::hex(*c)))
             })
             .collect();
-        MaplePalette::new(&window, &[], &linguist, &BTreeMap::new())
+        MaplePalette::new(&window, &[], &linguist, &BTreeMap::new(), PRIVATE_GREY)
+    }
+
+    #[test]
+    fn languages_stay_apart_from_the_configured_private_color() {
+        let mut window = Window::default();
+        window.by_language.insert("Go".into(), 10.0);
+        let linguist: BTreeMap<String, Option<Rgb>> =
+            [("Go".to_string(), Some(Rgb::hex(0x0000_add8)))].into();
+        let natural = MaplePalette::new(&window, &[], &linguist, &BTreeMap::new(), PRIVATE_GREY);
+        let go = natural.colors["Go"];
+        let p = MaplePalette::new(&window, &[], &linguist, &BTreeMap::new(), go);
+        assert_eq!(p.private, go);
+        assert!(
+            p.colors["Go"].delta_e(go) >= APART,
+            "Go moves off the silver"
+        );
     }
 
     #[test]

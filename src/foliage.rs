@@ -7,11 +7,12 @@
 use std::collections::BTreeMap;
 
 use crate::date::Date;
-use crate::growth::life::dropped;
+use crate::growth::life::Life;
 use crate::math;
 use crate::timeline::{Timeline, WEEKLY_CAP, WINDOW_WEEKS};
 
-/// Complete silent weeks after which a language's branches turn to jin.
+/// Complete silent weeks after which a language's branches can turn to jin,
+/// once it is also dropped.
 pub const JIN_AFTER: i32 = 52;
 
 /// Leaf density for an average of `v` contributions per week: 0 to 1, with
@@ -27,7 +28,8 @@ pub enum LanguageState {
     Alive,
     /// None in the window: bare wood.
     Bare,
-    /// 52 silent weeks: bleached deadwood, permanently.
+    /// Dropped: 52 silent weeks while the account kept working at least 30
+    /// more days without it. Bleached deadwood, permanently.
     Jin,
 }
 
@@ -66,9 +68,12 @@ impl Window {
 }
 
 /// Every language's state, and the order languages first appeared in.
+/// Languages declared for private work in `periods` count as used then, as
+/// they do in the tree, and come after the public ones.
 pub fn language_states(
     timeline: &Timeline,
     window: &Window,
+    periods: &[(Date, Date, Vec<String>)],
 ) -> (BTreeMap<String, LanguageState>, Vec<String>) {
     let weeks = timeline.complete_weeks();
     let last = weeks.last().map_or(0, |w| w.no);
@@ -84,31 +89,16 @@ pub fn language_states(
             }
         }
     }
-    // Dropped means the account kept working without it; a resting account
-    // drops nothing.
-    let active: Vec<Date> = timeline
-        .days
-        .iter()
-        .filter(|d| d.total > 0.0)
-        .map(|d| d.date)
-        .collect();
-    let mut last_used: BTreeMap<&str, Date> = BTreeMap::new();
-    for d in &timeline.days {
-        for (language, amount) in &d.by_language {
-            if *amount > 0.0 {
-                last_used.insert(language.as_str(), d.date);
-            }
-        }
-    }
-    let states = last_active
+    // Dropped means the account kept working without it, by the rule the
+    // tree follows; a resting account drops nothing.
+    let life = Life::of(timeline, periods);
+    let dropped = |language: &str| life.as_ref().is_some_and(|l| l.dropped(language));
+    let mut states: BTreeMap<String, LanguageState> = last_active
         .into_iter()
         .map(|(language, week)| {
-            let dropped = last_used
-                .get(language.as_str())
-                .is_some_and(|day| dropped(*day, timeline.observed_on, &active));
             let state = if window.of_language(Some(&language)) > 0.0 {
                 LanguageState::Alive
-            } else if last - week >= JIN_AFTER && dropped {
+            } else if last - week >= JIN_AFTER && dropped(&language) {
                 LanguageState::Jin
             } else {
                 LanguageState::Bare
@@ -116,6 +106,19 @@ pub fn language_states(
             (language, state)
         })
         .collect();
+    if let Some(life) = &life {
+        for (language, _) in &life.lang {
+            if !states.contains_key(language) {
+                let state = if dropped(language) {
+                    LanguageState::Jin
+                } else {
+                    LanguageState::Bare
+                };
+                states.insert(language.clone(), state);
+                order.push(language.clone());
+            }
+        }
+    }
     (states, order)
 }
 

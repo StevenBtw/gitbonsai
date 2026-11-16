@@ -104,7 +104,7 @@ fn branch_spots(scene: &Scene) -> Vec<(usize, f64, f64)> {
                 let hw = rx * WORLD + 10.0;
                 let up = ((ry * c) * (ry * c) + (rz * s) * (rz * s)).sqrt() * WORLD + 8.0;
                 if (x - cx).abs() < hw && y > cy - up - 34.0 && y < cy + rz * s * WORLD + 6.0 {
-                    crowd += 1000;
+                    crowd += COVERED;
                 }
             }
             if y < SOIL_Y - 90.0 {
@@ -114,18 +114,28 @@ fn branch_spots(scene: &Scene) -> Vec<(usize, f64, f64)> {
             }
         }
     }
-    upper.sort_by(|a, c| {
-        a.0.cmp(&c.0)
-            .then(a.2.total_cmp(&c.2))
-            .then(a.1.total_cmp(&c.1))
+    rank(upper, lower)
+}
+
+/// What a cloud adds to a spot's crowding: more than any count of leaves.
+const COVERED: usize = 1000;
+
+/// Spots `(crowd, x, y)` in the order eggs take them: every clear spot
+/// before any under a cloud, upper before lower, then least crowded, highest
+/// and leftmost first.
+fn rank(upper: Vec<(usize, f64, f64)>, lower: Vec<(usize, f64, f64)>) -> Vec<(usize, f64, f64)> {
+    let mut all: Vec<(bool, bool, (usize, f64, f64))> = upper
+        .into_iter()
+        .map(|s| (s.0 >= COVERED, false, s))
+        .chain(lower.into_iter().map(|s| (s.0 >= COVERED, true, s)))
+        .collect();
+    all.sort_by(|a, c| {
+        (a.0, a.1, a.2.0)
+            .cmp(&(c.0, c.1, c.2.0))
+            .then(a.2.2.total_cmp(&c.2.2))
+            .then(a.2.1.total_cmp(&c.2.1))
     });
-    lower.sort_by(|a, c| {
-        a.0.cmp(&c.0)
-            .then(a.2.total_cmp(&c.2))
-            .then(a.1.total_cmp(&c.1))
-    });
-    upper.extend(lower);
-    upper
+    all.into_iter().map(|(_, _, s)| s).collect()
 }
 
 /// Where the firefly hovers: in open air close to the leaves, never inside
@@ -589,4 +599,18 @@ pub fn kintsugi(archived: &[String], seed: u64, pot: &Pot) -> String {
         r#"<clipPath id="pc"><path d="{}"/></clipPath><g clip-path="url(#pc)">{veins}</g>"#,
         wall.as_str()
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn spots_under_a_cloud_come_after_every_clear_spot() {
+        let covered_high = (COVERED + 2, 200.0, 100.0);
+        let clear_high = (5, 220.0, 110.0);
+        let clear_low = (40, 240.0, 300.0);
+        let ranked = rank(vec![covered_high, clear_high], vec![clear_low]);
+        assert_eq!(ranked, vec![clear_high, clear_low, covered_high]);
+    }
 }

@@ -9,7 +9,7 @@ use std::fmt::Write as _;
 
 use crate::Error;
 use crate::date::Date;
-use crate::render::Theme;
+use crate::render::{Coarse, Theme};
 
 /// Space between two trees, in world units.
 pub const GAP: f64 = 28.0;
@@ -35,8 +35,8 @@ pub fn row(trees: &[(String, String)], theme: Theme) -> String {
     let _ = write!(
         out,
         r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {} {}" role="img" aria-labelledby="row-t"><title id="row-t">Bonsai at one scale: {}</title>"#,
-        num(width),
-        num(tall + NAME_ROOM),
+        Coarse(width),
+        Coarse(tall + NAME_ROOM),
         escape(&names.join(", "))
     );
     let mut x = 0.0;
@@ -44,20 +44,20 @@ pub fn row(trees: &[(String, String)], theme: Theme) -> String {
         let _ = write!(
             out,
             r#"<svg x="{}" y="{}" width="{}" height="{}" viewBox="{} {} {} {}" overflow="visible">{body}</svg>"#,
-            num(x),
-            num(tall - vb[3]),
-            num(vb[2]),
-            num(vb[3]),
-            num(vb[0]),
-            num(vb[1]),
-            num(vb[2]),
-            num(vb[3]),
+            Coarse(x),
+            Coarse(tall - vb[3]),
+            Coarse(vb[2]),
+            Coarse(vb[3]),
+            Coarse(vb[0]),
+            Coarse(vb[1]),
+            Coarse(vb[2]),
+            Coarse(vb[3]),
         );
         let _ = write!(
             out,
             r#"<text x="{}" y="{}" text-anchor="middle" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="24" font-weight="600" fill="{ink}">{}</text>"#,
-            num(x + vb[2] / 2.0),
-            num(tall + 30.0),
+            Coarse(x + vb[2] / 2.0),
+            Coarse(tall + 30.0),
             escape(name)
         );
         x += vb[2] + GAP;
@@ -151,17 +151,10 @@ pub fn spec(text: &str) -> Result<(String, String, Option<Date>), Error> {
         ),
         _ => (rest, None),
     };
-    Ok((name.to_string(), source.to_string(), day))
-}
-
-/// A number with at most one decimal.
-fn num(v: f64) -> String {
-    let r = (v * 10.0).round() / 10.0;
-    if r.fract() == 0.0 {
-        format!("{r:.0}")
-    } else {
-        format!("{r:.1}")
+    if source.trim().is_empty() {
+        return Err(bad("empty snapshot"));
     }
+    Ok((name.to_string(), source.to_string(), day))
 }
 
 /// Text safe inside SVG.
@@ -204,6 +197,7 @@ mod tests {
         assert_eq!(day, Some("2024-05-01".parse().unwrap()));
         assert!(spec("no-name").is_err());
         assert!(spec("x=a.json@soon").is_err());
+        assert!(spec("x=@2024-05-01").is_err(), "a day without a snapshot");
     }
 
     #[test]

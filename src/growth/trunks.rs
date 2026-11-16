@@ -1,7 +1,7 @@
 //! Which languages become trunks.
 //!
-//! A language with at least 23% of lifetime contributions earns its own
-//! trunk: one trunk is common, two happen, three are rare, four almost never.
+//! A language with at least 23% of the lifetime contributions that have
+//! language data (private work does not count) earns its own trunk: one trunk is common, two happen, three are rare, four almost never.
 //! The busiest is the main trunk. A trunk whose language was dropped becomes
 //! deadwood. A first-year seedling is always a single stem.
 
@@ -15,7 +15,8 @@ const TRUNK_SHARE: f64 = 0.23;
 pub struct Trunk {
     /// The language; `None` for an account without language data.
     pub lang: Lang,
-    /// Share of lifetime contributions with a language (1 for a lone trunk).
+    /// Share of lifetime contributions with a language; 1 when no language
+    /// reaches a trunk's share.
     pub share: f64,
     /// The language was dropped: the trunk is deadwood.
     pub dropped: bool,

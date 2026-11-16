@@ -42,9 +42,13 @@ pub fn parse_period(key: &str) -> Result<(Date, Date), Error> {
             m.trim().parse().map_err(|_| bad())?,
         ),
     };
+    let year = |y: i32| (1..=9999).contains(&y);
+    if !(1..=12).contains(&ma) || !(1..=12).contains(&mb) || !year(ya) || !year(yb) {
+        return Err(bad());
+    }
     let from = Date::from_ymd(ya, ma, 1).ok_or_else(bad)?;
     let next = if mb == 12 {
-        Date::from_ymd(yb + 1, 1, 1)
+        yb.checked_add(1).and_then(|y| Date::from_ymd(y, 1, 1))
     } else {
         Date::from_ymd(yb, mb + 1, 1)
     };
@@ -302,8 +306,19 @@ impl Config {
         if self.render.size == 0 {
             return Err(Error::Config("[render] size must be at least 1".into()));
         }
+        let mut periods: Vec<(Date, Date, &String)> = Vec::new();
         for key in self.leaves.private_periods.keys() {
-            parse_period(key)?;
+            let (from, to) = parse_period(key)?;
+            periods.push((from, to, key));
+        }
+        periods.sort();
+        for pair in periods.windows(2) {
+            if pair[1].0 <= pair[0].1 {
+                return Err(Error::Config(format!(
+                    "[leaves.private_periods] `{}` and `{}` overlap; each month belongs to one period",
+                    pair[0].2, pair[1].2
+                )));
+            }
         }
         Ok(())
     }
@@ -371,9 +386,24 @@ mod tests {
             (d("2019-03-01"), d("2021-06-30"))
         );
         assert!(parse_period("2023..2019").is_err());
+        assert!(parse_period("2019..2020-00").is_err(), "no month 0");
+        assert!(parse_period("2019-13..2020").is_err(), "no month 13");
+        assert!(
+            parse_period("2019..2147483647").is_err(),
+            "no year overflow"
+        );
+        assert!(parse_period("2147483647..2147483647").is_err());
         assert!(parse_period("soon").is_err());
         let bad = Config::from_toml("[leaves.private_periods]\n\"2023..2019\" = [\"Go\"]\n");
         assert!(bad.is_err());
+        let overlap = Config::from_toml(
+            "[leaves.private_periods]\n\"2019..2023\" = [\"Go\"]\n\"2021-03..2024\" = [\"Rust\"]\n",
+        );
+        assert!(overlap.is_err(), "overlapping periods are reported");
+        let apart = Config::from_toml(
+            "[leaves.private_periods]\n\"2019..2020\" = [\"Go\"]\n\"2021..2022\" = [\"Rust\"]\n",
+        );
+        assert!(apart.is_ok());
     }
 
     #[test]

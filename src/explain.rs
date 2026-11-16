@@ -5,13 +5,14 @@ use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
 use crate::Bonsai;
+use crate::date::Date;
 use crate::eggs::{DRAWN, MAX_SEAMS};
 use crate::foliage::{LanguageState, density};
 use crate::growth::clouds::lead_of;
 use crate::growth::dome::crown_years;
 use crate::growth::life::Life;
 use crate::growth::trunks::{Trunk, trunks};
-use crate::scene::{radius, samara_share};
+use crate::scene::{SAMARA_RATE, radius, samara_share};
 
 /// The report, as plain text.
 pub fn report(b: &Bonsai) -> String {
@@ -73,7 +74,7 @@ pub fn report(b: &Bonsai) -> String {
             "  dormant             a year without contributions; the canopy is bare"
         );
     }
-    if let Some(life) = Life::of(&b.timeline, &[]) {
+    if let Some(life) = Life::of(&b.timeline, &b.periods) {
         let names = |t: &[Trunk]| {
             t.iter()
                 .map(|t| {
@@ -88,13 +89,25 @@ pub fn report(b: &Bonsai) -> String {
                 .join(", ")
         };
         let _ = writeln!(out, "  trunks              {}", names(&trunks(&life)));
-        let crown = crown_years(&b.timeline);
+        let crown = crown_years(&b.timeline, &b.periods);
         if let (Some(a), Some(z)) = (crown.first(), crown.last()) {
             let _ = writeln!(out, "  crown               {a} to {z}");
         }
     }
     let total: f64 = b.timeline.days.iter().map(|d| d.total).sum();
-    let private: f64 = b.timeline.days.iter().map(|d| d.unattributed).sum();
+    // Work declared in `[leaves.private_periods]` has a language.
+    let declared = |day: Date| {
+        b.periods
+            .iter()
+            .any(|(a, z, langs)| *a <= day && day <= *z && !langs.is_empty())
+    };
+    let private: f64 = b
+        .timeline
+        .days
+        .iter()
+        .filter(|d| !declared(d.date))
+        .map(|d| d.unattributed)
+        .sum();
     if total > 0.0 && private > 0.0 {
         let _ = writeln!(
             out,
@@ -118,14 +131,14 @@ pub fn report(b: &Bonsai) -> String {
             LanguageState::Jin => "jin",
         };
         let v = b.window.of_language(Some(language));
-        let pads = sk
+        let clouds = sk
             .clouds
             .iter()
             .filter(|c| lead_of(c).as_deref() == Some(language.as_str()))
             .count();
         let _ = writeln!(
             out,
-            "  {:<18} {state:<5}  lifetime {:>8.0}  window {:>6.1}/wk  density {:>6}  pads {pads}  leaves {}",
+            "  {:<18} {state:<5}  lifetime {:>8.0}  window {:>6.1}/wk  density {:>6}  clouds {clouds}  leaves {}",
             truncate(language, 18),
             lifetime.get(language.as_str()).copied().unwrap_or(0.0),
             v,
@@ -164,7 +177,7 @@ pub fn report(b: &Bonsai) -> String {
         out,
         "  level               {} (samaras on {} of side leaves)",
         e.level,
-        pct(samara_share(e.level) * 1.4)
+        pct(samara_share(e.level) * SAMARA_RATE)
     );
     if let Some(level) = e.bloom {
         let _ = writeln!(

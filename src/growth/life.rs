@@ -20,6 +20,8 @@ pub const FULL_YEAR: f64 = 3200.0;
 
 /// Days of silence before a language can count as dropped.
 const DROP_AFTER_DAYS: i32 = 52 * 7;
+/// Days of total silence before the tree stands bare for the winter.
+const DORMANT_AFTER_DAYS: i32 = crate::DORMANT_AFTER.cast_signed() * 7;
 /// Active days the account must keep working without a language to drop it.
 const DROP_AFTER_ACTIVE: usize = 30;
 
@@ -174,11 +176,11 @@ impl Life {
 
     /// Whether `lang` was dropped: silent for a year while the account kept
     /// working at least 30 more days without it. A resting account drops
-    /// nothing.
+    /// nothing, and a language never used is not dropped.
     pub fn dropped(&self, lang: &str) -> bool {
         self.last_used
             .get(lang)
-            .is_none_or(|last| dropped(*last, self.observed, &self.active_days))
+            .is_some_and(|last| dropped(*last, self.observed, &self.active_days))
     }
 
     /// Years since the first active day.
@@ -188,7 +190,7 @@ impl Life {
 
     /// Whether the account has been silent for a year: the tree rests.
     pub fn dormant(&self) -> bool {
-        self.observed.days_since(self.last_active) >= DROP_AFTER_DAYS
+        self.observed.days_since(self.last_active) >= DORMANT_AFTER_DAYS
     }
 
     /// Whether year `i` counts as a year of growth: five active days or
@@ -287,6 +289,12 @@ mod tests {
         (0..n)
             .map(|i| (from.add_days(i), 3, &[("Python", 3)][..]))
             .collect()
+    }
+
+    #[test]
+    fn a_language_never_used_is_not_dropped() {
+        let l = life(&python_days(d("2020-01-06"), 400), d("2022-01-01"));
+        assert!(!l.dropped("Cobol"));
     }
 
     #[test]

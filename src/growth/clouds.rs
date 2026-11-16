@@ -186,6 +186,9 @@ mod tests {
         );
         merge_clouds(&mut sk);
         assert_eq!(sk.clouds.len(), 1, "same language, overlapping: one mass");
+        let patches = &sk.clouds[0].patches;
+        assert_eq!(patches.len(), 4, "both clouds' patches");
+        assert!(patches.iter().all(|p| p.2 == rust), "all of them Rust");
 
         let mut sk = root_only();
         pad(

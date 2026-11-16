@@ -179,11 +179,12 @@ fn rows(b: &Bonsai, paints: &Paints, signs: Signs) -> Vec<Row> {
         ));
     }
 
-    // Silver leaves, when the tree shows any.
-    if b.skeleton
-        .clouds
-        .iter()
-        .any(|c| c.patches.iter().any(|p| p.2.is_none()))
+    // Silver leaves, when the tree shows any; a bare tree shows none.
+    if !b.dormant()
+        && b.skeleton
+            .clouds
+            .iter()
+            .any(|c| c.patches.iter().any(|p| p.2.is_none()))
     {
         let silver = private_tone(b.maple.private(), paints.dark);
         rows.push(Row::sign(Mark::Leaf(silver), "private work".into()));

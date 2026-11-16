@@ -12,7 +12,7 @@ pub fn snap(days: &[(Date, u32, &[(&str, u32)])], observed: Date) -> Snapshot {
         login: "t".into(),
         account_id: 1,
         range: DateRange {
-            from: days[0].0,
+            from: days.first().map_or(observed, |d| d.0),
             to: observed,
         },
         observed_on: observed,

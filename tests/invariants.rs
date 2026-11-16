@@ -332,9 +332,8 @@ fn edge_accounts_still_grow_something() {
         "and they carry no language"
     );
 
-    let mut one_day = fixtures::by_name("steady").unwrap().snapshot;
-    one_day.days.truncate(1);
-    one_day.observed_on = one_day.days[0].date;
+    let steady = fixtures::by_name("steady").unwrap().snapshot;
+    let one_day = steady.truncated(steady.days[0].date);
     let tiny = Bonsai::grow(&one_day, &Config::default(), None);
     assert!(tiny.skeleton.nodes.len() > 1, "a single day still sprouts");
 
@@ -398,10 +397,10 @@ fn the_tree_is_never_tall() {
 #[test]
 fn the_crown_holds_three_to_six_years() {
     let timeline = |name: &str| Timeline::new(&fixtures::by_name(name).unwrap().snapshot);
-    let veteran = dome::crown_years(&timeline("veteran"));
+    let veteran = dome::crown_years(&timeline("veteran"), &[]);
     assert!((3..=6).contains(&veteran.len()), "{veteran:?}");
     assert_eq!(
-        dome::crown_years(&timeline("comeback")),
+        dome::crown_years(&timeline("comeback"), &[]),
         [2022, 2023, 2024, 2025, 2026]
     );
 }
@@ -566,4 +565,84 @@ fn explain_shows_private_work() {
         .find(|l| l.contains("private work"))
         .expect("a private work line");
     assert!(line.contains('%'), "{line}");
+}
+
+/// Work declared in `[leaves.private_periods]` is that language everywhere:
+/// its own color, a place in the legend, and in `explain`.
+#[test]
+fn declared_private_work_is_named_everywhere() {
+    let snapshot = fixtures::by_name("private").unwrap().snapshot;
+    let config =
+        Config::from_toml("[leaves.private_periods]\n\"2023..2026\" = [\"Go\"]\n").unwrap();
+    let b = Bonsai::grow(&snapshot, &config, None);
+    assert!(b.maple.colors.contains_key("Go"), "Go has its own color");
+    assert!(
+        b.order.iter().any(|l| l == "Go"),
+        "and a place in the legend"
+    );
+    let report = gitbonsai::explain::report(&b);
+    assert!(
+        report
+            .lines()
+            .any(|l| l.trim_start().starts_with("trunks") && l.contains("Go")),
+        "{report}"
+    );
+    assert!(!report.contains("silver leaves"), "{report}");
+}
+
+/// A language declared for recent private work is not deadwood, in the
+/// legend as in the tree.
+#[test]
+fn declared_recent_work_keeps_a_language_alive() {
+    let mut snapshot = fixtures::by_name("showcase").unwrap().snapshot;
+    let from: gitbonsai::date::Date = "2026-06-01".parse().unwrap();
+    for d in &mut snapshot.days {
+        if d.date >= from {
+            d.by_language.clear();
+        }
+    }
+    let config =
+        Config::from_toml("[leaves.private_periods]\n\"2026-06..2026-12\" = [\"C#\"]\n").unwrap();
+    let b = Bonsai::grow(&snapshot, &config, None);
+    assert_ne!(b.state(Some("C#")), LanguageState::Jin);
+    let report = gitbonsai::explain::report(&b);
+    assert!(!report.contains("C# (dead)"), "{report}");
+}
+
+/// The legend says winter exactly when the canopy is bare, and names no
+/// silver leaves on a bare tree.
+#[test]
+fn the_legend_and_the_drawing_agree_on_winter() {
+    let snapshot = fixtures::by_name("private").unwrap().snapshot;
+    let last = snapshot
+        .days
+        .iter()
+        .rev()
+        .find(|d| d.total > 0)
+        .unwrap()
+        .date;
+    let mut later = snapshot.clone();
+    later.observed_on = last.add_days(400);
+    later.range.to = later.observed_on;
+    let mut config = Config::default();
+    config.render.legend = Legend::Left;
+    for k in 355..=372 {
+        let b = Bonsai::grow(&later, &config, Some(last.add_days(k)));
+        assert_eq!(b.dormant(), b.skeleton.dormant, "day {k}");
+    }
+    let bare = Bonsai::grow(&later, &config, None);
+    assert!(bare.skeleton.dormant);
+    let svg = render::svg(&bare, &config, Theme::Light).to_lowercase();
+    assert!(svg.contains("winter"));
+    assert!(!svg.contains("private work"), "no silver leaves to name");
+}
+
+/// A mature tree carries samaras for its lifetime level, enough to see.
+#[test]
+fn the_lifetime_level_shows_as_samaras() {
+    let b = grow("showcase");
+    assert!(b.extras.level >= 3, "level {}", b.extras.level);
+    let scene = gitbonsai::scene::Scene::build(&b);
+    let samaras = scene.tufts.iter().filter(|t| t.samara).count();
+    assert!(samaras >= 5, "{samaras} samaras");
 }

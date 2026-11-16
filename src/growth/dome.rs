@@ -307,10 +307,11 @@ impl Frame {
     }
 }
 
-/// The crown years of a timeline, oldest first.
+/// The crown years of a timeline, oldest first, with private work declared
+/// in `periods`.
 #[doc(hidden)]
-pub fn crown_years(timeline: &Timeline) -> Vec<i32> {
-    let Some(life) = Life::of(timeline, &[]) else {
+pub fn crown_years(timeline: &Timeline, periods: &[(Date, Date, Vec<String>)]) -> Vec<i32> {
+    let Some(life) = Life::of(timeline, periods) else {
         return Vec::new();
     };
     let plan = plan_years(&life, &trunks(&life));
