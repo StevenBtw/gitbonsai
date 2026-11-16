@@ -99,7 +99,7 @@ jobs:
       - name: Hash the outputs
         shell: bash
         run: |
-          scripts/gallery-hashes.sh gallery > hashes-${{ matrix.os }}.txt
+          bash scripts/gallery-hashes.sh gallery > hashes-${{ matrix.os }}.txt
           sha256sum hashes-${{ matrix.os }}.txt
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
