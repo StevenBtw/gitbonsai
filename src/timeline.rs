@@ -418,6 +418,8 @@ mod tests {
             truncated_windows: Vec::new(),
             achievements: BTreeMap::new(),
             archived_repos: Vec::new(),
+            achievement_dates: BTreeMap::new(),
+            archived_dates: BTreeMap::new(),
         }
     }
 

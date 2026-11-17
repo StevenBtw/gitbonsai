@@ -21,6 +21,33 @@ pub fn density(v: f64) -> f64 {
     math::ln(1.0 + v.clamp(0.0, WEEKLY_CAP) / 10.0) / math::ln(101.0)
 }
 
+/// How much of a language's foliage is left after `silent` complete weeks
+/// without it: all of it through the 13-week window, then less each week,
+/// none after a year. Leaves fall before wood dies or a tree rests.
+pub fn fullness(silent: i32) -> f64 {
+    let window = WINDOW_WEEKS;
+    let year = f64::from(JIN_AFTER);
+    (1.0 - (f64::from(silent) - window) / (year - window)).clamp(0.0, 1.0)
+}
+
+/// Each language's foliage left ([`fullness`]), by its last complete week
+/// with work.
+pub fn fullness_by_language(timeline: &Timeline) -> BTreeMap<String, f64> {
+    let weeks = timeline.complete_weeks();
+    let last = weeks.last().map_or(0, |w| w.no);
+    let mut seen: BTreeMap<String, i32> = BTreeMap::new();
+    for week in weeks {
+        for (language, amount) in &week.by_language {
+            if *amount > 0.0 {
+                seen.insert(language.clone(), week.no);
+            }
+        }
+    }
+    seen.into_iter()
+        .map(|(l, week)| (l, fullness(last - week)))
+        .collect()
+}
+
 /// What a language's branches look like now.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LanguageState {
@@ -133,6 +160,15 @@ pub fn last_week_total(timeline: &Timeline) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn leaves_thin_from_the_window_to_a_year_of_silence() {
+        assert!((fullness(0) - 1.0).abs() < 1e-9);
+        assert!((fullness(13) - 1.0).abs() < 1e-9, "the window keeps them");
+        assert!((fullness(32) - 0.5).abs() < 0.02, "half way");
+        assert!(fullness(52).abs() < 1e-9, "gone after a year");
+        assert!(fullness(80).abs() < 1e-9);
+    }
 
     /// The density table.
     #[test]

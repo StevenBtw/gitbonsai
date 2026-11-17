@@ -51,6 +51,15 @@ pub struct Snapshot {
     /// Archived repositories the account owns, oldest archive first.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub archived_repos: Vec<String>,
+    /// The day each achievement tier was reached, tier 1 first: tier 1 from
+    /// its "first unlocked" date, higher tiers from the first run that saw
+    /// them. Without dates an achievement stays out of past views.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub achievement_dates: BTreeMap<String, Vec<Date>>,
+    /// The day each archived repository was archived. Without a date it stays
+    /// out of past views.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub archived_dates: BTreeMap<String, Date>,
 }
 
 /// One day of contributions.
@@ -169,6 +178,23 @@ impl Snapshot {
         snapshot.range.to = as_of;
         snapshot.observed_on = as_of;
         snapshot.truncated_windows.retain(|w| w.from <= as_of);
+        // Only what was reached by then; an undated one is left out.
+        let reached = |slug: &str| {
+            self.achievement_dates
+                .get(slug)
+                .map_or(0, |d| d.iter().filter(|d| **d <= as_of).count())
+        };
+        snapshot.achievements = self
+            .achievements
+            .iter()
+            .filter_map(|(slug, &tier)| {
+                let by_then = u8::try_from(reached(slug)).unwrap_or(u8::MAX).min(tier);
+                (by_then > 0).then(|| (slug.clone(), by_then))
+            })
+            .collect();
+        snapshot
+            .archived_repos
+            .retain(|r| self.archived_dates.get(r).is_some_and(|d| *d <= as_of));
         snapshot
     }
 
@@ -206,6 +232,8 @@ mod tests {
             truncated_windows: Vec::new(),
             achievements: BTreeMap::new(),
             archived_repos: Vec::new(),
+            achievement_dates: BTreeMap::new(),
+            archived_dates: BTreeMap::new(),
         }
     }
 
@@ -217,6 +245,38 @@ mod tests {
         assert_eq!((s.range.from, s.range.to), (early, early));
         assert_eq!(s.days, []);
         assert!(s.validate().is_ok());
+    }
+
+    #[test]
+    fn the_past_has_only_the_achievements_and_archives_of_its_day() {
+        let d = |s: &str| -> Date { s.parse().unwrap() };
+        let mut s = minimal(SCHEMA);
+        s.achievements = [("pull-shark", 3), ("yolo", 1), ("starstruck", 2)]
+            .map(|(k, v)| (k.to_string(), v))
+            .into();
+        s.achievement_dates = [
+            (
+                "pull-shark",
+                vec![d("2024-12-13"), d("2025-06-01"), d("2026-09-01")],
+            ),
+            ("yolo", vec![d("2026-03-01")]),
+        ]
+        .map(|(k, v)| (k.to_string(), v))
+        .into();
+        s.archived_repos = vec!["old".into(), "undated".into(), "later".into()];
+        s.archived_dates = [("old", d("2023-01-01")), ("later", d("2026-02-01"))]
+            .map(|(k, v)| (k.to_string(), v))
+            .into();
+        let past = s.truncated(d("2025-07-01"));
+        assert_eq!(
+            past.achievements,
+            [("pull-shark".to_string(), 2)].into(),
+            "tier 2 by then; yolo later; starstruck undated"
+        );
+        assert_eq!(past.archived_repos, ["old"]);
+        let now = s.truncated(s.observed_on);
+        assert_eq!(now.achievements.len(), 3, "today shows everything");
+        assert_eq!(now.archived_repos.len(), 3);
     }
 
     #[test]

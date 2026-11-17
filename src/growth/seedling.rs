@@ -3,7 +3,7 @@
 //! An account active for under a year is a single tall, thin stem. Each
 //! language with 5% or more of its work (up to four, private work counting as
 //! one) is a small tuft: the largest on top, the rest alternating down the
-//! stem. The stem grows with active months and days.
+//! stem. The stem grows with active months.
 
 use std::collections::BTreeMap;
 
@@ -20,15 +20,14 @@ pub fn seedling(sk: &mut Skeleton, life: &Life, seed: u64) {
     let mut rng = Rng::keyed(seed, "bdome/sprout");
     let mut all: BTreeMap<u32, Month> = BTreeMap::new();
     let mut total = 0.0;
-    let mut days = 0usize;
     for (i, m) in (0u32..).zip(life.years.iter().flat_map(|y| y.months.values())) {
         all.insert(i, m.clone());
         total += m.total;
-        days += m.days;
     }
     let shares = shares_of(&all, total);
     let r = irr(life.life_cv);
-    let h = 70.0 + 3.0 * all.len() as f64 + 0.04 * days as f64;
+    // Tall from the start, and no taller than the young tree it becomes.
+    let h = 76.0 + all.len().min(12) as f64 / 3.0;
     let lean = rng.range(-0.05, 0.05) * h;
     let top = (CENTER_X + lean, SOIL_Y - h);
     let stem = limb_to(

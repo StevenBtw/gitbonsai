@@ -51,12 +51,15 @@ pub fn cloud(
                 d(*a).total_cmp(&d(*b)).then(a.cmp(b))
             })
             .unwrap_or(rest_to);
+        // A twig bows a little, as wood does, instead of a ruled line.
+        let fp = sk.nodes[from].p;
+        let reach = ((ax - fp.0) * (ax - fp.0) + (ay - fp.1) * (ay - fp.1)).sqrt();
         let tw = limb_to(
             sk,
             from,
             (ax, ay),
             az,
-            0.0,
+            side * reach * 0.12,
             1.5,
             1.0,
             rng.range(0.0, math::TAU),

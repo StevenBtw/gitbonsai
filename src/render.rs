@@ -246,11 +246,60 @@ const SYMBOLS: &str = concat!(
     r##"<g id="goen"><g transform="scale(1 .5)"><circle r="4.4" fill="#c9a243"/><circle r="3.9" fill="none" stroke="#a9832e" stroke-width=".35"/><circle r="1.25" fill="#4a3826"/><path d="M-3.2 1.2Q-2 2.6-.4 3.4M3.2 1.2Q2 2.6.4 3.4" fill="none" stroke="#9c7a2a" stroke-width=".35"/><path d="M-2.6-2.2l.8.5M-2.1-2.9l.6.7M2.6-2.2l-.8.5M2.1-2.9l-.6.7" stroke="#9c7a2a" stroke-width=".3"/></g><path d="M-2.8-1.2Q-1.4-2.2.4-2" fill="none" stroke="#fff3c4" stroke-width=".45" opacity=".8"/></g>"##,
 );
 
+/// A view box: x, y, width, height.
+pub type Frame = (f64, f64, f64, f64);
+
 /// The SVG document for one variant.
 pub fn svg(bonsai: &Bonsai, config: &Config, theme: Theme) -> String {
+    svg_in(bonsai, config, theme, None)
+}
+
+/// The view box the tree frames itself in.
+pub fn frame(bonsai: &Bonsai, config: &Config) -> Frame {
+    paint::paint(bonsai, config, Theme::Light).frame
+}
+
+/// One camera per timelapse frame: the box around this frame and every one
+/// before it, widened to the whole film's shape. It only ever zooms out, and
+/// every frame comes out the same size.
+pub fn cameras(frames: &[Frame]) -> Vec<Frame> {
+    let union = |a: Frame, b: Frame| {
+        let (x, y) = (a.0.min(b.0), a.1.min(b.1));
+        (
+            x,
+            y,
+            (a.0 + a.2).max(b.0 + b.2) - x,
+            (a.1 + a.3).max(b.1 + b.3) - y,
+        )
+    };
+    let Some(all) = frames.iter().copied().reduce(union) else {
+        return Vec::new();
+    };
+    let aspect = all.2 / all.3;
+    // Wider stays centred; taller grows upward, the pot stays put.
+    let shape = |(x, y, w, h): Frame| {
+        if w / h < aspect {
+            (x - (h * aspect - w) / 2.0, y, h * aspect, h)
+        } else {
+            (x, y + h - w / aspect, w, w / aspect)
+        }
+    };
+    let mut cam = frames[0];
+    frames
+        .iter()
+        .map(|&f| {
+            cam = shape(union(cam, f));
+            cam
+        })
+        .collect()
+}
+
+/// The SVG document for one variant, framed by `camera` instead of the
+/// tree's own box when given.
+pub fn svg_in(bonsai: &Bonsai, config: &Config, theme: Theme, camera: Option<Frame>) -> String {
     let painted = paint::paint(bonsai, config, theme);
     let size = config.render.size;
-    let (x, y, w, h) = painted.frame;
+    let (x, y, w, h) = camera.unwrap_or(painted.frame);
     let height = (f64::from(size) * h / w).round();
     let (year, week) = bonsai.observed_on.iso_week();
     let mut out = String::with_capacity(painted.body.len() + 16 * 1024);
@@ -308,6 +357,31 @@ pub fn escape(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_timelapse_camera_only_zooms_out_and_keeps_one_shape() {
+        let frames = [
+            (200.0, 300.0, 40.0, 30.0),
+            (180.0, 250.0, 100.0, 80.0),
+            (190.0, 260.0, 60.0, 50.0),
+            (100.0, 150.0, 300.0, 200.0),
+        ];
+        let cams = cameras(&frames);
+        let inside = |a: Frame, b: Frame| {
+            a.0 >= b.0 - 1e-9
+                && a.1 >= b.1 - 1e-9
+                && a.0 + a.2 <= b.0 + b.2 + 1e-9
+                && a.1 + a.3 <= b.1 + b.3 + 1e-9
+        };
+        assert_eq!(cams[3], frames[3], "the last camera is the whole film");
+        for (i, cam) in cams.iter().enumerate() {
+            assert!(inside(frames[i], *cam), "frame {i} is in view");
+            assert!((cam.2 / cam.3 - 1.5).abs() < 1e-9, "one aspect");
+            if i > 0 {
+                assert!(inside(cams[i - 1], *cam), "never zooms in");
+            }
+        }
+    }
 
     #[test]
     fn numbers_have_two_decimals_at_most_and_no_negative_zero() {
