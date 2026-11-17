@@ -879,6 +879,7 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
     }
     body.push_str(&pot_front(b, &pot));
     body.push_str(&eggs::kintsugi(&b.archived, seed, &pot));
+    body.push_str(&pot_marks(b, &pot));
     let mut rim = PathData::new();
     rim.m((CENTER_X - hw, SOIL_Y))
         .a(hw, pot.ry, false, (CENTER_X + hw, SOIL_Y));
@@ -1088,20 +1089,6 @@ fn pot_front(b: &Bonsai, pot: &Pot) -> String {
         }
         _ => {}
     }
-    if tier >= 5 {
-        // A carved band.
-        let mut band = PathData::new();
-        for share in [0.3, 0.4] {
-            let y = SOIL_Y + depth * share;
-            let w = hw + (bw - hw) * share;
-            band.m((CENTER_X - w, y)).a(w, ry, false, (CENTER_X + w, y));
-        }
-        let _ = write!(
-            s,
-            r#"<path d="{}" fill="none" stroke="{dark}" stroke-width=".9"/>"#,
-            band.as_str()
-        );
-    }
     if tier == 5 {
         let mut crackle = PathData::new();
         for _ in 0..10 {
@@ -1139,6 +1126,38 @@ fn pot_front(b: &Bonsai, pot: &Pot) -> String {
             );
         }
         s.push_str("</g>");
+    }
+    s
+}
+
+/// The pot's carved bands (tier 5 and up) and maker's seal (tier 6 and up),
+/// drawn after the kintsugi: the gold mends the clay under them.
+fn pot_marks(b: &Bonsai, pot: &Pot) -> String {
+    let Pot {
+        hw,
+        ry,
+        depth,
+        bw,
+        glaze,
+    } = *pot;
+    let tier = b.extras.pot_tier;
+    let dark = glaze.shift(-0.08, 0.0);
+    let mut s = String::new();
+    if tier >= 5 {
+        // A carved band.
+        let mut band = PathData::new();
+        for share in [0.3, 0.4] {
+            let y = SOIL_Y + depth * share;
+            let w = hw + (bw - hw) * share;
+            band.m((CENTER_X - w, y)).a(w, ry, false, (CENTER_X + w, y));
+        }
+        let _ = write!(
+            s,
+            r#"<path d="{}" fill="none" stroke="{dark}" stroke-width=".9"/>"#,
+            band.as_str()
+        );
+    }
+    if tier >= 6 {
         let (sx, sy) = (CENTER_X + hw * 0.5, SOIL_Y + depth * 0.5 + ry * 0.5);
         let _ = write!(
             s,

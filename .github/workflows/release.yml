@@ -13,8 +13,23 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # Before anything is built: the tag, Cargo.toml, Cargo.lock, README, example
+  # workflow and CHANGELOG all name the same version.
+  version:
+    name: Version agrees
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - run: bash scripts/check-version.sh "$TAG"
+        env:
+          TAG: ${{ github.ref_name }}
+
   build:
     name: Build (${{ matrix.target }})
+    needs: version
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -38,7 +53,6 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@92e73e19cbfb3981e63ef478a16f95f415e634d3 # 1.99.0
         with:
-          toolchain: 1.99.0
           targets: ${{ matrix.target }}
 
       - name: Install musl tools
@@ -79,43 +93,50 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      # Signed build provenance for each binary, which the action verifies:
+      # release assets can be replaced, so the checksum alone proves nothing
+      # about where a binary came from.
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           merge-multiple: true
 
-      # A draft takes the assets, then publishing makes the release
-      # immutable and attested, which the action verifies on download.
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        id: attest
+        with:
+          subject-path: gitbonsai-*
+
+      # The signed bundle ships with the binaries, so the action checks it
+      # offline: no token permission is needed to read attestations.
+      - name: Keep the attestation bundle
+        env:
+          BUNDLE: ${{ steps.attest.outputs.bundle-path }}
+        run: cp "$BUNDLE" gitbonsai-provenance.sigstore.json
+
+      # Create the release in the GitHub UI with a new tag, or push only the
+      # tag: either way this job attaches the binaries. A release created by
+      # hand gets them added; for a bare tag the release is created here.
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
           REPO: ${{ github.repository }}
-        # Release by pushing only the tag. A release published by hand locks
-        # before the assets arrive, so one that already exists is an error.
         run: |
           if gh release view "$TAG" --repo "$REPO" > /dev/null 2>&1; then
-            echo "::error::release $TAG already exists; push only the tag and let this job create the release"
-            exit 1
+            if [ "$(gh release view "$TAG" --repo "$REPO" --json isImmutable --jq .isImmutable)" = true ]; then
+              echo "::error::release $TAG is immutable, so no binaries can be added; turn off immutable releases in the repository settings"
+              exit 1
+            fi
+            gh release upload "$TAG" gitbonsai-* --repo "$REPO" --clobber
+          else
+            gh release create "$TAG" gitbonsai-* --repo "$REPO" --title "Release ${TAG#v}" --generate-notes
           fi
-          # The draft is addressed by its id throughout: a draft's tag does
-          # not exist until it is published.
-          id=$(gh api "repos/$REPO/releases" -f tag_name="$TAG" -f name="Release ${TAG#v}" \
-            -F draft=true -F generate_release_notes=true --jq .id)
-          for f in gitbonsai-*; do
-            gh api --method POST -H "Content-Type: application/octet-stream" \
-              "https://uploads.github.com/repos/$REPO/releases/$id/assets?name=$f" \
-              --input "$f" --jq .name
-          done
-          gh api --method PATCH "repos/$REPO/releases/$id" -F draft=false --jq .html_url
           want=$(ls gitbonsai-* | wc -l)
-          got=$(gh api "repos/$REPO/releases/$id" --jq '.assets | length')
-          if [ "$got" -ne "$want" ]; then
-            echo "::error::$TAG has $got of $want assets"
-            exit 1
-          fi
-          if [ "$(gh api "repos/$REPO/releases/$id" --jq .immutable)" != true ]; then
-            echo "::error::$TAG is not immutable; turn on immutable releases in the repository settings"
+          got=$(gh release view "$TAG" --repo "$REPO" --json assets --jq '.assets | length')
+          if [ "$got" -lt "$want" ]; then
+            echo "::error::release $TAG has $got of $want binaries"
             exit 1
           fi
 
@@ -150,3 +171,41 @@ jobs:
           for f in "${{ steps.bonsai.outputs.light }}" "${{ steps.bonsai.outputs.dark }}"; do
             test -s "$f" && grep -q '<svg' "$f" && grep -q '<text' "$f" || { echo "::error::$f is not a rendered SVG"; exit 1; }
           done
+
+  # Last, once the binaries are attached and the Action works end to end:
+  # the crate on crates.io, through trusted publishing (no stored token).
+  # A version already there is skipped, so a rerun is safe.
+  crates:
+    name: Publish to crates.io
+    needs: action
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@92e73e19cbfb3981e63ef478a16f95f415e634d3 # 1.99.0
+
+      - name: Already on crates.io?
+        id: seen
+        run: |
+          version=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
+          if curl -sf -A "gitbonsai-release (GitHub Actions)" \
+              "https://crates.io/api/v1/crates/gitbonsai/$version" > /dev/null; then
+            echo "gitbonsai $version is already on crates.io"
+            echo "published=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1.0.6
+        if: steps.seen.outputs.published != 'true'
+        id: auth
+
+      - name: Publish
+        if: steps.seen.outputs.published != 'true'
+        run: cargo publish --locked
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}

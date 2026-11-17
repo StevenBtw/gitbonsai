@@ -56,7 +56,7 @@ The four real trees are grown from their public GitHub activity with `gitbonsai 
 Add the action to a weekly workflow in your profile repository (`<you>/<you>`); [examples/profile-workflow.yml](examples/profile-workflow.yml) is a complete one to copy to `.github/workflows/bonsai.yml`:
 
 ```yaml
-- uses: StevenBtw/gitbonsai@v0.2.2
+- uses: StevenBtw/gitbonsai@v0.2.3
   with:
     output-dir: assets   # bonsai-light.svg and bonsai-dark.svg
     legend: left         # optional: off (default), left or right
@@ -84,7 +84,7 @@ Styles, leaf colors, the pot glaze and the legend go in a `bonsai.toml`; see [ex
 Needs the [GitHub CLI](https://cli.github.com), logged in.
 
 ```sh
-cargo install gitbonsai
+cargo install gitbonsai --locked
 gitbonsai collect <login> --output me.snapshot.json
 gitbonsai render me.snapshot.json     # bonsai/: light and dark SVG, PNG, preview.html
 gitbonsai explain me.snapshot.json    # every number behind the tree

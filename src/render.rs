@@ -286,7 +286,9 @@ pub fn svg(bonsai: &Bonsai, config: &Config, theme: Theme) -> String {
     out
 }
 
-/// Escapes text for XML content and attributes.
+/// Escapes text for XML content and attributes. Characters XML 1.0 forbids
+/// even as references (control characters other than tab, newline and
+/// carriage return, and U+FFFE and U+FFFF) are dropped.
 pub fn escape(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     for c in text.chars() {
@@ -295,6 +297,8 @@ pub fn escape(text: &str) -> String {
             '<' => out.push_str("&lt;"),
             '>' => out.push_str("&gt;"),
             '"' => out.push_str("&quot;"),
+            '\t' | '\n' | '\r' => out.push(c),
+            c if c < ' ' || c == '\u{fffe}' || c == '\u{ffff}' => {}
             _ => out.push(c),
         }
     }
@@ -318,5 +322,8 @@ mod tests {
     #[test]
     fn text_is_escaped() {
         assert_eq!(escape("a<b & \"c\""), "a&lt;b &amp; &quot;c&quot;");
+        // Characters XML forbids, even as references, are dropped.
+        assert_eq!(escape("a\u{0}b\u{1b}c\u{fffe}d"), "abcd");
+        assert_eq!(escape("tab\there\nline"), "tab\there\nline");
     }
 }

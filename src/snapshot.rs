@@ -164,8 +164,10 @@ impl Snapshot {
             return snapshot;
         }
         snapshot.days.retain(|d| d.date <= as_of);
-        snapshot.range.to = as_of.max(snapshot.range.from);
-        snapshot.observed_on = snapshot.range.to;
+        // A day before the range shows that day: an empty pot.
+        snapshot.range.from = snapshot.range.from.min(as_of);
+        snapshot.range.to = as_of;
+        snapshot.observed_on = as_of;
         snapshot.truncated_windows.retain(|w| w.from <= as_of);
         snapshot
     }
@@ -205,6 +207,16 @@ mod tests {
             achievements: BTreeMap::new(),
             archived_repos: Vec::new(),
         }
+    }
+
+    #[test]
+    fn a_day_before_the_range_shows_that_day() {
+        let early: Date = "2026-01-01".parse().unwrap();
+        let s = minimal(SCHEMA).truncated(early);
+        assert_eq!(s.observed_on, early, "labelled with the day asked for");
+        assert_eq!((s.range.from, s.range.to), (early, early));
+        assert_eq!(s.days, []);
+        assert!(s.validate().is_ok());
     }
 
     #[test]

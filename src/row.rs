@@ -9,7 +9,7 @@ use std::fmt::Write as _;
 
 use crate::Error;
 use crate::date::Date;
-use crate::render::{Coarse, Theme};
+use crate::render::{Coarse, Theme, escape};
 
 /// Space between two trees, in world units.
 pub const GAP: f64 = 28.0;
@@ -155,13 +155,6 @@ pub fn spec(text: &str) -> Result<(String, String, Option<Date>), Error> {
         return Err(bad("empty snapshot"));
     }
     Ok((name.to_string(), source.to_string(), day))
-}
-
-/// Text safe inside SVG.
-fn escape(text: &str) -> String {
-    text.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
 }
 
 #[cfg(test)]
