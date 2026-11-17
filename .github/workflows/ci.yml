@@ -40,6 +40,11 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-check-
 
+      # A version bump touches Cargo.toml, Cargo.lock, the README, the
+      # example workflow and the CHANGELOG; the release refuses a mismatch.
+      - name: Version agrees
+        run: bash scripts/check-version.sh
+
       - name: Check formatting
         run: cargo fmt --all -- --check
 
