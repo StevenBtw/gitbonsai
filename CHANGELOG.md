@@ -4,7 +4,7 @@ All notable changes to gitbonsai, a Japanese maple bonsai grown from GitHub acti
 
 ## [0.2.3] - 2026-11-17
 
-Maintenance release: a release created in the GitHub UI gets its binaries again and the crate on crates.io, and the Action checks each binary's build provenance instead of the release's attestation. Trees change only on antique pots with kintsugi and where a dropped language held part of the recent years.
+Maintenance release: a release created in the GitHub UI gets its binaries again and the crate on crates.io, and the Action checks each binary's build provenance instead of the release's attestation. Trees change only on antique pots with kintsugi and where a dropped language held part of the recent years, which would make this a minor version; it ships as a patch because the changes are small.
 
 ### Added
 
@@ -15,14 +15,14 @@ Maintenance release: a release created in the GitHub UI gets its binaries again 
 
 - **A release created in the GitHub UI gets its binaries**: the release job uploads them to it, or creates the release when only a tag was pushed, and fails when binaries are missing.
 - **A dropped language keeps no leaves in the crown**: its recent years show as deadwood only, as the legend says; the crown holds living languages.
-- **The Action checks build provenance**: each binary carries a signed attestation from the release workflow, checked with `gh attestation verify` before the sha256 check. Releases are no longer immutable, so this replaces `gh release verify-asset`.
+- **The Action checks build provenance**: each binary carries a signed attestation from the release workflow, shipped with the release as `gitbonsai-provenance.sigstore.json` and checked offline with `gh attestation verify --bundle` before the sha256 check, so no token permission is needed. Releases are no longer immutable, so this replaces `gh release verify-asset`.
 
 ### Fixed
 
 - **Kintsugi runs under the pot's bands and seal**: the gold seams of archived repositories no longer cross the carved bands and maker's seal of an antique pot.
 - **Small trees with a dropped trunk language stand the right way round**: dead wood takes at most 35% of a tree's girth, so the living trunk carries the bark. An account of about 330 contributions drew its dead snag as the trunk.
 - **A misspelled login gets a plain message**: `collect` says there is no such GitHub user instead of printing GitHub's raw error.
-- **`--size` is limited to 4096 px**: larger values (and 0) are a config error; `--size 99999` wrote a 72 MB PNG.
+- **The size is limited to 4096 px**: `--size` and `[render] size` above 4096 (or 0) are a config error; `--size 99999` wrote a 72 MB PNG.
 - **`--as-of` before a snapshot's first day** shows an empty pot dated that day, not a later one.
 - **SVG text drops characters XML forbids**, so a hand-edited snapshot can no longer produce an invalid SVG.
 - **The README installs with `--locked`**, so a dependency update never changes a tree.

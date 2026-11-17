@@ -183,6 +183,7 @@ fn plan_years(life: &Life, trunks: &[Trunk]) -> YearPlan {
         upper.insert(0, (0, l));
         upper.truncate(3);
     }
+    let living_lead = living.first().map(|(l, _)| l.clone());
     // A language with 18% or more of the crown years owns a sector of the
     // crown too, riding the main trunk.
     for (l, v) in living {
@@ -193,7 +194,13 @@ fn plan_years(life: &Life, trunks: &[Trunk]) -> YearPlan {
             upper.push((0, l));
         }
     }
-    // Every trunk dropped: a living crown language takes the main trunk.
+    // Every trunk dropped: the living crown lead takes the main trunk, and
+    // the dropped languages leave the crown.
+    if !upper.iter().any(|u| !gone(&u.1))
+        && let Some(l) = living_lead
+    {
+        upper.insert(0, (0, l));
+    }
     if upper.iter().any(|u| !gone(&u.1)) {
         upper.retain(|u| !gone(&u.1));
     }

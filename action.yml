@@ -81,15 +81,18 @@ runs:
         install_dir="$RUNNER_TEMP/gitbonsai"
         mkdir -p "$install_dir"
         if ! gh release download "v$version" --repo "$repository" --dir "$install_dir" \
-            --pattern "$archive" --pattern "$archive.sha256" --clobber; then
+            --pattern "$archive" --pattern "$archive.sha256" \
+            --pattern gitbonsai-provenance.sigstore.json --clobber; then
           echo "release v$version has no asset $archive; reference the action at a release tag" >&2
           exit 1
         fi
         cd "$install_dir"
         # Where it came from: the signed build provenance this repository's
-        # release workflow made for it. The sha256 below only shows it arrived
-        # intact.
-        if ! gh attestation verify "$archive" --repo "$repository"; then
+        # release workflow made for it, checked offline against the bundle
+        # shipped with the release (no token permission needed). The sha256
+        # below only shows it arrived intact.
+        if ! gh attestation verify "$archive" --repo "$repository" \
+            --bundle gitbonsai-provenance.sigstore.json; then
           echo "$archive has no build provenance from $repository" >&2
           exit 1
         fi

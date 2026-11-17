@@ -842,3 +842,36 @@ fn a_dropped_language_grows_no_leaves() {
         }
     }
 }
+
+/// One trunk language, dropped while it still held most of the crown years,
+/// and several small living languages after it, none with 18% of the crown.
+fn dropped_lead() -> gitbonsai::Snapshot {
+    use gitbonsai::date::Date;
+    let mut s = dropped_trunk(2);
+    let switch: Date = "2025-06-30".parse().unwrap();
+    let small = ["Rust", "Zig", "Lua", "Nim", "Elm", "Ruby"];
+    for (i, d) in s.days.iter_mut().enumerate() {
+        d.by_language.clear();
+        if d.date <= switch {
+            d.by_language.insert("Go".to_string(), 3);
+        } else {
+            d.by_language.insert(small[i % small.len()].to_string(), 1);
+        }
+        d.total = d.by_language.values().sum();
+    }
+    s
+}
+
+#[test]
+fn a_dropped_lead_hands_the_crown_to_the_living() {
+    let b = Bonsai::grow(&dropped_lead(), &Config::default(), None);
+    assert_eq!(b.state(Some("Go")), LanguageState::Jin, "Go is dropped");
+    let langs: std::collections::BTreeSet<String> = b
+        .skeleton
+        .clouds
+        .iter()
+        .flat_map(|c| c.patches.iter().filter_map(|p| p.2.clone()))
+        .collect();
+    assert!(!langs.contains("Go"), "no Go leaves: {langs:?}");
+    assert!(!langs.is_empty(), "a living language crowns the tree");
+}

@@ -47,14 +47,16 @@ pub trait GraphQl {
     fn query(&self, query: &str, variables: &[(&str, &str)]) -> Result<Value, Error>;
 }
 
-/// The `data` of a GraphQL answer. Errors that only say something was not
-/// found leave the data to tell (a `null` user is a misspelled login, which
+/// The `data` of a GraphQL answer. An error that only says the user was not
+/// found leaves the data to tell (a `null` user is a misspelled login, which
 /// `collect` explains); any other error refuses the query.
 fn data_of(value: &Value) -> Result<Value, Error> {
     if let Some(errors) = value.get("errors").filter(|e| !e.is_null()) {
         let not_found = errors.as_array().is_some_and(|list| {
-            list.iter()
-                .all(|e| e.get("type").and_then(Value::as_str) == Some("NOT_FOUND"))
+            list.iter().all(|e| {
+                e.get("type").and_then(Value::as_str) == Some("NOT_FOUND")
+                    && e.get("path") == Some(&json!(["user"]))
+            })
         });
         if !not_found {
             return Err(Error::Collect(format!(
@@ -848,6 +850,11 @@ mod tests {
             json!({"x": 1})
         );
         assert!(data_of(&json!({})).is_err(), "no data at all");
+        // Only a missing user is left to the data; anything else missing
+        // refuses, so nothing is skipped silently.
+        let nested = json!({"data": {"user": {}}, "errors": [{"type": "NOT_FOUND",
+            "path": ["user", "contributionsCollection", "repositoryContributions"]}]});
+        assert!(data_of(&nested).is_err());
     }
 
     #[test]
