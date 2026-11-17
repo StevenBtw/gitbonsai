@@ -11,7 +11,7 @@ Growth release: a tree now changes a little each month and never all at once, it
 - **Strands**: a language with 10% or more of the work claims one of the strands wound round the trunk, which comes away as a trunk of its own the more the language is used and leans out after a quick change of language. Strands replace the 23% twin trunks.
 - **Shari**: when the language that founded the trunk is dropped, a bleached strip of dead wood climbs the living trunk, bleaching over the year after.
 - **Tinted leaf tips**: silver leaves (private work, or work GitHub could not attribute to a language) take the public languages' colors at their tips, on as many leaves as public work's share of the recent weeks.
-- **Monthly and quarterly timelapses**: `gitbonsai timelapse --every 1m` (or `1q`) steps by calendar month or quarter, and every frame shares one camera, so the frames align.
+- **Monthly and quarterly timelapses**: `gitbonsai timelapse --every 1m` (or `1q`) steps by calendar month or quarter, and the frames come out the same size with a view that only ever widens, so the tree never jumps in the frame.
 - **Past views show only what existed then**: `collect` records the day each profile sign was earned and each repository was archived, so `--as-of` and timelapse frames leave out what came later.
 
 ### Changed

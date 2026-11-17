@@ -622,7 +622,7 @@ pub fn measures(life: &Life, seed: u64) -> Option<(Reach, Recent)> {
 }
 
 impl Reach {
-    /// Half these, half `recent`'s average: as [`Ctx::settled`] shows them.
+    /// Half these, half `recent`'s average, as the tree shows them.
     #[must_use]
     pub fn settled(self, recent: &Recent) -> Self {
         let vv = f64::midpoint(self.top / self.big_s.max(1e-9), recent.frame[1]);
