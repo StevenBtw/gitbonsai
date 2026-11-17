@@ -2,9 +2,14 @@
 
 All notable changes to gitbonsai, a Japanese maple bonsai grown from GitHub activity. Any change to how a tree grows or looks is at least a minor version, because people notice their tree changing.
 
-## [0.2.3] - Unreleased
+## [0.2.3] - 2026-11-17
 
-Maintenance release: a release created in the GitHub UI gets its binaries again, and the Action checks each binary's build provenance instead of the release's attestation. Trees do not change.
+Maintenance release: a release created in the GitHub UI gets its binaries again and the crate on crates.io, and the Action checks each binary's build provenance instead of the release's attestation. Trees do not change.
+
+### Added
+
+- **Releases publish to crates.io**: once the binaries are attached and the Action passes its end-to-end check, the release workflow publishes the crate through trusted publishing; a version already there is skipped.
+- **A release checks its version first**: the tag, `Cargo.toml`, `Cargo.lock`, the README, the example workflow and the CHANGELOG must name the same version, or nothing is built. CI runs the same check (`scripts/check-version.sh`) on every push.
 
 ### Changed
 
