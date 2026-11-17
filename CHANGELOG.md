@@ -4,7 +4,7 @@ All notable changes to gitbonsai, a Japanese maple bonsai grown from GitHub acti
 
 ## [0.2.3] - 2026-11-17
 
-Maintenance release: a release created in the GitHub UI gets its binaries again and the crate on crates.io, and the Action checks each binary's build provenance instead of the release's attestation. Trees do not change.
+Maintenance release: a release created in the GitHub UI gets its binaries again and the crate on crates.io, and the Action checks each binary's build provenance instead of the release's attestation. Trees change only where kintsugi meets an antique pot's bands and seal.
 
 ### Added
 
@@ -15,6 +15,10 @@ Maintenance release: a release created in the GitHub UI gets its binaries again 
 
 - **A release created in the GitHub UI gets its binaries**: the release job uploads them to it, or creates the release when only a tag was pushed, and fails when binaries are missing.
 - **The Action checks build provenance**: each binary carries a signed attestation from the release workflow, checked with `gh attestation verify` before the sha256 check. Releases are no longer immutable, so this replaces `gh release verify-asset`.
+
+### Fixed
+
+- **Kintsugi runs under the pot's bands and seal**: the gold seams of archived repositories no longer cross the carved bands and maker's seal of an antique pot.
 
 ## [0.2.2] - 2026-11-16
 

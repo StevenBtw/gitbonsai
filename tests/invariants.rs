@@ -690,3 +690,17 @@ fn a_language_picked_up_this_week_is_alive() {
     assert!(b.window.of_language(Some("Zig")) > 0.0, "the window has it");
     assert_eq!(b.state(Some("Zig")), LanguageState::Alive);
 }
+
+/// Kintsugi mends the pot under its carved bands and maker's seal: the gold
+/// never runs across them.
+#[test]
+fn kintsugi_runs_under_the_bands_and_seal() {
+    let b = grow("veteran");
+    assert!(b.extras.pot_tier >= 6 && !b.archived.is_empty());
+    let svg = render::svg(&b, &Config::default(), Theme::Light);
+    let gold = svg.find(r#"clip-path="url(#pc)""#).expect("kintsugi");
+    let seal = svg.find(r##"fill="#7a2e22""##).expect("a maker's seal");
+    assert!(seal > gold, "the seal is drawn over the gold");
+    let band = svg.rfind(r#"stroke-width=".9"/>"#).expect("carved bands");
+    assert!(band > gold, "the bands are drawn over the gold");
+}
