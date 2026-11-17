@@ -704,3 +704,141 @@ fn kintsugi_runs_under_the_bands_and_seal() {
     let band = svg.rfind(r#"stroke-width=".9"/>"#).expect("carved bands");
     assert!(band > gold, "the bands are drawn over the gold");
 }
+
+/// A small account that dropped its second trunk language, as in a review:
+/// Rust every week since 2023, Go beside it until mid-2025.
+fn dropped_trunk(per_week: u32) -> gitbonsai::Snapshot {
+    use gitbonsai::date::{Date, DateRange};
+    use gitbonsai::snapshot::{Day, SCHEMA};
+    let (start, end): (Date, Date) = ("2023-01-02".parse().unwrap(), "2026-11-16".parse().unwrap());
+    let stop_go: Date = "2025-06-30".parse().unwrap();
+    let mut days = Vec::new();
+    let mut week = start;
+    while week <= end {
+        for k in 0..per_week {
+            let day = week.add_days(i32::try_from(k).unwrap() * 3);
+            if day > end {
+                continue;
+            }
+            let mut by_language = std::collections::BTreeMap::new();
+            by_language.insert("Rust".to_string(), 1);
+            if day <= stop_go {
+                by_language.insert("Go".to_string(), 1);
+            }
+            let total = by_language.values().sum();
+            days.push(Day {
+                date: day,
+                total,
+                by_language,
+                private: 0,
+            });
+        }
+        week = week.add_days(7);
+    }
+    days.sort_by_key(|d| d.date);
+    days.dedup_by_key(|d| d.date);
+    gitbonsai::Snapshot {
+        schema: SCHEMA,
+        login: "small".into(),
+        account_id: 12345,
+        range: DateRange {
+            from: "2023-01-01".parse().unwrap(),
+            to: end,
+        },
+        observed_on: end,
+        collected_with: "test".into(),
+        language_colors: std::collections::BTreeMap::new(),
+        days,
+        truncated_windows: Vec::new(),
+        achievements: std::collections::BTreeMap::new(),
+        archived_repos: Vec::new(),
+    }
+}
+
+/// Dead wood never outweighs the living wood it grows beside: wherever a
+/// branch splits into living and dead, the heaviest living part is heavier,
+/// so the trunk is always the living one, however small the account.
+#[test]
+fn dead_wood_never_outweighs_the_living() {
+    let mut trees: Vec<(String, Bonsai)> = fixtures::all()
+        .into_iter()
+        .map(|f| {
+            (
+                f.name.to_string(),
+                Bonsai::grow(&f.snapshot, &Config::default(), None),
+            )
+        })
+        .collect();
+    for per in [1, 2] {
+        trees.push((
+            format!("dropped trunk, {per} a week"),
+            Bonsai::grow(&dropped_trunk(per), &Config::default(), None),
+        ));
+    }
+    for (name, b) in &trees {
+        let sk = &b.skeleton;
+        let flow = sk.flows();
+        let dead = |i: usize| sk.nodes[i].language.as_deref() == Some(gitbonsai::growth::JIN);
+        let mut kids: Vec<Vec<usize>> = vec![Vec::new(); sk.nodes.len()];
+        for (i, n) in sk.nodes.iter().enumerate() {
+            if let Some(p) = n.parent {
+                kids[p].push(i);
+            }
+        }
+        for (p, ks) in kids.iter().enumerate() {
+            if dead(p) {
+                continue;
+            }
+            let living = ks
+                .iter()
+                .filter(|&&k| !dead(k))
+                .map(|&k| flow[k])
+                .fold(0.0, f64::max);
+            let jin = ks
+                .iter()
+                .filter(|&&k| dead(k))
+                .map(|&k| flow[k])
+                .fold(0.0, f64::max);
+            if living > 0.0 && jin > 0.0 {
+                assert!(
+                    living > jin,
+                    "{name}: node {p}: dead {jin:.0} outweighs living {living:.0}"
+                );
+            }
+        }
+    }
+}
+
+/// A dropped language is deadwood only: no cloud carries its leaves, in the
+/// crown or anywhere else.
+#[test]
+fn a_dropped_language_grows_no_leaves() {
+    let mut trees: Vec<(String, Bonsai)> = fixtures::all()
+        .into_iter()
+        .map(|f| {
+            (
+                f.name.to_string(),
+                Bonsai::grow(&f.snapshot, &Config::default(), None),
+            )
+        })
+        .collect();
+    for per in [1, 2] {
+        trees.push((
+            format!("dropped trunk, {per} a week"),
+            Bonsai::grow(&dropped_trunk(per), &Config::default(), None),
+        ));
+    }
+    for (name, b) in &trees {
+        for c in &b.skeleton.clouds {
+            for p in &c.patches {
+                if let Some(l) = p.2.as_deref() {
+                    assert_ne!(
+                        b.state(Some(l)),
+                        LanguageState::Jin,
+                        "{name}: {l} leaves on a cloud"
+                    );
+                }
+            }
+        }
+    }
+}

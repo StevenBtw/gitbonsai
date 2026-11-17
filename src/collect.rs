@@ -47,6 +47,28 @@ pub trait GraphQl {
     fn query(&self, query: &str, variables: &[(&str, &str)]) -> Result<Value, Error>;
 }
 
+/// The `data` of a GraphQL answer. Errors that only say something was not
+/// found leave the data to tell (a `null` user is a misspelled login, which
+/// `collect` explains); any other error refuses the query.
+fn data_of(value: &Value) -> Result<Value, Error> {
+    if let Some(errors) = value.get("errors").filter(|e| !e.is_null()) {
+        let not_found = errors.as_array().is_some_and(|list| {
+            list.iter()
+                .all(|e| e.get("type").and_then(Value::as_str) == Some("NOT_FOUND"))
+        });
+        if !not_found {
+            return Err(Error::Collect(format!(
+                "GitHub refused the query: {errors}"
+            )));
+        }
+    }
+    value
+        .get("data")
+        .filter(|d| !d.is_null())
+        .cloned()
+        .ok_or_else(|| Error::Collect("GitHub's answer had no data".into()))
+}
+
 /// GraphQL through the GitHub CLI, which brings its own authentication
 /// locally and in Actions (`GH_TOKEN`).
 #[derive(Debug, Clone, Copy, Default)]
@@ -88,18 +110,10 @@ impl GraphQl for GhCli {
                 ))
             })?;
             let text = String::from_utf8_lossy(&output.stdout);
-            if let Ok(value) = serde_json::from_str::<Value>(&text) {
-                if let Some(errors) = value.get("errors").filter(|e| !e.is_null()) {
-                    return Err(Error::Collect(format!(
-                        "GitHub refused the query: {errors}"
-                    )));
-                }
-                if output.status.success() {
-                    return value
-                        .get("data")
-                        .cloned()
-                        .ok_or_else(|| Error::Collect("GitHub's answer had no data".into()));
-                }
+            if let Ok(value) = serde_json::from_str::<Value>(&text)
+                && (output.status.success() || value.get("errors").is_some_and(|e| !e.is_null()))
+            {
+                return data_of(&value);
             }
             last_error = String::from_utf8_lossy(&output.stderr).trim().to_string();
         }
@@ -801,6 +815,39 @@ mod tests {
     fn private_stays_inside_its_dates() {
         let (a, b) = (d("2026-10-05"), d("2026-10-06"));
         assert_eq!(spread(&[(a, 3), (b, 3)], 2, Some((b, b))), [0, 2]);
+    }
+
+    /// GitHub's answer for a login that does not exist.
+    fn nobody() -> Value {
+        json!({"data": {"user": null}, "errors": [{"type": "NOT_FOUND", "path": ["user"],
+            "message": "Could not resolve to a User with the login of 'octo-typo'."}]})
+    }
+
+    #[test]
+    fn a_misspelled_login_gets_the_friendly_message() {
+        struct Nobody;
+        impl GraphQl for Nobody {
+            fn query(&self, _: &str, _: &[(&str, &str)]) -> Result<Value, Error> {
+                data_of(&nobody())
+            }
+        }
+        let err = collect(&Nobody, "octo-typo", d("2026-11-15"), None, &mut |_| {})
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("there is no GitHub user `octo-typo`"), "{err}");
+    }
+
+    #[test]
+    fn only_not_found_errors_leave_the_data_to_tell() {
+        assert_eq!(data_of(&nobody()).unwrap(), json!({"user": null}));
+        let refused =
+            json!({"data": null, "errors": [{"type": "RATE_LIMITED", "message": "slow down"}]});
+        assert!(data_of(&refused).is_err());
+        assert_eq!(
+            data_of(&json!({"data": {"x": 1}})).unwrap(),
+            json!({"x": 1})
+        );
+        assert!(data_of(&json!({})).is_err(), "no data at all");
     }
 
     #[test]

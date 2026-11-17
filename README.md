@@ -84,7 +84,7 @@ Styles, leaf colors, the pot glaze and the legend go in a `bonsai.toml`; see [ex
 Needs the [GitHub CLI](https://cli.github.com), logged in.
 
 ```sh
-cargo install gitbonsai
+cargo install gitbonsai --locked
 gitbonsai collect <login> --output me.snapshot.json
 gitbonsai render me.snapshot.json     # bonsai/: light and dark SVG, PNG, preview.html
 gitbonsai explain me.snapshot.json    # every number behind the tree

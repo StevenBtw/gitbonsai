@@ -23,7 +23,9 @@ jobs:
         with:
           persist-credentials: false
 
-      - run: bash scripts/check-version.sh "${{ github.ref_name }}"
+      - run: bash scripts/check-version.sh "$TAG"
+        env:
+          TAG: ${{ github.ref_name }}
 
   build:
     name: Build (${{ matrix.target }})

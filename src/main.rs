@@ -216,6 +216,7 @@ fn run(cli: Cli) -> Result<()> {
             if let Some(size) = size {
                 config.render.size = size;
                 config.validate()?;
+                config.validate()?;
             }
             if no_animate {
                 config.render.animate = false;

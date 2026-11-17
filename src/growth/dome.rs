@@ -169,24 +169,33 @@ fn plan_years(life: &Life, trunks: &[Trunk]) -> YearPlan {
         .iter()
         .map(|&i| up_share(&upper, &life.years[i]) * life.years[i].total)
         .sum();
-    if up_mass / mass < 0.3 {
-        let (ms, _) = months_of(life, &crown);
-        let (l, _) = lead(&ms, mass);
-        if l.is_some() && !upper.iter().any(|u| u.1 == l) {
-            upper.insert(0, (0, l));
-            upper.truncate(3);
-        }
+    // The crown holds living languages only: a dropped one is deadwood.
+    let gone = |l: &Lang| l.as_deref().is_some_and(|l| life.dropped(l));
+    let (ms, _) = months_of(life, &crown);
+    let living: Vec<(Lang, f64)> = shares_of(&ms, mass)
+        .into_iter()
+        .filter(|(l, _)| l.is_some() && !gone(l))
+        .collect();
+    if up_mass / mass < 0.3
+        && let Some((l, _)) = living.first().cloned()
+        && !upper.iter().any(|u| u.1 == l)
+    {
+        upper.insert(0, (0, l));
+        upper.truncate(3);
     }
     // A language with 18% or more of the crown years owns a sector of the
     // crown too, riding the main trunk.
-    let (ms, _) = months_of(life, &crown);
-    for (l, v) in shares_of(&ms, mass) {
+    for (l, v) in living {
         if upper.len() >= 3 {
             break;
         }
-        if l.is_some() && v / mass >= 0.18 && !upper.iter().any(|u| u.1 == l) {
+        if v / mass >= 0.18 && !upper.iter().any(|u| u.1 == l) {
             upper.push((0, l));
         }
+    }
+    // Every trunk dropped: a living crown language takes the main trunk.
+    if upper.iter().any(|u| !gone(&u.1)) {
+        upper.retain(|u| !gone(&u.1));
     }
     let old: Vec<usize> = act[..d0].to_vec();
     let pause_m = old.last().map_or(0, |&i| {
@@ -1315,7 +1324,17 @@ fn girth(sk: &mut Skeleton, c: &Ctx, wood: &Wood) {
     // Dead wood keeps its own girth: scaling it with the living tree would
     // swell old jin into horns.
     let dead = |n: &crate::growth::Node| n.language.as_deref() == Some(crate::growth::JIN);
-    let dead_sum: f64 = sk.nodes.iter().filter(|n| dead(n)).map(|n| n.own).sum();
+    let mut dead_sum: f64 = sk.nodes.iter().filter(|n| dead(n)).map(|n| n.own).sum();
+    // On a small tree the dead wood's minimum girth could outweigh all the
+    // living wood; it never takes more than its share.
+    let dead_cap = DEAD_SHARE * target;
+    if dead_sum > dead_cap {
+        let s = dead_cap / dead_sum;
+        for n in sk.nodes.iter_mut().filter(|n| dead(n)) {
+            n.own *= s;
+        }
+        dead_sum = dead_cap;
+    }
     let sum: f64 = sk.nodes.iter().filter(|n| !dead(n)).map(|n| n.own).sum();
     let k = if sum > 0.0 {
         (target - dead_sum).max(0.0) / sum
@@ -1334,6 +1353,9 @@ fn girth(sk: &mut Skeleton, c: &Ctx, wood: &Wood) {
 /// Root flow of a seedling, per lifetime contribution; an older tree never
 /// carries less.
 pub(crate) const SEEDLING_FLOW: f64 = 1.02;
+/// The most of a tree's girth its dead wood may take, so the living trunk is
+/// always the heavier one.
+const DEAD_SHARE: f64 = 0.35;
 /// What the root flare adds to a tree's flow.
 const FLARE: f64 = 1.21;
 

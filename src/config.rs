@@ -59,6 +59,9 @@ pub fn parse_period(key: &str) -> Result<(Date, Date), Error> {
     Ok((from, to))
 }
 
+/// The widest PNG, in pixels: about ten times the default.
+pub const MAX_SIZE: u32 = 4096;
+
 /// The most languages that can be pinned to a leaf color slot.
 pub const MAX_PINS: usize = 5;
 
@@ -303,8 +306,11 @@ impl Config {
                 )));
             }
         }
-        if self.render.size == 0 {
-            return Err(Error::Config("[render] size must be at least 1".into()));
+        if !(1..=MAX_SIZE).contains(&self.render.size) {
+            return Err(Error::Config(format!(
+                "[render] size must be 1 to {MAX_SIZE} px, not {}",
+                self.render.size
+            )));
         }
         let mut periods: Vec<(Date, Date, &String)> = Vec::new();
         for key in self.leaves.private_periods.keys() {
@@ -373,6 +379,19 @@ mod tests {
         assert_eq!(Config::default().leaves.private, Rgb::hex(0x00b8_bcc2));
         let c = Config::from_toml("[leaves]\nprivate = \"#aabbcc\"\n").unwrap();
         assert_eq!(c.leaves.private, Rgb::hex(0x00aa_bbcc));
+    }
+
+    #[test]
+    fn the_png_size_has_bounds() {
+        let sized = |n: u32| {
+            let mut c = Config::default();
+            c.render.size = n;
+            c.validate()
+        };
+        assert!(sized(0).is_err());
+        assert!(sized(MAX_SIZE).is_ok());
+        assert!(sized(MAX_SIZE + 1).is_err(), "a 72 MB PNG is a typo");
+        assert!(sized(99_999).is_err());
     }
 
     #[test]
