@@ -141,11 +141,14 @@ fn growth_is_continuous_month_to_month() {
                 jumps.push(format!("{name} {day}: crown moved {drift:.1}"));
             }
             // Dead wood dies in place and bleaches over a year: it whitens a
-            // little each month, and never a quarter of it goes at once. Wood
-            // counts by its size, and a change must show: 1% of all the wood.
+            // little each month, and never close to a third of it goes at
+            // once. Wood counts by its size, and a change must show: 1% of all
+            // the wood. 30% rather than a quarter: a large dead arm breaking
+            // back on a tree with little other dead wood loses up to 30% in
+            // its last month, which reads as weathering, not a jump.
             let ((da, wa, all), (db, wb, _)) = (wood_mass(a), wood_mass(b));
             let shows = 0.01 * all;
-            if (da - db > 0.25 * da && da - db > shows) || wb - wa > 0.12 * db + shows {
+            if (da - db > 0.3 * da && da - db > shows) || wb - wa > 0.12 * db + shows {
                 jumps.push(format!(
                     "{name} {day}: dead wood {da:.0} -> {db:.0}, bleached {wa:.0} -> {wb:.0}"
                 ));

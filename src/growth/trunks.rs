@@ -69,15 +69,10 @@ fn walk(life: &Life) -> (BTreeMap<&str, i32>, Vec<(i32, Vec<String>)>) {
     (is_trunk, history)
 }
 
-/// The trunk languages as they stood in month `no` (`year * 12 + month`);
-/// `None` before trunks first grow.
-pub fn trunks_in(life: &Life, no: i32) -> Option<Vec<String>> {
-    walk(life)
-        .1
-        .into_iter()
-        .take_while(|h| h.0 <= no)
-        .last()
-        .map(|h| h.1)
+/// The trunk languages after every month (`year * 12 + month`), from the
+/// first month trunks grow.
+pub fn history(life: &Life) -> Vec<(i32, Vec<String>)> {
+    walk(life).1
 }
 
 /// The trunks of `life`, main trunk first.

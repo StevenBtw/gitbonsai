@@ -238,12 +238,14 @@ pub fn collect(
     let achievement_dates = achievements
         .iter()
         .map(|(slug, &tier)| {
-            let first = api
-                .fetch_page(&format!(
+            let before = seen.and_then(|p| p.achievement_dates.get(slug));
+            // A tier-1 date never changes: only a new achievement is fetched.
+            let first = before.and_then(|b| b.first().copied()).or_else(|| {
+                api.fetch_page(&format!(
                     "https://github.com/users/{login}/achievements/{slug}/detail"
                 ))
-                .and_then(|page| parse_first_unlocked(&page));
-            let before = seen.and_then(|p| p.achievement_dates.get(slug));
+                .and_then(|page| parse_first_unlocked(&page))
+            });
             let dates = tier_dates(tier, first, before.map(Vec::as_slice), observed_on);
             (slug.clone(), dates)
         })
@@ -1142,6 +1144,53 @@ mod tests {
         s.achievement_dates
             .insert("starstruck".into(), vec![d("2025-01-10"), d("2025-06-01")]);
         s
+    }
+
+    /// `Fake` with an achievements page of one starstruck x2, counting the
+    /// detail pages asked for.
+    struct Paged {
+        fake: Fake,
+        details: RefCell<usize>,
+    }
+
+    impl GraphQl for Paged {
+        fn fetch_page(&self, url: &str) -> Option<String> {
+            if url.ends_with("/detail") {
+                *self.details.borrow_mut() += 1;
+                return None;
+            }
+            Some(
+                r#"<a href="/octo?achievement=starstruck&amp;tab=achievements"><span class="achievement-tier-label--gold">x2</span></a>"#
+                    .into(),
+            )
+        }
+
+        fn query(&self, query: &str, variables: &[(&str, &str)]) -> Result<Value, Error> {
+            self.fake.query(query, variables)
+        }
+    }
+
+    #[test]
+    fn a_known_first_unlock_is_not_fetched_again() {
+        let api = Paged {
+            fake: Fake {
+                split_above: 1000,
+                calls: RefCell::new(0),
+            },
+            details: RefCell::new(0),
+        };
+        let previous = with_eggs();
+        let s = collect(
+            &api,
+            "octo",
+            d("2026-11-15"),
+            Some(&previous),
+            false,
+            &mut |_| {},
+        )
+        .unwrap();
+        assert_eq!(*api.details.borrow(), 0, "the date was known");
+        assert_eq!(s.achievement_dates, previous.achievement_dates);
     }
 
     #[test]

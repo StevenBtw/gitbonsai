@@ -252,13 +252,16 @@ fn run(cli: Cli) -> Result<()> {
             while let Some(&day) = days.last().filter(|&&d| d < end) {
                 days.push(step.after(day).min(end));
             }
-            let trees: Vec<Bonsai> = days
+            // Two passes, one tree in memory at a time: every frame's box for
+            // the shared camera, then each frame grown again and written.
+            let grow = |day: Date| Bonsai::grow(&snapshot, &config, Some(day));
+            let boxes: Vec<_> = days
                 .iter()
-                .map(|&day| Bonsai::grow(&snapshot, &config, Some(day)))
+                .map(|&day| render::frame(&grow(day), &config))
                 .collect();
-            let boxes: Vec<_> = trees.iter().map(|b| render::frame(b, &config)).collect();
             let mut frames = Vec::new();
-            for ((day, bonsai), camera) in days.iter().zip(&trees).zip(render::cameras(&boxes)) {
+            for (&day, camera) in days.iter().zip(render::cameras(&boxes)) {
+                let bonsai = &grow(day);
                 let base = format!("{:04}", frames.len() + 1);
                 for theme in Theme::ALL {
                     let path = output_dir.join(format!("{base}-{}.svg", theme.name()));
@@ -441,8 +444,9 @@ fn parse_interval(text: &str) -> Result<Interval> {
         return Err(invalid().into());
     }
     Ok(match unit {
-        "w" => Interval::Days(n.checked_mul(7).ok_or_else(invalid)?),
-        "d" => Interval::Days(n),
+        // Steps beyond ten thousand years are no step, and would wrap.
+        "w" if n <= 520_000 => Interval::Days(n * 7),
+        "d" if n <= 3_650_000 => Interval::Days(n),
         // Months beyond ten thousand years are no step.
         "m" if n <= 120_000 => Interval::Months(n),
         "q" if n <= 40_000 => Interval::Months(n * 3),
@@ -627,6 +631,9 @@ mod tests {
 
     #[test]
     fn an_interval_with_a_multibyte_unit_is_an_error() {
+        // A step too long to take would wrap the day count and never end.
+        assert!(parse_interval("2147480000d").is_err());
+        assert!(parse_interval("300000000w").is_err());
         assert!(parse_interval("4\u{e9}").is_err());
         assert!(parse_interval("\u{e9}").is_err());
         let day: Date = "2024-05-20".parse().unwrap();

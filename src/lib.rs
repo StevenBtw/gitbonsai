@@ -285,10 +285,12 @@ fn settle_leaves(
     for (l, v) in window.by_language.iter().chain(&pw.by_language) {
         *by_language.entry(l.clone()).or_default() += 0.5 * v;
     }
-    let mut full: BTreeMap<String, f64> = BTreeMap::new();
-    for (l, v) in fullness.iter().chain(&pf) {
-        *full.entry(l.clone()).or_default() += 0.5 * v;
-    }
+    // A language the past months didn't know yet keeps today's fullness:
+    // missing there means the account's own, not none.
+    let full: BTreeMap<String, f64> = fullness
+        .iter()
+        .map(|(l, v)| (l.clone(), 0.5 * v + 0.5 * pf.get(l).copied().unwrap_or(*v)))
+        .collect();
     (
         Window {
             total: f64::midpoint(window.total, pw.total),
@@ -365,12 +367,8 @@ fn past_reach(
         let known = seen.lock().ok().and_then(|m| m.get(&(hash, no)).cloned());
         let month: Month = known.unwrap_or_else(|| {
             let then = Timeline::new(&snapshot.truncated(day));
-            let tree = growth::life::Life::of(&then, periods).and_then(|life| {
-                Some((
-                    Reach::of(&life, snapshot.account_id)?,
-                    Recent::of(&life, snapshot.account_id)?,
-                ))
-            });
+            let tree = growth::life::Life::of(&then, periods)
+                .and_then(|life| growth::dome::measures(&life, snapshot.account_id));
             let month = (
                 tree,
                 (Window::of(&then), foliage::fullness_by_language(&then)),
@@ -385,7 +383,9 @@ fn past_reach(
         });
         let (tree, leaf) = month;
         if let Some((r, recent)) = tree {
-            out = out.max(r);
+            // As that month showed it: settled by its own three before.
+            let before = Recent::mean(&months[months.len().saturating_sub(3)..]);
+            out = out.max(before.map_or(r, |b| r.settled(&b)));
             months.push(recent);
         }
         leaves.push(leaf);
@@ -397,4 +397,19 @@ fn past_reach(
         Recent::mean(&months[last..]),
         mean_leaves(&leaves[last_leaves..]),
     )
+}
+
+#[cfg(test)]
+mod leaf_tests {
+    use super::*;
+
+    /// A language too new for the past months keeps today's leaves: missing
+    /// there is not zero.
+    #[test]
+    fn a_new_language_keeps_its_leaves() {
+        let now: BTreeMap<String, f64> = [("Rust".to_string(), 1.0)].into();
+        let past: Leaves = (Window::default(), BTreeMap::new());
+        let (_, full) = settle_leaves(Window::default(), now, Some(past));
+        assert_eq!(full["Rust"], 1.0);
+    }
 }

@@ -179,6 +179,7 @@ fn active_at(life: &Life, at: Date) -> Vec<usize> {
 /// Where the crown starts among `act`, the years of growth by day `at`.
 fn crown_start(life: &Life, trunks: &[Trunk], act: &[usize], at: Date) -> usize {
     let upper = trunk_upper(trunks);
+    let history = crate::growth::trunks::history(life);
     // A pause splits the crown once the year that ended it is a year old:
     // until then the old crown stands and the comeback grows above it.
     let paused =
@@ -190,11 +191,12 @@ fn crown_start(life: &Life, trunks: &[Trunk], act: &[usize], at: Date) -> usize 
         // ...judged by the trunks as they stood when the later year began: a
         // trunk that arrives or fades later never moves old limbs in or out
         // of the crown.
-        let then: Vec<(usize, Lang)> = crate::growth::trunks::trunks_in(life, b.y * 12 + 1)
-            .unwrap_or_default()
-            .into_iter()
-            .map(|l| (0, Some(l)))
-            .collect();
+        let then: Vec<(usize, Lang)> = history
+            .iter()
+            .take_while(|h| h.0 <= b.y * 12 + 1)
+            .last()
+            .map(|h| h.1.iter().map(|l| (0, Some(l.clone()))).collect())
+            .unwrap_or_default();
         let then = if then.is_empty() { &upper } else { &then };
         if paused(a, b) || up_share(then, a) < 0.5 {
             break;
@@ -609,10 +611,29 @@ pub struct Reach {
     pub girth: f64,
 }
 
+/// What the tree of `life` reaches today, and its measures for averaging;
+/// `None` for a seedling.
+pub fn measures(life: &Life, seed: u64) -> Option<(Reach, Recent)> {
+    if life.is_seedling() {
+        return None;
+    }
+    let c = Ctx::new(life, seed);
+    Some((c.reach, Recent::of_ctx(&c)))
+}
+
 impl Reach {
-    /// What the tree of `life` reaches today; `None` for a seedling.
-    pub fn of(life: &Life, seed: u64) -> Option<Self> {
-        (!life.is_seedling()).then(|| Ctx::new(life, seed).reach)
+    /// Half these, half `recent`'s average: as [`Ctx::settled`] shows them.
+    #[must_use]
+    pub fn settled(self, recent: &Recent) -> Self {
+        let vv = f64::midpoint(self.top / self.big_s.max(1e-9), recent.frame[1]);
+        let big_s = f64::midpoint(self.big_s, recent.frame[0]);
+        Self {
+            h_vis: f64::midpoint(self.h_vis, recent.frame[6]),
+            big_s,
+            top: vv * big_s,
+            irr: f64::midpoint(self.irr, recent.irr),
+            girth: self.girth,
+        }
     }
 
     /// The furthest of both.
@@ -638,14 +659,11 @@ pub struct Recent {
 }
 
 impl Recent {
-    /// The measures of `life`'s tree; `None` for a seedling.
-    pub fn of(life: &Life, seed: u64) -> Option<Self> {
-        if life.is_seedling() {
-            return None;
-        }
-        let c = Ctx::new(life, seed);
+    /// The measures of the tree in `c`.
+    fn of_ctx(c: &Ctx) -> Self {
+        let life = c.life;
         let f = &c.frame;
-        Some(Self {
+        Self {
             frame: [
                 f.big_s, f.vv, f.th_lo, f.cell, f.gap_h, f.window, f.h_vis, f.vigor,
             ],
@@ -662,7 +680,7 @@ impl Recent {
                 .zip(&c.plan.sector)
                 .map(|(u, w)| (key(&u.1), *w))
                 .collect(),
-        })
+        }
     }
 
     /// The average of `all`; a strand missing in a month counts as not yet
