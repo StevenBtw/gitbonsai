@@ -1,0 +1,54 @@
+# Builds gitbonsai.dev (site/) and deploys it to GitHub Pages: on each release,
+# when the site changes on main, or by hand. The github-pages environment only
+# accepts deploys from main.
+name: pages
+
+on:
+  release:
+    types: [published]
+  push:
+    branches: [main]
+    paths: ["site/**", ".github/workflows/pages.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@92e73e19cbfb3981e63ef478a16f95f415e634d3 # 1.99.0
+
+      - name: Install the video tools
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg python3-cairosvg python3-pil
+
+      - name: Build gitbonsai
+        run: cargo build --release --locked
+
+      - name: Build the site
+        run: bash site/build.sh _site
+
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

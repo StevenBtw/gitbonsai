@@ -598,6 +598,17 @@ fn edge_accounts_still_grow_something() {
     let one_day = steady.truncated(steady.days[0].date);
     let tiny = Bonsai::grow(&one_day, &Config::default(), None);
     assert!(tiny.skeleton.nodes.len() > 1, "a single day still sprouts");
+    assert!(
+        tiny.description().contains("just planted"),
+        "not grown over 0 weeks"
+    );
+    let week = steady.truncated(steady.days[0].date.add_days(8));
+    let week = Bonsai::grow(&week, &Config::default(), None);
+    assert!(
+        week.description().contains("grown over 1 week,"),
+        "{}",
+        week.description()
+    );
 
     let dormant = grow("dormant");
     assert!(dormant.dormant());

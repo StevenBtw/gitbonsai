@@ -87,7 +87,7 @@ fn thousands(n: u64) -> String {
 }
 
 /// An age in words: weeks, then months, then years.
-fn age(weeks: u32) -> String {
+pub(crate) fn age(weeks: u32) -> String {
     let plural = |n: u32, unit: &str| format!("{n} {unit}{}", if n == 1 { "" } else { "s" });
     if weeks < 9 {
         plural(weeks, "week")
