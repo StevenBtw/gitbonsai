@@ -21,13 +21,15 @@ Growth release: a tree now changes a little each month and never all at once, it
 - **Dead wood stays where it grew**: a dropped language's wood dies in place and bleaches over a year, nothing living grows from it, and dead branches of years leaving the crown break back over two years before they fall.
 - **The crown follows the recent years**: a language owns a sector of the crown once it has 14% of the crown years' work, growing in up to 22%, and sectors keep their places as shares change.
 - **Size follows the work**: crown and limb reach grow with the work done, not with the calendar, so a few contributions over many years stay a small tree.
-- **Fuller crowns**: 1.5 times as many leaves on the same clouds; the size budget the tests hold every SVG to is 190 KB (was 150 KB).
+- **Fuller crowns**: 1.5 times as many leaves on the same clouds; a typical SVG stays within 190 KB (was 150 KB), and the heaviest crowns keep fewer, larger leaves so no SVG passes 220 KB.
 - **Limbs come from behind the trunk**: limbs leave toward the side or back with a flared collar, and a side branch starts on its parent's surface, so no join shows a gap or a corner.
 - **Limbs taper to fine tips**: a limb is about a third of the trunk's girth where it leaves and thins steadily to its tip, and the collar flares only at the join, so no limb ends in a thick round stump.
 - **Broken dead limbs splinter**: a fresh break in a dead limb ends in torn fibres and weathers to a point as it bleaches; fine dead twigs keep their round ends.
 - **Smoother wood in smaller files**: branches are smoothed before their outlines are simplified, which cuts up to 7% from an SVG.
+- **A rested seedling fills out over a year**: a seedling that rested past its first year becomes a tree the day work resumes and fills out from there, instead of standing full grown that month.
 - **A comeback keeps its old crown a while**: after a pause the old crown stays until the comeback year is a year old, then turns into a limb over a year.
 - **`collect` keeps what it knew**: a `--full` run, or one that cannot reach a profile page, keeps the dates an earlier run recorded, and a sign's first date is fetched only once.
+- **`explain` shows the leaves left**: each language and the crown show the share of leaves left, which follows how recent the work is, in place of a density figure the render no longer used.
 - **Snapshots are schema 3**: they add the dates signs were earned and repositories archived; gitbonsai 0.2 cannot read them, so going back means running its `collect` again.
 
 ### Removed
@@ -36,6 +38,7 @@ Growth release: a tree now changes a little each month and never all at once, it
 
 ### Fixed
 
+- **A past view never shrinks the tree**: `--as-of` and timelapse frames keep the start date the whole history gives, so a tree no longer drops back to a seedling in the month steady work begins after a few early stray days.
 - **Heavy windows no longer fail collection**: a window GitHub refuses as too heavy (`RESOURCE_LIMITS_EXCEEDED`) is split and fetched in halves.
 - **A huge `--every` is refused**: `timelapse --every 2147480000d` overflowed the day count and never finished.
 

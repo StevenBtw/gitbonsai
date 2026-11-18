@@ -442,7 +442,8 @@ fn cloud_leaves(b: &Bonsai, scene: &mut Scene) {
         let a = area(cl);
         let k = (total * a / total_area).max(14.0);
         // Tufts sized so k of them cover the cloud about twice over.
-        let size = (a * 2.8 / (k * 30.0)).sqrt().clamp(0.9, 2.6);
+        // Fewer leaves in a crown too heavy to draw are larger, to cover it.
+        let size = (a * 2.8 / (k * 30.0)).sqrt().clamp(0.9, 2.6) / b.leaf_share.sqrt();
         let dom = cl
             .patches
             .iter()
@@ -497,7 +498,7 @@ fn cloud_leaves(b: &Bonsai, scene: &mut Scene) {
             .map(|(p, z, l, w)| ([p.0 - CENTER_X, SOIL_Y - p.1, *z], l.as_deref(), *w))
             .collect();
         // Leaves at 1.5 times 0.2's count, at the same size: a full crown.
-        let nn = (k * 1.5 / 0.36) as usize;
+        let nn = (k * 1.5 / 0.36 * b.leaf_share) as usize;
         let phase = hash01(seed, li as i64) * math::TAU;
         let ph2 = hash01(seed ^ 0x77, li as i64) * math::TAU;
         for i in 0..nn {

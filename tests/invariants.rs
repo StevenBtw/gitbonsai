@@ -377,6 +377,40 @@ fn every_output_stays_within_budget() {
     }
 }
 
+/// The heaviest tree synthetic data grows: sixteen years of daily work at
+/// the weekly cap, a first language dropped after five years (dead wood),
+/// then mostly private work beside two public languages, every sign and the
+/// most kintsugi. Uncapped it weighs about 214 KB; it keeps within
+/// [`render::SVG_BUDGET`].
+#[test]
+fn the_heaviest_tree_keeps_within_the_budget() {
+    let mut s = fixtures::by_name("veteran").unwrap().snapshot;
+    let from = s.observed_on.add_days(-16 * 365);
+    s.range.from = from;
+    s.days = (0..16 * 365)
+        .map(|k| {
+            let first = k < 5 * 365;
+            gitbonsai::snapshot::Day {
+                date: from.add_days(k + 1),
+                total: 200,
+                private: if first { 0 } else { 170 },
+                by_language: if first {
+                    [("Rust".to_string(), 200)].into()
+                } else {
+                    [("Go".to_string(), 20), ("Python".to_string(), 10)].into()
+                },
+            }
+        })
+        .collect();
+    s.archived_repos = (0..40).map(|i| format!("archive-{i}")).collect();
+    let config = Config::default();
+    let bonsai = Bonsai::grow(&s, &config, None);
+    for theme in Theme::ALL {
+        let svg = render::svg(&bonsai, &config, theme);
+        assert!(svg.len() <= render::SVG_BUDGET, "{} bytes", svg.len());
+    }
+}
+
 #[test]
 fn animation_can_be_left_out_and_respects_reduced_motion() {
     let snapshot = fixtures::by_name("bot").unwrap().snapshot;

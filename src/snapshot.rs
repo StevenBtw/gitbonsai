@@ -169,6 +169,39 @@ impl Snapshot {
     /// dropped and the range ended there (`--as-of`).
     #[must_use]
     pub fn truncated(&self, as_of: Date) -> Self {
+        if as_of >= self.observed_on {
+            return self.clone();
+        }
+        self.from_start().cut(as_of)
+    }
+
+    /// The snapshot with the days before the start its whole history gives
+    /// folded into that day, as the timeline folds stray days. Cut from it,
+    /// a past tree never starts earlier and then grows younger; before its
+    /// start the pot is empty.
+    #[must_use]
+    pub fn from_start(&self) -> Self {
+        let mut snapshot = self.clone();
+        let Some(start) = crate::timeline::Timeline::new(self).first_active else {
+            return snapshot;
+        };
+        let n = snapshot.days.iter().take_while(|d| d.date < start).count();
+        let strays: Vec<Day> = snapshot.days.drain(..n).collect();
+        if let Some(first) = snapshot.days.first_mut().filter(|d| d.date == start) {
+            for day in strays {
+                first.total += day.total;
+                first.private += day.private;
+                for (language, v) in day.by_language {
+                    *first.by_language.entry(language).or_default() += v;
+                }
+            }
+        }
+        snapshot
+    }
+
+    /// [`Snapshot::truncated`] for a snapshot already [`Snapshot::from_start`].
+    #[must_use]
+    pub(crate) fn cut(&self, as_of: Date) -> Self {
         let mut snapshot = self.clone();
         if as_of >= self.observed_on {
             return snapshot;
@@ -236,6 +269,38 @@ mod tests {
             achievement_dates: BTreeMap::new(),
             archived_dates: BTreeMap::new(),
         }
+    }
+
+    #[test]
+    fn a_past_view_keeps_the_start_the_whole_history_gives() {
+        let d = |s: &str| -> Date { s.parse().unwrap() };
+        let day = |date: Date, total: u32| Day {
+            date,
+            total,
+            by_language: [("Rust".to_string(), total)].into(),
+            private: 0,
+        };
+        let mut s = minimal(SCHEMA);
+        let start = d("2003-08-05");
+        s.days = vec![day(d("2001-04-09"), 1), day(d("2002-03-01"), 1)];
+        s.days.extend((0..20).map(|k| day(start.add_days(k), 2)));
+        s.range = DateRange {
+            from: d("2001-01-01"),
+            to: d("2003-12-31"),
+        };
+        s.observed_on = d("2003-12-31");
+        assert_eq!(
+            s.truncated(d("2003-08-01")).days,
+            [],
+            "before its start the pot is empty"
+        );
+        let after = s.truncated(d("2003-08-10"));
+        assert_eq!(after.days[0].date, start);
+        assert_eq!(after.days[0].total, 4, "the strays fold into the start");
+        assert_eq!(after.days[0].by_language["Rust"], 4);
+        assert!(after.validate().is_ok());
+        let timeline = crate::timeline::Timeline::new(&after);
+        assert_eq!(timeline.first_active, Some(start));
     }
 
     #[test]

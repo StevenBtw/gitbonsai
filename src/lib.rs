@@ -113,6 +113,9 @@ pub struct Bonsai {
     pub periods: Vec<(Date, Date, Vec<String>)>,
     /// Each language's foliage left, 0 to 1 ([`foliage::fullness`]).
     pub fullness: BTreeMap<String, f64>,
+    /// The share of its leaves the crown is drawn with, 1 unless the SVG
+    /// would be too heavy ([`render::SVG_BUDGET`]).
+    pub leaf_share: f64,
 }
 
 impl Bonsai {
@@ -169,6 +172,7 @@ impl Bonsai {
             periods,
             fullness,
             timeline,
+            leaf_share: 1.0,
         }
     }
 
@@ -347,7 +351,9 @@ fn past_reach(
     let mut hash = rng::siphash13(
         format!("{}/{}/{periods:?}", snapshot.account_id, snapshot.schema).as_bytes(),
     );
-    let mut days = snapshot.days.iter().peekable();
+    // Folded once: each month is cut from it.
+    let folded = snapshot.from_start();
+    let mut days = folded.days.iter().peekable();
     let (y, m, _) = first.ymd();
     let mut out = Reach::default();
     let mut months: Vec<Recent> = Vec::new();
@@ -366,7 +372,7 @@ fn past_reach(
         hash = rng::siphash13(&bytes);
         let known = seen.lock().ok().and_then(|m| m.get(&(hash, no)).cloned());
         let month: Month = known.unwrap_or_else(|| {
-            let then = Timeline::new(&snapshot.truncated(day));
+            let then = Timeline::new(&folded.cut(day));
             let tree = growth::life::Life::of(&then, periods)
                 .and_then(|life| growth::dome::measures(&life, snapshot.account_id));
             let month = (

@@ -8,18 +8,11 @@ use std::collections::BTreeMap;
 
 use crate::date::Date;
 use crate::growth::life::Life;
-use crate::math;
-use crate::timeline::{Timeline, WEEKLY_CAP, WINDOW_WEEKS};
+use crate::timeline::{Timeline, WINDOW_WEEKS};
 
 /// Complete silent weeks after which a language's branches can turn to jin,
 /// once it is also dropped.
 pub const JIN_AFTER: i32 = 52;
-
-/// Leaf density for an average of `v` contributions per week: 0 to 1, with
-/// 1,000 per week at the top.
-pub fn density(v: f64) -> f64 {
-    math::ln(1.0 + v.clamp(0.0, WEEKLY_CAP) / 10.0) / math::ln(101.0)
-}
 
 /// How much of a language's foliage is left after `silent` complete weeks
 /// without it: all of it through the 13-week window, then less each week,
@@ -183,16 +176,5 @@ mod tests {
         let timeline = Timeline::new(&snap(&days, d(6, 4)));
         let full = fullness_by_language(&timeline);
         assert!((full["Rust"] - 1.0).abs() < 1e-9, "{full:?}");
-    }
-
-    /// The density table.
-    #[test]
-    fn density_follows_the_documented_curve() {
-        let pct = |v: f64| (density(v) * 100.0).round();
-        assert_eq!(pct(1.0), 2.0);
-        assert_eq!(pct(10.0), 15.0);
-        assert_eq!(pct(100.0), 52.0);
-        assert_eq!(pct(1000.0), 100.0);
-        assert_eq!(pct(5000.0), 100.0);
     }
 }

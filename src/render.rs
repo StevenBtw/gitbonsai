@@ -307,6 +307,46 @@ pub fn cameras(frames: &[Frame]) -> Vec<Frame> {
 /// The SVG document for one variant, framed by `camera` instead of the
 /// tree's own box when given.
 pub fn svg_in(bonsai: &Bonsai, config: &Config, theme: Theme, camera: Option<Frame>) -> String {
+    within(bonsai, config, theme, camera, SVG_BUDGET)
+}
+
+/// The most an SVG may weigh, so a README image stays light. Typical trees
+/// weigh under 190 KB; only the heaviest crowns reach this.
+pub const SVG_BUDGET: usize = 220 * 1024;
+
+/// The SVG within `budget` bytes: a crown too heavy for it keeps fewer,
+/// larger leaves. Its size is close to linear in the share of leaves kept,
+/// so a drawing with half of them tells how many fit; the share changes
+/// smoothly as the tree grows, never all at once.
+fn within(
+    bonsai: &Bonsai,
+    config: &Config,
+    theme: Theme,
+    camera: Option<Frame>,
+    budget: usize,
+) -> String {
+    let full = draw(bonsai, config, theme, camera);
+    if full.len() <= budget {
+        return full;
+    }
+    let mut thin = bonsai.clone();
+    thin.leaf_share = 0.5;
+    let half = draw(&thin, config, theme, camera).len() as f64;
+    let leaves = (2.0 * (full.len() as f64 - half)).max(1.0);
+    let rest = full.len() as f64 - leaves;
+    let mut share = ((budget as f64 * 0.99 - rest) / leaves).clamp(0.05, 1.0);
+    loop {
+        thin.leaf_share = share;
+        let svg = draw(&thin, config, theme, camera);
+        if svg.len() <= budget || share <= 0.05 {
+            return svg;
+        }
+        share *= 0.97;
+    }
+}
+
+/// One SVG document, as painted.
+fn draw(bonsai: &Bonsai, config: &Config, theme: Theme, camera: Option<Frame>) -> String {
     let painted = paint::paint(bonsai, config, theme);
     let size = config.render.size;
     let (x, y, w, h) = camera.unwrap_or(painted.frame);
@@ -367,6 +407,23 @@ pub fn escape(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_tree_over_budget_keeps_fewer_leaves_to_fit() {
+        let snapshot = crate::fixtures::by_name("veteran").unwrap().snapshot;
+        let config = Config::default();
+        let b = Bonsai::grow(&snapshot, &config, None);
+        let full = draw(&b, &config, Theme::Light, None).len();
+        let budget = full * 4 / 5;
+        let fit = within(&b, &config, Theme::Light, None, budget);
+        assert!(fit.len() <= budget, "{} > {budget}", fit.len());
+        assert!(
+            fit.len() > budget * 9 / 10,
+            "{} wastes the budget",
+            fit.len()
+        );
+        assert_eq!(within(&b, &config, Theme::Light, None, full).len(), full);
+    }
 
     #[test]
     fn a_narrow_first_frame_does_not_widen_the_last_camera() {
