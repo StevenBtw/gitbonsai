@@ -1122,10 +1122,19 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
     );
     body.push_str(&moss(b, &paints, &pot));
     body.push_str(&egg.back);
-    body.push_str(&nebari(b, &paints, base_r, pot.hw));
+    let (roots_back, roots_front) = nebari(
+        b,
+        &paints,
+        base_r,
+        &pot,
+        scene.chains.first().map_or(&[][..], |c| &c.0[..]),
+        ls,
+    );
+    body.push_str(&roots_back);
     for (_, s) in &items {
         body.push_str(s);
     }
+    body.push_str(&roots_front);
     // Momiji: in a milestone week a few leaves turn crimson and drift down.
     for (k, (x, y, h)) in fallen.iter().enumerate() {
         let duration = 7.0 + 5.0 * h;
@@ -1206,36 +1215,155 @@ fn root_reach(base_r: f64, nebari: f64, hw: f64, az: f64, u: f64) -> f64 {
     reach.min(hw * 0.78 * (0.45 + 0.55 * math::cos(az).abs()))
 }
 
-/// Surface roots, spreading around the trunk with age, curving and tapering
-/// into the soil.
-fn nebari(b: &Bonsai, paints: &Paints, base_r: f64, hw: f64) -> String {
-    let mut roots = String::new();
-    let n = b.extras.roots.max(3) + 2;
+/// Convex hull of points, counter-clockwise (monotone chain).
+fn hull(mut p: Vec<(f64, f64)>) -> Vec<(f64, f64)> {
+    p.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.total_cmp(&b.1)));
+    let cross = |o: (f64, f64), a: (f64, f64), b: (f64, f64)| {
+        (a.0 - o.0) * (b.1 - o.1) - (a.1 - o.1) * (b.0 - o.0)
+    };
+    let mut h: Vec<(f64, f64)> = Vec::new();
+    for pass in 0..2 {
+        let start = h.len();
+        let iter: Box<dyn Iterator<Item = &(f64, f64)>> = if pass == 0 {
+            Box::new(p.iter())
+        } else {
+            Box::new(p.iter().rev())
+        };
+        for &q in iter {
+            while h.len() >= start + 2 && cross(h[h.len() - 2], h[h.len() - 1], q) <= 0.0 {
+                h.pop();
+            }
+            h.push(q);
+        }
+        h.pop();
+    }
+    h
+}
+
+/// Surface roots, after a real maple's nebari: rounded ridges lying on the
+/// soil, each with a half-elliptic cross-section that widens into the trunk
+/// and flattens toward its tip. More roots with age (3 to 7), reaching
+/// further and thicker; those facing us are drawn over the trunk. Returns
+/// what goes behind the trunk and what goes in front of it.
+fn nebari(
+    b: &Bonsai,
+    paints: &Paints,
+    base_r: f64,
+    pot: &Pot,
+    trunk: &[(V3, f64)],
+    ls: (f64, f64),
+) -> (String, String) {
+    let bark = paints.bark;
+    let n = b.extras.roots.max(3);
+    let age = b.extras.nebari.clamp(0.0, 1.0);
+    let (x0, y0) = trunk.first().map_or((CENTER_X, SOIL_Y), |p| {
+        let (x, y, _) = project(p.0);
+        (x, y)
+    });
+    let tilt = pot.ry / pot.hw;
+    let lit = if ls.0 < 0.0 { -1.0 } else { 1.0 };
+    let mut roots: Vec<(f64, String)> = Vec::new();
     for i in 0..n {
         let mut r = Rng::keyed(b.account_id, &format!("root/{i}"));
-        // Spread round the trunk, mostly to the sides, never straight at us.
-        let az = f64::from(i) / f64::from(n) * math::TAU + r.range(-0.3, 0.3);
-        let reach = root_reach(base_r, b.extras.nebari, hw, az, r.unit());
-        let bend = r.range(-0.35, 0.35);
-        let pts: Vec<(f64, f64, f64)> = (0..=8)
-            .map(|j| {
-                let t = f64::from(j) / 8.0;
-                let a = az + bend * t;
-                let p3: V3 = [
-                    math::cos(a) * reach * t / WORLD,
-                    base_r / WORLD * 0.45 * math::pow(1.0 - t, 2.5),
-                    math::sin(a) * reach * t / WORLD,
-                ];
-                let (x, y, _) = project(p3);
-                (x, y, base_r * 0.36 * math::pow(1.0 - t, 1.6) + 0.6)
-            })
-            .collect();
-        roots.push_str(tube(&pts, true, false).as_str());
+        let az = 0.9 + f64::from(i) * 2.399_963 + r.range(-0.2, 0.2);
+        let reach = root_reach(base_r, b.extras.nebari, pot.hw, az, r.unit()).max(base_r * 1.6);
+        let bend = r.range(-0.3, 0.3);
+        // Front roots are seen across their width: slimmer, so each stays
+        // its own root.
+        let front_k = 1.0 - 0.3 * math::sin(az).max(0.0);
+        let w0 = base_r * (0.26 + 0.14 * age) * r.range(0.85, 1.15) * front_k;
+        let h0 = base_r * (0.3 + 0.2 * age) * r.range(0.85, 1.15);
+        let from = base_r * 0.55;
+        // Ground point, ground direction and screen offset of a ground vector.
+        let ground = |a: f64, d: f64| (x0 + math::cos(a) * d, y0 + math::sin(a) * d * tilt);
+        let k = 20;
+        let sec = |t: f64| {
+            let a = az + bend * t * t;
+            let d = from + (reach - from) * t;
+            let g = ground(a, d);
+            let (px, pz) = (-math::sin(a), math::cos(a));
+            // It widens into the trunk where it leaves it, like a fillet.
+            let w = w0 * (1.0 - 0.5 * t) * (1.0 + 0.7 * math::sq(math::sq(1.0 - t))) + 0.35;
+            // Rounded where it leaves the trunk, then low along the soil,
+            // and blunt where it goes under.
+            let h = (h0 * math::pow(1.0 - t, 1.2) + w0 * 0.25 * (1.0 - t * t))
+                * (1.0 - 0.25 * math::pow(1.0 - t, 6.0));
+            (g, (px * w, pz * w * tilt), h)
+        };
+        // Cross-section curve at t: half-ellipse from one side over the top.
+        let curve = |t: f64| -> Vec<(f64, f64)> {
+            let (g, p, h) = sec(t);
+            (0..=10)
+                .map(|j| {
+                    let th = std::f64::consts::PI * f64::from(j) / 10.0;
+                    (
+                        g.0 + p.0 * math::cos(th),
+                        g.1 + p.1 * math::cos(th) - h * math::sin(th),
+                    )
+                })
+                .collect()
+        };
+        // A root is nearly convex: one outline round all its cross-sections.
+        let mut all: Vec<(f64, f64)> = Vec::new();
+        for j in 0..=k {
+            all.extend(curve(f64::from(j) / f64::from(k)));
+        }
+        let h = hull(all);
+        let mut body = PathData::new();
+        body.m(h[0]);
+        for &q in &h[1..] {
+            body.l(q);
+        }
+        body.z();
+        // The ridge, a little toward the light, and the shaded flank.
+        let line = |side: f64, up: f64| {
+            let mut d = PathData::new();
+            for j in 0..=k {
+                let t = f64::from(j) / f64::from(k);
+                let (g, p, h) = sec(t);
+                let q = (g.0 + p.0 * side, g.1 + p.1 * side - h * up);
+                if j == 0 {
+                    d.m(q);
+                } else {
+                    d.l(q);
+                }
+            }
+            d.as_str().to_string()
+        };
+        let id = format!("rh{i}");
+        let ww = w0 + h0 * 0.3;
+        let s = format!(
+            r#"<clipPath id="{id}"><path d="{o}"/></clipPath><path d="{o}" fill="{base}"/><g clip-path="url(#{id})" fill="none" stroke-linecap="round"><path d="{shade}" stroke="{dark}" stroke-width="{sw}"/><path d="{ridge}" stroke="{light}" stroke-width="{rw}"/></g>"#,
+            o = body.as_str(),
+            base = bark.shift(-0.03, 0.0),
+            shade = line(-lit * 0.95, 0.05),
+            dark = bark.shift(-0.14, 0.0),
+            sw = Num(ww * 0.45),
+            ridge = line(lit * 0.25, 0.9),
+            light = bark.shift(0.05, 0.0),
+            rw = Num(ww * 0.18),
+        );
+        roots.push((math::sin(az), s));
     }
-    format!(
-        r#"<path d="{roots}" fill="{}"/>"#,
-        paints.bark.shift(-0.04, 0.0)
-    )
+    roots.sort_by(|a, b| a.0.total_cmp(&b.0));
+    // Deep shade where the roots leave the trunk: the valleys between them.
+    let valley = format!(
+        r#"<ellipse cx="{}" cy="{}" rx="{}" ry="{}" fill="{}"/>"#,
+        Num(x0),
+        Num(y0 + base_r * tilt * 0.35),
+        Num(base_r * 0.85),
+        Num(base_r * tilt * 0.6 + 0.6),
+        bark.shift(-0.16, 0.0)
+    );
+    let (mut back, mut front) = (String::new(), valley);
+    for (z, s) in roots {
+        if z > 0.1 {
+            front.push_str(&s);
+        } else {
+            back.push_str(&s);
+        }
+    }
+    (back, front)
 }
 
 /// Moss on the soil while a weekly streak runs.
@@ -1516,6 +1644,22 @@ mod tests {
         assert_eq!(nearest_on(&line, (13.0, 6.0)), (10.0, 6.0));
         assert_eq!(nearest_on(&line, (-5.0, -1.0)), (0.0, 0.0));
         assert_eq!(nearest_on(&[(2.0, 2.0)], (9.0, 9.0)), (2.0, 2.0));
+    }
+
+    #[test]
+    fn a_hull_keeps_the_corners_and_drops_what_is_inside() {
+        let h = hull(vec![
+            (0.0, 0.0),
+            (2.0, 0.0),
+            (1.0, 1.0),
+            (2.0, 2.0),
+            (0.0, 2.0),
+            (1.0, 0.5),
+        ]);
+        assert_eq!(h.len(), 4, "{h:?}");
+        for c in [(0.0, 0.0), (2.0, 0.0), (2.0, 2.0), (0.0, 2.0)] {
+            assert!(h.contains(&c), "{c:?} in {h:?}");
+        }
     }
 
     #[test]
