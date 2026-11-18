@@ -1354,8 +1354,11 @@ fn grow_eras(sk: &mut Skeleton, c: &Ctx, wood: &Wood) {
             let mut yr = Rng::keyed(seed, &format!("bdome/old/{}", y.y));
             for (slot, (l, v)) in shares
                 .iter()
-                .filter(|s| s.1 / ys >= 0.12 || s.0.as_ref().is_some_and(|l| extra.contains(&l)))
-                .take(3 + extra.len())
+                .filter(|s| s.1 / ys >= 0.12)
+                .take(3)
+                .chain(shares.iter().filter(|s| {
+                    s.1 / ys < 0.12 && s.0.as_ref().is_some_and(|l| extra.contains(&l))
+                }))
                 .enumerate()
             {
                 let f = match slot {
@@ -2163,8 +2166,16 @@ fn limbs_within_trunk(sk: &mut Skeleton, wood: &Wood) {
         }
     }
     let mut removed = 0.0;
-    // From the top down, so each cap sees the trunk above already settled.
-    for &t in trunk.iter().rev() {
+    // Every trunk chain, each from the top down so each cap sees the trunk
+    // above already settled; the foot they share is capped once.
+    let mut seen = std::collections::BTreeSet::new();
+    let order: Vec<usize> = wood
+        .chains
+        .iter()
+        .flat_map(|c| c.iter().rev().copied())
+        .filter(|&t| seen.insert(t))
+        .collect();
+    for t in order {
         let flow = sk.flows();
         let limbs: Vec<usize> = kids[t]
             .iter()
@@ -2341,7 +2352,7 @@ mod tests {
             let chains = tree(&mut sk, &life, seed, &leader, Reach::default(), None);
             let flow = sk.flows();
             let on: std::collections::BTreeSet<usize> = chains.iter().flatten().copied().collect();
-            for &t in &chains[0] {
+            for &t in &on {
                 for (i, n) in sk.nodes.iter().enumerate() {
                     if n.parent == Some(t) && !on.contains(&i) {
                         assert!(
