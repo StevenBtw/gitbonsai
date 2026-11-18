@@ -2,6 +2,8 @@
 
 Grow a Japanese maple bonsai from your GitHub activity: an animated SVG for your profile README.
 
+**[gitbonsai.dev](https://gitbonsai.dev)**: watch trees grow, and preview your own.
+
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/showcase-legend-dark.svg" />
@@ -9,22 +11,22 @@ Grow a Japanese maple bonsai from your GitHub activity: an animated SVG for your
   </picture>
 </p>
 
-The tree is yours: it grows from your own GitHub activity. A newcomer is a thin sprout; years of work make it short, thick and wide, the way a prize bonsai is, never tall. A language that becomes a real part of your work claims a strand of the trunk, which comes away as a trunk of its own the more you use it, and each language in your recent years owns part of the crown, in its color. The crown is your last few years; older years sit lower as limbs, and a long pause leaves a gap of bare trunk. Private work shows as silver leaves, if your profile shares it, their tips taking your public languages' colors. A language you've dropped dies where it grew and weathers slowly, and a year without contributions leaves the tree bare for the winter. The tree changes a little each month, never all at once: nothing is erased, and its trunk only grows.
+A newcomer is a thin sprout; years of work make it short, thick and wide, the way a prize bonsai is. Each language you really use claims a strand of the trunk and part of the crown, in its color. Nothing is erased: the tree changes a little each month, and its trunk only grows.
 
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/row-dark.svg" />
-    <img src="assets/row-light.svg" width="100%" alt="Five bonsai at one scale: a simulated newbie sprout, then the trees of StevenBtw, tj, torvalds and steipete" />
+    <img src="assets/row-light.svg" width="100%" alt="Five bonsai at one scale: a simulated newcomer sprout, then the trees of StevenBtw, tj, torvalds and steipete" />
   </picture>
 </p>
 
 From left:
 
-- **Newbie** (simulated); a few months in, two languages: a thin sprout in its first pot.
-- **[@StevenBtw](https://github.com/StevenBtw)**: around 9 years; mainly Python and Rust, Rust coming away from the trunk on its own strand; recently picked up TypeScript.
-- **[@tj](https://github.com/tj)**: around 19 years; JavaScript, later Go; resting since 2021, so bare for the winter, its dropped languages weathering in place.
-- **[@torvalds](https://github.com/torvalds)**: around 16 years of C, every single week; one steady trunk.
-- **[@steipete](https://github.com/steipete)**: around 17 years; a recent burst of work, its newer languages coming away from the trunk on their own strands.
+- **Newcomer** (simulated): a thin sprout, a few months in.
+- **[@StevenBtw](https://github.com/StevenBtw)**: 9 years; Rust on its own strand.
+- **[@tj](https://github.com/tj)**: 19 years; resting since 2021, bare for the winter.
+- **[@torvalds](https://github.com/torvalds)**: 16 years of C; one steady trunk.
+- **[@steipete](https://github.com/steipete)**: 17 years; new languages on new strands.
 
 The four real trees are grown from their public GitHub activity with `gitbonsai collect <login>` and `gitbonsai render`. Look closely: a tree may hide a few small surprises of its own.
 
