@@ -134,7 +134,7 @@ async function fetchTree(login) {
   } catch (e) {}
   lock(false);
   if (!r) return say("The grower can't be reached right now. Try again in a while.");
-  if (!r.ok || !body.light) {
+  if (!r.ok || !body.light || !body.dark) {
     const text = ERRORS[body.error] || ERRORS.failed;
     const wait = parseInt(r.headers.get("Retry-After"), 10);
     return text.includes("{wait}") ? hold(wait > 0 ? wait : 60, text) : say(text);
