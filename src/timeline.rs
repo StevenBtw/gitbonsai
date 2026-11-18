@@ -55,7 +55,8 @@ pub struct Week {
 pub struct Timeline {
     /// The last complete UTC day.
     pub observed_on: Date,
-    /// The first day with a contribution; `None` for an empty account.
+    /// The first day with a contribution; `None` for an empty account, or
+    /// for a past view cut before the day its whole history starts.
     pub first_active: Option<Date>,
     /// Active days only, in date order.
     pub days: Vec<CappedDay>,

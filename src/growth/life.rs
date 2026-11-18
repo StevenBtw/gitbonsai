@@ -231,13 +231,18 @@ impl Life {
     /// resumes, and fills out from there, never all at once. Only time at
     /// work counts: a gap past a month adds a month.
     pub fn maturity(&self) -> f64 {
-        let tree: Vec<Date> = self
+        let mut days = 0;
+        let mut prev: Option<Date> = None;
+        for &d in self
             .active_days
             .iter()
-            .copied()
             .skip_while(|d| d.days_since(self.first) < 365)
-            .collect();
-        let days: i32 = tree.windows(2).map(|w| w[1].days_since(w[0]).min(30)).sum();
+        {
+            if let Some(p) = prev {
+                days += d.days_since(p).min(30);
+            }
+            prev = Some(d);
+        }
         (f64::from(days) / 365.0).clamp(0.0, 1.0)
     }
 
