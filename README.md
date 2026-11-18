@@ -11,7 +11,7 @@ Grow a Japanese maple bonsai from your GitHub activity: an animated SVG for your
   </picture>
 </p>
 
-A newcomer is a thin sprout; years of work make it short, thick and wide, the way a prize bonsai is. Each language you really use claims a strand of the trunk and part of the crown, in its color. Nothing is erased: the tree changes a little each month, and its trunk only grows.
+A newcomer is a thin sprout; years of work make it short, thick and wide, the way a prize bonsai is. Your first language is the trunk; another that reaches a tenth of your work claims a strand of it, and the languages of your recent years share the crown, each in its color. Nothing is erased: the tree changes a little each month, and its trunk only grows.
 
 <p align="center">
   <picture>
@@ -60,7 +60,7 @@ The four real trees are grown from their public GitHub activity with `gitbonsai 
 Add the action to a weekly workflow in your profile repository (`<you>/<you>`); [examples/profile-workflow.yml](examples/profile-workflow.yml) is a complete one to copy to `.github/workflows/bonsai.yml`:
 
 ```yaml
-- uses: StevenBtw/gitbonsai@v0.3.0
+- uses: StevenBtw/gitbonsai@v0.3.1
   with:
     output-dir: assets   # bonsai-light.svg and bonsai-dark.svg
     legend: left         # optional: off (default), left or right

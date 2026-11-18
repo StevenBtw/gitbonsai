@@ -17,8 +17,8 @@ Wood release: limbs stay in proportion to their trunk, dropped languages keep vi
 ### Fixed
 
 - **Mostly private years keep their limb**: an era counts as dropped by its public work only when at least a quarter of it is public, so one dropped contribution among years of private work no longer kills the limb.
-- **Gateway timeouts no longer fail collection**: a window GitHub's gateway gives up on (HTTP 502 or 504) is split and fetched in halves, on the first request and on a repeat for missing days.
-- **Ages read naturally**: a new tree is "just planted" and a one-week tree "grown over 1 week" (was "0 weeks" and "1 weeks").
+- **Gateway timeouts rarely fail collection**: a window GitHub's gateway gives up on (HTTP 502 or 504) is split and fetched in halves, down to single days, on the first request and on a repeat for missing days. A single day that still times out fails the run, as before.
+- **Ages read naturally**: a new tree's description says "just planted" and a one-week tree's "grown over 1 week", and `explain` says "1 week" (was "0 weeks" and "1 weeks").
 
 ## [0.3.0] - 2026-11-18
 

@@ -50,10 +50,11 @@ interface Timelapse {
   frames: Frame[];
 }
 type Example = [id: string, name: string, kind: "simulated" | "real", blurb: string];
+// By size, smallest first; Showcase still opens first (see the frames fetch).
 const EX: Example[] = [
-  ["showcase", "Showcase", "simulated", "Fourteen years; C# swapped for Java, early private work, then Python, Rust and TypeScript."],
   ["newcomer", "Newcomer", "simulated", "A few months in, two languages: a thin sprout in its first pot."],
   ["stevenbtw", "@StevenBtw", "real", "Around 9 years; mainly Python and Rust, Rust coming away from the trunk on its own strand."],
+  ["showcase", "Showcase", "simulated", "Fourteen years; C# swapped for Java, early private work, then Python, Rust and TypeScript."],
   ["tj", "@tj", "real", "Around 19 years; JavaScript, later Go; resting since 2021, so bare for the winter."],
   ["torvalds", "@torvalds", "real", "Around 16 years of C, every single week; one steady trunk."],
   ["steipete", "@steipete", "real", "Around 17 years; a recent burst of work, its newer languages on their own strands."],
@@ -206,8 +207,9 @@ const ERRORS = {
   busy: "The grower is busy with other trees. Try again in {wait}.",
   failed: "This tree didn't grow. Try again in a while.",
 } as const;
+// Own keys only: an error code such as "toString" must not find a method.
 const errorText = (code: unknown): string =>
-  typeof code === "string" && code in ERRORS ? ERRORS[code as keyof typeof ERRORS] : ERRORS.failed;
+  typeof code === "string" && Object.hasOwn(ERRORS, code) ? ERRORS[code as keyof typeof ERRORS] : ERRORS.failed;
 const art = $("yourart");
 const grow = $<HTMLButtonElement>("grow");
 const legend = $<HTMLInputElement>("legend");
@@ -258,7 +260,9 @@ async function fetchTree(login: string): Promise<void> {
   let body: Partial<Tree> & { error?: unknown } = {};
   try {
     r = await fetch(API + encodeURIComponent(login) + (legend.checked ? "?legend=1" : ""));
-    body = (await r.json()) as typeof body;
+    // A body that isn't a JSON object (null, a number) takes the failure path.
+    const parsed: unknown = await r.json();
+    if (parsed && typeof parsed === "object") body = parsed as typeof body;
   } catch {}
   lock(false);
   if (!r) return say("The grower can't be reached right now. Try again in a while.");
@@ -317,7 +321,11 @@ document.querySelectorAll<HTMLButtonElement>(".copy").forEach((b) =>
     e.stopPropagation();
     const pre = b.nextElementSibling;
     if (!pre) return;
-    navigator.clipboard.writeText(pre.textContent ?? "").then(
+    // Through a promise, so a clipboard that's missing or throws (an insecure
+    // page, an old browser) still falls back to selecting the text.
+    Promise.resolve()
+      .then(() => navigator.clipboard.writeText(pre.textContent ?? ""))
+      .then(
       () => {
         b.textContent = "Copied";
         setTimeout(() => {
