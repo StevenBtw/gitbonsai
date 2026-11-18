@@ -467,31 +467,33 @@ fn fetch_window(
 ) -> Result<(), Error> {
     let from = format!("{}T00:00:00Z", window.from);
     let to = format!("{}T23:59:59Z", window.to);
-    let mut data = match api.query(
-        WINDOW_QUERY,
-        &[("login", login), ("from", &from), ("to", &to)],
-    ) {
-        // A busy window can be too heavy for GitHub in one query: it says so,
-        // or its gateway gives up (after the retries in `query`).
-        Err(Error::Collect(why))
-            if ["RESOURCE_LIMITS_EXCEEDED", "HTTP 502", "HTTP 504"]
-                .iter()
-                .any(|e| why.contains(e))
-                && window.from < window.to =>
-        {
-            return split_window(api, login, window, acc);
-        }
-        answer => answer?,
-    };
-    let mut calendar = calendar_days(&data, window);
-    if calendar.len() != usize::try_from(window.len_days()).unwrap_or(0) {
-        // GitHub sometimes leaves out days (git-koi 1.0.2: across February 29).
-        data = api.query(
+    let days = usize::try_from(window.len_days()).unwrap_or(0);
+    // Asked twice at most: GitHub sometimes leaves out days (git-koi 1.0.2:
+    // across February 29), and a second answer usually has them all.
+    let mut attempt = 0;
+    let (data, calendar) = loop {
+        let data = match api.query(
             WINDOW_QUERY,
             &[("login", login), ("from", &from), ("to", &to)],
-        )?;
-        calendar = calendar_days(&data, window);
-        if calendar.len() != usize::try_from(window.len_days()).unwrap_or(0) {
+        ) {
+            // A busy window can be too heavy for GitHub in one query: it says
+            // so, or its gateway gives up (after the retries in `query`).
+            Err(Error::Collect(why))
+                if ["RESOURCE_LIMITS_EXCEEDED", "HTTP 502", "HTTP 504"]
+                    .iter()
+                    .any(|e| why.contains(e))
+                    && window.from < window.to =>
+            {
+                return split_window(api, login, window, acc);
+            }
+            answer => answer?,
+        };
+        let calendar = calendar_days(&data, window);
+        if calendar.len() == days {
+            break (data, calendar);
+        }
+        attempt += 1;
+        if attempt == 2 {
             return Err(Error::Collect(format!(
                 "GitHub returned {} of {} calendar days for {} .. {}; try again later",
                 calendar.len(),
@@ -500,7 +502,7 @@ fn fetch_window(
                 window.to
             )));
         }
-    }
+    };
 
     let collection = data
         .pointer("/user/contributionsCollection")
@@ -1132,6 +1134,59 @@ mod tests {
         let snapshot = collect(&slow, "octo", observed, None, false, &mut |_| {}).unwrap();
         assert_eq!(snapshot.days.len(), 90);
         assert_eq!(snapshot.truncated_windows, []);
+    }
+
+    /// Leaves a day out of a long window's calendar, then times out when the
+    /// window is asked again.
+    struct ShortThenSlow(Fake, RefCell<Vec<String>>);
+
+    impl GraphQl for ShortThenSlow {
+        fn query(&self, query: &str, variables: &[(&str, &str)]) -> Result<Value, Error> {
+            let get = |n: &str| variables.iter().find(|(k, _)| *k == n).map(|(_, v)| *v);
+            let (Some(from), Some(to)) = (get("from"), get("to")) else {
+                return self.0.query(query, variables);
+            };
+            let long = to[..10]
+                .parse::<Date>()
+                .unwrap()
+                .days_since(from[..10].parse().unwrap())
+                + 1
+                > 20;
+            if !long {
+                return self.0.query(query, variables);
+            }
+            let key = format!("{from}{to}");
+            if self.1.borrow().contains(&key) {
+                return Err(Error::Collect(
+                    "`gh api graphql` failed: gh: HTTP 502".into(),
+                ));
+            }
+            self.1.borrow_mut().push(key);
+            let mut data = self.0.query(query, variables)?;
+            let weeks = data
+                .pointer_mut("/user/contributionsCollection/contributionCalendar/weeks")
+                .and_then(Value::as_array_mut)
+                .unwrap();
+            weeks.last_mut().unwrap()["contributionDays"]
+                .as_array_mut()
+                .unwrap()
+                .pop();
+            Ok(data)
+        }
+    }
+
+    #[test]
+    fn a_window_github_times_out_on_when_asked_again_is_split() {
+        let flaky = ShortThenSlow(
+            Fake {
+                split_above: 1000,
+                calls: RefCell::new(0),
+            },
+            RefCell::new(Vec::new()),
+        );
+        let observed: Date = "2026-03-31".parse().unwrap();
+        let snapshot = collect(&flaky, "octo", observed, None, false, &mut |_| {}).unwrap();
+        assert_eq!(snapshot.days.len(), 90);
     }
 
     /// A snapshot collected through 2026-10-31 by the fake, with a marker:
