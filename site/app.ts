@@ -200,8 +200,8 @@ interface Tree {
   dark: string;
 }
 const ERRORS = {
-  invalid_login: "That isn't a GitHub login: letters, digits and single hyphens, up to 39 characters.",
-  no_such_user: "There's no GitHub user with that login.",
+  invalid_login: "That isn't a GitHub username: letters, digits and single hyphens, up to 39 characters.",
+  no_such_user: "There's no GitHub user with that username.",
   rate_limited: "That's the limit of new trees from here for this hour. Try again in {wait}.",
   busy: "The grower is busy with other trees. Try again in {wait}.",
   failed: "This tree didn't grow. Try again in a while.",
