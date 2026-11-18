@@ -471,9 +471,13 @@ fn fetch_window(
         WINDOW_QUERY,
         &[("login", login), ("from", &from), ("to", &to)],
     ) {
-        // A busy window can be too heavy for GitHub in one query.
+        // A busy window can be too heavy for GitHub in one query: it says so,
+        // or its gateway gives up (after the retries in `query`).
         Err(Error::Collect(why))
-            if why.contains("RESOURCE_LIMITS_EXCEEDED") && window.from < window.to =>
+            if ["RESOURCE_LIMITS_EXCEEDED", "HTTP 502", "HTTP 504"]
+                .iter()
+                .any(|e| why.contains(e))
+                && window.from < window.to =>
         {
             return split_window(api, login, window, acc);
         }
@@ -1093,6 +1097,39 @@ mod tests {
         });
         let observed: Date = "2026-03-31".parse().unwrap();
         let snapshot = collect(&heavy, "octo", observed, None, false, &mut |_| {}).unwrap();
+        assert_eq!(snapshot.days.len(), 90);
+        assert_eq!(snapshot.truncated_windows, []);
+    }
+
+    /// Times out on windows longer than 20 days, as GitHub's gateway does for
+    /// a busy quarter it can't answer in time.
+    struct Slow(Fake);
+
+    impl GraphQl for Slow {
+        fn query(&self, query: &str, variables: &[(&str, &str)]) -> Result<Value, Error> {
+            let get = |n: &str| variables.iter().find(|(k, _)| *k == n).map(|(_, v)| *v);
+            if let (Some(from), Some(to)) = (get("from"), get("to")) {
+                let from: Date = from[..10].parse().unwrap();
+                let to: Date = to[..10].parse().unwrap();
+                if to.days_since(from) + 1 > 20 {
+                    return Err(Error::Collect(
+                        "`gh api graphql` failed: gh: HTTP 504. Check `gh auth status`, or set GH_TOKEN"
+                            .into(),
+                    ));
+                }
+            }
+            self.0.query(query, variables)
+        }
+    }
+
+    #[test]
+    fn a_window_github_times_out_on_is_split() {
+        let slow = Slow(Fake {
+            split_above: 1000,
+            calls: RefCell::new(0),
+        });
+        let observed: Date = "2026-03-31".parse().unwrap();
+        let snapshot = collect(&slow, "octo", observed, None, false, &mut |_| {}).unwrap();
         assert_eq!(snapshot.days.len(), 90);
         assert_eq!(snapshot.truncated_windows, []);
     }

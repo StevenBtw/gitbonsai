@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data: blob:; media-src 'self'; connect-src 'self' https://api.gitbonsai.dev; base-uri 'none'; form-action 'none'; object-src 'none'">
+<title>gitbonsai</title>
+<meta name="description" content="Grow a Japanese maple bonsai from GitHub activity: an animated SVG for a profile README.">
+<link rel="icon" href="data:,">
+<link rel="preload" href="fonts/hanken-grotesk-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="fonts.css">
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="style.css">
+<script src="app.js" defer></script>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="wm" href="#top" aria-label="gitbonsai home"><span class="g">git</span><span class="b">bonsai</span></a>
+    <nav class="nav" aria-label="Sections">
+      <a href="#examples">Examples</a><a href="#read">Read a tree</a><a href="#yours">Your tree</a><a href="#add">Add it</a><a href="https://github.com/StevenBtw/gitbonsai">GitHub</a>
+    </nav>
+    <button class="icon-btn" id="theme" type="button" aria-label="Switch to light mode">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/></svg>
+    </button>
+  </div>
+</header>
+
+<main id="top">
+  <section>
+    <div class="wrap hero-wrap">
+      <div class="hero">
+        <div class="intro">
+          <p class="eyebrow">Acer palmatum · grown from GitHub activity</p>
+          <h1>Grow a bonsai from your <em>GitHub activity.</em></h1>
+          <p class="lede">An animated SVG for a profile README. A newcomer is a thin sprout; years of work make it short, thick and wide, the way a prize bonsai is. Each language claims a strand of the trunk, and nothing is ever erased.</p>
+          <div class="ctas">
+            <a class="btn btn-primary" href="#add">Add it to your profile</a>
+            <a class="btn btn-outline" href="#yours">Preview your tree</a>
+          </div>
+        </div>
+        <figure class="plate">
+          <div class="art"><img data-tree="hero/showcase" alt="The showcase bonsai, from simulated activity: fourteen years, with deadwood from a language it dropped" width="400" height="319"></div>
+          <figcaption class="label">
+            <div><span class="k">Plate</span><span class="v tnum">01</span></div>
+            <div><span class="k">Grown for</span><span class="v">Showcase</span></div>
+            <div><span class="k">Style</span><span class="v">moyogi</span></div>
+            <div><span class="k">Observed</span><span class="v tnum" id="heroweek">this week</span></div>
+          </figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <section id="examples">
+    <div class="wrap">
+      <div class="sec-head">
+        <p class="eyebrow">Examples</p>
+        <h2>Watch a tree grow</h2>
+        <p class="lede">Pick a tree and play its life. Two are simulated accounts that show a pattern; four are real, grown from public GitHub activity.</p>
+      </div>
+      <div class="player">
+        <div class="picks" role="radiogroup" aria-label="Example trees" id="picks"></div>
+        <div class="stagewrap">
+          <div>
+            <div class="stage" id="stage"></div>
+            <p class="caption" id="caption" aria-live="polite"></p>
+          </div>
+          <div class="controls">
+            <button class="icon-btn" id="play" type="button" aria-label="Play timelapse">
+              <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path id="playicon" d="M8 5.5v13l10.5-6.5z"/></svg>
+            </button>
+            <input type="range" id="scrub" min="0" max="1" value="0" step="1" aria-label="Frame">
+            <span class="readout tnum" id="readout"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="read">
+    <div class="wrap">
+      <div class="sec-head">
+        <p class="eyebrow">Reading a tree</p>
+        <h2>What every part shows</h2>
+      </div>
+      <dl class="legend">
+        <div><dt>The trunk</dt><dd>Your first language; it only grows</dd></div>
+        <div><dt>Leaf color</dt><dd>The language, on the Japanese maple palette</dd></div>
+        <div><dt>Strands</dt><dd>Each language with at least 10% of your work; it comes away from the trunk the more you use it</dd></div>
+        <div><dt>Silver leaves</dt><dd>Private work, when your profile shares it; their tips take your public languages' colors</dd></div>
+        <div><dt>Girth</dt><dd>Every contribution ever, and your age</dd></div>
+        <div><dt>Fullness</dt><dd>How busy your recent years were; old leaves thin out</dd></div>
+        <div><dt>The crown</dt><dd>Your last three to six years, a sector per language with a real share of them</dd></div>
+        <div><dt>Bronze tips</dt><dd>New growth from last week</dd></div>
+        <div><dt>Low limbs</dt><dd>Earlier eras, oldest lowest</dd></div>
+        <div><dt>Bleached deadwood</dt><dd>A language you stopped using while you kept working; it dies in place and weathers over the years</dd></div>
+        <div><dt>A gap of bare trunk</dt><dd>A long pause before your recent years</dd></div>
+        <div><dt>A bleached strip</dt><dd>The language your tree started with, dropped</dd></div>
+        <div><dt>A bare tree</dt><dd>A year without contributions: resting for the winter</dd></div>
+        <div><dt>Winged seeds</dt><dd>Your lifetime level</dd></div>
+        <div><dt>Moss</dt><dd>Your current weekly streak</dd></div>
+        <div><dt>Falling leaves</dt><dd>You crossed a level this week</dd></div>
+        <div><dt>The pot</dt><dd>Your longest streak</dd></div>
+      </dl>
+      <div class="eggs">
+        <p class="eyebrow">Look closely</p>
+        <p class="egg-line">A tree may hide a few small surprises of its own. <em>Can you spot them?</em></p>
+        <p class="lede">The legend never says what they are. Play a tree above and watch for them to appear.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="yours">
+    <div class="wrap preview">
+      <div class="sec-head">
+        <p class="eyebrow">Your tree</p>
+        <h2>See your own tree first</h2>
+        <p class="lede">Type a GitHub login to grow a tree from its public activity.</p>
+        <form class="form" id="form">
+          <label for="login">GitHub login</label>
+          <div class="field">
+            <div class="at"><span>@</span><input id="login" name="login" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="your-login" required maxlength="39" pattern="[A-Za-z0-9](-?[A-Za-z0-9])*"></div>
+            <button class="btn btn-primary" type="submit" id="grow">Grow</button>
+          </div>
+          <label class="check"><input type="checkbox" id="legend"> Show the legend</label>
+          <p class="hint">Public activity only; private work shows as silver leaves once the Action runs on your own profile. Trees grown here are kept to help improve gitbonsai; to have yours removed, <a href="https://github.com/StevenBtw/gitbonsai/issues">open an issue</a>.</p>
+        </form>
+      </div>
+      <figure class="plate result" aria-live="polite">
+        <div class="art" id="yourart"><p class="msg">Your tree grows here.</p></div>
+        <figcaption class="label">
+          <div><span class="k">Plate</span><span class="v tnum">02</span></div>
+          <div><span class="k">Grown for</span><span class="v" id="yourlogin">@…</span></div>
+          <div><span class="k">Style</span><span class="v" id="yourstyle">…</span></div>
+          <div><span class="k">Observed</span><span class="v tnum" id="yourweek">…</span></div>
+        </figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section id="add">
+    <div class="wrap">
+      <div class="sec-head">
+        <p class="eyebrow">Add it to your profile</p>
+        <h2>Three steps, then it grows every week</h2>
+        <p class="lede">Everything runs in your own profile repository (<code>you/you</code>) with GitHub's built-in token.</p>
+      </div>
+      <div class="howto">
+        <div class="screen" aria-hidden="true">
+          <div class="bar"><i></i><i></i><i></i><span id="scenepath">you/you</span></div>
+          <div class="scene type" data-scene="0">
+            <p class="path">you/you / <em>.github/workflows/bonsai.yml</em></p>
+<pre class="code"><span class="ln">name: bonsai</span><span class="ln">on:</span><span class="ln">  schedule:</span><span class="ln">    - cron: "17 6 * * 1"</span><span class="ln">  workflow_dispatch:</span><span class="ln">permissions:</span><span class="ln">  contents: write</span><span class="ln">jobs:</span><span class="ln">  bonsai:</span><span class="ln">    runs-on: ubuntu-latest</span><span class="ln">    steps:</span><span class="ln">      - uses: actions/checkout@v7</span><span class="ln">      - uses: StevenBtw/gitbonsai@v@VERSION@</span><span class="ln">        with:</span><span class="ln">          output-dir: assets</span><span class="ln"><span class="c">      # then commit the SVGs and bonsai.snapshot.json</span></span></pre>
+          </div>
+          <div class="scene" data-scene="1">
+            <p class="path">you/you / <em>Actions</em></p>
+            <div class="runs"><div class="run"><span class="dot"></span><span>bonsai · run workflow</span></div></div>
+            <div class="files">
+              <div>+ assets/bonsai-light.svg</div>
+              <div>+ assets/bonsai-dark.svg</div>
+              <div>+ assets/bonsai.snapshot.json</div>
+            </div>
+          </div>
+          <div class="scene" data-scene="2">
+            <p class="path">you/you / <em>README.md</em></p>
+            <div class="profile"><div class="avatar"></div><div class="lines"><span class="w40"></span><span class="w70"></span></div></div>
+            <img class="grow" data-tree="hero/tree" alt="">
+          </div>
+        </div>
+        <div class="steps" id="steps">
+          <div class="step"><button class="h" type="button">Add the workflow</button>
+            <span class="d">Copy <a href="https://github.com/StevenBtw/gitbonsai/blob/main/examples/profile-workflow.yml">the example workflow</a> to <code>.github/workflows/bonsai.yml</code> in your profile repository. Its core:</span>
+            <span class="snip"><button class="copy" type="button" data-copy="wf">Copy</button><pre class="code" id="snip-wf">- uses: StevenBtw/gitbonsai@v@VERSION@
+  with:
+    output-dir: assets</pre></span>
+          </div>
+          <div class="step"><button class="h" type="button">Run it once</button>
+            <span class="d">In the Actions tab, run <code>bonsai</code> by hand. After that it runs every Monday.</span>
+          </div>
+          <div class="step"><button class="h" type="button">Show it in your README</button>
+            <span class="d">Paste this where the tree should stand.</span>
+            <span class="snip"><button class="copy" type="button" data-copy="md">Copy</button><pre class="code" id="snip-md">&lt;picture&gt;
+  &lt;source media="(prefers-color-scheme: dark)"
+          srcset="assets/bonsai-dark.svg" /&gt;
+  &lt;img src="assets/bonsai-light.svg" width="600"
+       alt="My GitHub bonsai" /&gt;
+&lt;/picture&gt;</pre></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span><span class="mono">git</span><em class="serif">bonsai</em> @VERSION@ · MIT or Apache-2.0</span>
+    <a href="https://github.com/StevenBtw/gitbonsai">Source on GitHub</a>
+  </div>
+</footer>
+</body>
+</html>

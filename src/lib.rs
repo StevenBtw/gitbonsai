@@ -224,17 +224,12 @@ impl Bonsai {
         if self.is_empty() {
             return "A maple bonsai seedling, waiting for its first contribution.".into();
         }
-        let age_weeks = self.timeline.age_weeks();
-        let years = f64::from(age_weeks) / 52.18;
-        let age = if years >= 2.0 {
-            format!("{} years", years.floor())
-        } else if age_weeks >= 9 {
-            format!("{} months", (years * 12.0).floor())
-        } else {
-            format!("{age_weeks} weeks")
+        let grown = match self.timeline.age_weeks() {
+            0 => "just planted".to_string(),
+            weeks => format!("grown over {}", legend::age(weeks)),
         };
         let mut text = format!(
-            "Japanese maple bonsai grown over {age}, level {}.",
+            "Japanese maple bonsai {grown}, level {}.",
             self.extras.level
         );
         let mut ranked: Vec<(&String, &f64)> = self.window.by_language.iter().collect();

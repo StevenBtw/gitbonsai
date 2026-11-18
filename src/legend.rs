@@ -87,14 +87,15 @@ fn thousands(n: u64) -> String {
 }
 
 /// An age in words: weeks, then months, then years.
-fn age(weeks: u32) -> String {
+pub(crate) fn age(weeks: u32) -> String {
     let plural = |n: u32, unit: &str| format!("{n} {unit}{}", if n == 1 { "" } else { "s" });
+    let years = weeks * 100 / 5218;
     if weeks < 9 {
         plural(weeks, "week")
-    } else if weeks < 104 {
+    } else if years < 2 {
         plural(weeks * 700 / 3044, "month")
     } else {
-        plural(weeks * 100 / 5218, "year")
+        plural(years, "year")
     }
 }
 
@@ -420,6 +421,8 @@ mod tests {
         assert_eq!(age(1), "1 week");
         assert_eq!(age(5), "5 weeks");
         assert_eq!(age(96), "22 months");
+        assert_eq!(age(104), "23 months", "not 1 year after 23 months");
+        assert_eq!(age(105), "2 years");
         assert_eq!(age(869), "16 years");
     }
 }

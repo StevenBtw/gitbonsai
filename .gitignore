@@ -3,5 +3,7 @@
 /frames
 /bonsai
 *.snapshot.json
+!/site/snapshots/*.snapshot.json
+/_site
 target*/
 /testdata
