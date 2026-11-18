@@ -61,6 +61,10 @@ pub struct Snapshot {
     /// out of past views.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub archived_dates: BTreeMap<String, Date>,
+    /// The day growth starts, kept by a past view cut from a longer history
+    /// ([`Snapshot::truncated`]); never written to a file.
+    #[serde(skip)]
+    pub start: Option<Date>,
 }
 
 /// One day of contributions.
@@ -172,34 +176,23 @@ impl Snapshot {
         if as_of >= self.observed_on {
             return self.clone();
         }
-        self.from_start().cut(as_of)
+        self.with_start().cut(as_of)
     }
 
-    /// The snapshot with the days before the start its whole history gives
-    /// folded into that day, as the timeline folds stray days. Cut from it,
-    /// a past tree never starts earlier and then grows younger; before its
-    /// start the pot is empty.
+    /// The snapshot keeping the start its whole history gives: cut from it,
+    /// a past tree folds its stray days into that day as today's does, so
+    /// it never starts earlier and then grows younger. Before its start the
+    /// pot is empty.
     #[must_use]
-    pub fn from_start(&self) -> Self {
+    pub(crate) fn with_start(&self) -> Self {
         let mut snapshot = self.clone();
-        let Some(start) = crate::timeline::Timeline::new(self).first_active else {
-            return snapshot;
-        };
-        let n = snapshot.days.iter().take_while(|d| d.date < start).count();
-        let strays: Vec<Day> = snapshot.days.drain(..n).collect();
-        if let Some(first) = snapshot.days.first_mut().filter(|d| d.date == start) {
-            for day in strays {
-                first.total += day.total;
-                first.private += day.private;
-                for (language, v) in day.by_language {
-                    *first.by_language.entry(language).or_default() += v;
-                }
-            }
-        }
+        snapshot.start = self
+            .start
+            .or_else(|| crate::timeline::Timeline::new(self).first_active);
         snapshot
     }
 
-    /// [`Snapshot::truncated`] for a snapshot already [`Snapshot::from_start`].
+    /// [`Snapshot::truncated`] for a snapshot already [`Snapshot::with_start`].
     #[must_use]
     pub(crate) fn cut(&self, as_of: Date) -> Self {
         let mut snapshot = self.clone();
@@ -268,6 +261,7 @@ mod tests {
             archived_repos: Vec::new(),
             achievement_dates: BTreeMap::new(),
             archived_dates: BTreeMap::new(),
+            start: None,
         }
     }
 
@@ -289,18 +283,19 @@ mod tests {
             to: d("2003-12-31"),
         };
         s.observed_on = d("2003-12-31");
+        let before = crate::timeline::Timeline::new(&s.truncated(d("2003-08-01")));
         assert_eq!(
-            s.truncated(d("2003-08-01")).days,
-            [],
+            before.first_active, None,
             "before its start the pot is empty"
         );
         let after = s.truncated(d("2003-08-10"));
-        assert_eq!(after.days[0].date, start);
-        assert_eq!(after.days[0].total, 4, "the strays fold into the start");
-        assert_eq!(after.days[0].by_language["Rust"], 4);
         assert!(after.validate().is_ok());
         let timeline = crate::timeline::Timeline::new(&after);
         assert_eq!(timeline.first_active, Some(start));
+        assert!(
+            (timeline.days[0].total - 4.0).abs() < 1e-9,
+            "the strays fold into the start"
+        );
     }
 
     #[test]
@@ -348,6 +343,7 @@ mod tests {
     #[test]
     fn schema_one_and_two_load() {
         assert!(minimal(LEGACY_SCHEMA).validate().is_ok());
+        assert!(minimal(2).validate().is_ok(), "0.2 snapshots still load");
         assert!(minimal(SCHEMA).validate().is_ok());
         assert!(minimal(SCHEMA + 1).validate().is_err());
         assert_eq!(SCHEMA, 3);

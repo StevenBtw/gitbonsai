@@ -33,5 +33,6 @@ pub fn snap(days: &[(Date, u32, &[(&str, u32)])], observed: Date) -> Snapshot {
         archived_repos: Vec::new(),
         achievement_dates: BTreeMap::new(),
         archived_dates: BTreeMap::new(),
+        start: None,
     }
 }

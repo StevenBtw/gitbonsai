@@ -191,12 +191,15 @@ impl Bonsai {
         }
     }
 
-    /// How much of `language`'s foliage is left, 0 to 1: private work (and a
-    /// language without a complete week yet) by the account's silence.
+    /// How much of `language`'s foliage is left, 0 to 1, by its last week
+    /// with work, the week under way included; private work by the
+    /// account's.
     pub fn fullness(&self, language: Option<&str>) -> f64 {
-        let account = self.silent_weeks().map_or(1.0, |w| {
-            foliage::fullness(i32::try_from(w).unwrap_or(i32::MAX))
-        });
+        let busy = (self.timeline.weeks.last()).is_some_and(|w| !w.complete && w.total > 0.0);
+        let account = match self.silent_weeks() {
+            Some(w) if !busy => foliage::fullness(i32::try_from(w).unwrap_or(i32::MAX)),
+            _ => 1.0,
+        };
         language
             .and_then(|l| self.fullness.get(l).copied())
             .unwrap_or(account)
@@ -348,11 +351,15 @@ fn past_reach(
     let Some(first) = snapshot.first_active() else {
         return (Reach::default(), None, None);
     };
+    // The start once: each month is cut from it.
+    let folded = snapshot.with_start();
     let mut hash = rng::siphash13(
-        format!("{}/{}/{periods:?}", snapshot.account_id, snapshot.schema).as_bytes(),
+        format!(
+            "{}/{}/{periods:?}/{:?}",
+            snapshot.account_id, snapshot.schema, folded.start
+        )
+        .as_bytes(),
     );
-    // Folded once: each month is cut from it.
-    let folded = snapshot.from_start();
     let mut days = folded.days.iter().peekable();
     let (y, m, _) = first.ymd();
     let mut out = Reach::default();

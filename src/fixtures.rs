@@ -187,6 +187,7 @@ impl Builder {
             archived_repos: Vec::new(),
             achievement_dates: BTreeMap::new(),
             archived_dates: BTreeMap::new(),
+            start: None,
         }
     }
 }

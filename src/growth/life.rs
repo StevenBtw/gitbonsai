@@ -228,16 +228,17 @@ impl Life {
     /// How far a young tree has filled out, from 0 the day it stops being a
     /// seedling to 1 a year of work later; it stays young while it rests. A
     /// seedling that rested past its first year becomes a tree the day work
-    /// resumes, and fills out from there, never all at once.
+    /// resumes, and fills out from there, never all at once. Only time at
+    /// work counts: a gap past a month adds a month.
     pub fn maturity(&self) -> f64 {
-        let Some(tree) = self
+        let tree: Vec<Date> = self
             .active_days
             .iter()
-            .find(|d| d.days_since(self.first) >= 365)
-        else {
-            return 0.0;
-        };
-        (f64::from(self.last_active.days_since(*tree)) / 365.0).clamp(0.0, 1.0)
+            .copied()
+            .skip_while(|d| d.days_since(self.first) < 365)
+            .collect();
+        let days: i32 = tree.windows(2).map(|w| w[1].days_since(w[0]).min(30)).sum();
+        (f64::from(days) / 365.0).clamp(0.0, 1.0)
     }
 
     /// The observed day as a fractional year (2026.5 is about July 2).
@@ -469,6 +470,14 @@ mod tests {
         days.extend(weekly(d("2012-06-04"), 2));
         let rested = life(&days, d("2012-06-15"));
         assert!(rested.maturity() < 0.1, "{}", rested.maturity());
+        let mut young: Vec<_> = weekly(d("2010-01-04"), 61).collect();
+        young.extend(weekly(d("2014-03-03"), 2));
+        let young = life(&young, d("2014-03-15"));
+        assert!(
+            young.maturity() < 0.25,
+            "a rest keeps it young: {}",
+            young.maturity()
+        );
         let steady: Vec<_> = weekly(d("2010-01-04"), 78).collect();
         let steady = life(&steady, d("2011-07-01"));
         assert!(

@@ -268,6 +268,7 @@ pub fn collect(
         archived_repos,
         achievement_dates,
         archived_dates,
+        start: None,
     };
     snapshot.validate()?;
     Ok(snapshot)

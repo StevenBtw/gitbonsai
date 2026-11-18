@@ -317,7 +317,8 @@ pub const SVG_BUDGET: usize = 220 * 1024;
 /// The SVG within `budget` bytes: a crown too heavy for it keeps fewer,
 /// larger leaves. Its size is close to linear in the share of leaves kept,
 /// so a drawing with half of them tells how many fit; the share changes
-/// smoothly as the tree grows, never all at once.
+/// smoothly as the tree grows, never all at once. It keeps at least 5% of
+/// the leaves: wood and extras alone come nowhere near the budget.
 fn within(
     bonsai: &Bonsai,
     config: &Config,

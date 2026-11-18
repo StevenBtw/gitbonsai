@@ -824,6 +824,31 @@ fn the_legend_names_private_work_and_winter() {
     assert!(text("dormant").contains("winter"));
 }
 
+/// Work in the week under way brings a resting account's leaves back now,
+/// not when the week completes.
+#[test]
+fn work_this_week_brings_the_leaves_back() {
+    let mut s = fixtures::by_name("dormant").unwrap().snapshot;
+    let mut day = s.observed_on.add_days(1);
+    while day.days_since(gitbonsai::date::Date::monday_of(day.week())) != 2 {
+        day = day.add_days(1);
+    }
+    s.days.push(gitbonsai::snapshot::Day {
+        date: day,
+        total: 3,
+        by_language: std::collections::BTreeMap::new(),
+        private: 3,
+    });
+    s.range.to = day;
+    s.observed_on = day;
+    let b = Bonsai::grow(&s, &Config::default(), None);
+    assert!(
+        (b.fullness(None) - 1.0).abs() < 1e-9,
+        "{}",
+        b.fullness(None)
+    );
+}
+
 #[test]
 fn explain_shows_private_work() {
     let report = gitbonsai::explain::report(&grow("showcase"));
@@ -1018,6 +1043,7 @@ fn dropped_trunk(per_week: u32) -> gitbonsai::Snapshot {
         archived_repos: Vec::new(),
         achievement_dates: std::collections::BTreeMap::new(),
         archived_dates: std::collections::BTreeMap::new(),
+        start: None,
     }
 }
 

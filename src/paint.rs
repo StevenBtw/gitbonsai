@@ -929,10 +929,12 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
             * t.size
             * (0.85 + 0.3 * hash01(seed, j as i64 + 11))
             * if t.fresh { 0.75 } else { 1.0 };
+        // Larger leaves on a thinned crown reach further.
+        let reach = 8.0 / b.leaf_share.sqrt();
         extent = (
-            extent.0.min(x - 8.0),
-            extent.1.max(x + 8.0),
-            extent.2.min(y - 8.0),
+            extent.0.min(x - reach),
+            extent.1.max(x + reach),
+            extent.2.min(y - reach),
         );
         let mut s = format!(
             r##"<use href="#{symbol}" transform="translate({} {})rotate({})scale({})" fill="{c}"/>"##,

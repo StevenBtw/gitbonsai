@@ -76,7 +76,7 @@ impl Timeline {
             .filter(|d| d.total > 0 && d.date <= observed_on)
             .map(|d| attribute(d, legacy))
             .collect();
-        let attributed = fold_strays(spread_rest(attributed));
+        let attributed = fold_strays(spread_rest(attributed), snapshot.start);
         let first_active = attributed.first().map(|d| d.date);
 
         // Raw weekly totals decide each week's scale factor.
@@ -180,16 +180,23 @@ pub const SUSTAINED: f64 = 10.0;
 /// Age starts at the first sustained activity: the first active day whose
 /// next 28 days hold at least [`SUSTAINED`] contributions. Stray days before
 /// it are folded into that day, so they still count toward lifetime and girth
-/// but a lone contribution years earlier doesn't make the tree old.
-fn fold_strays(days: Vec<CappedDay>) -> Vec<CappedDay> {
-    let start = days.iter().position(|d| {
-        let end = d.date.add_days(27);
-        days.iter()
-            .filter(|x| x.date >= d.date && x.date <= end)
-            .map(|x| x.total)
-            .sum::<f64>()
-            >= SUSTAINED
-    });
+/// but a lone contribution years earlier doesn't make the tree old. A past
+/// view passes the start its whole history gives: before it, nothing grows.
+fn fold_strays(days: Vec<CappedDay>, start: Option<Date>) -> Vec<CappedDay> {
+    let start = match start {
+        Some(start) => match days.iter().position(|d| d.date >= start) {
+            Some(i) => Some(i),
+            None => return Vec::new(),
+        },
+        None => days.iter().position(|d| {
+            let end = d.date.add_days(27);
+            days.iter()
+                .filter(|x| x.date >= d.date && x.date <= end)
+                .map(|x| x.total)
+                .sum::<f64>()
+                >= SUSTAINED
+        }),
+    };
     let Some(start) = start.filter(|&i| i > 0) else {
         return days;
     };
@@ -287,7 +294,7 @@ fn spread_rest(days: Vec<(CappedDay, f64)>) -> Vec<CappedDay> {
 mod tests {
     use super::*;
     use crate::date::DateRange;
-    use crate::snapshot::{Day, LEGACY_SCHEMA, SCHEMA};
+    use crate::snapshot::{Day, LEGACY_SCHEMA};
 
     fn day<'a>(t: &'a Timeline, date: &str) -> &'a CappedDay {
         let date: Date = date.parse().unwrap();
@@ -404,7 +411,7 @@ mod tests {
             .collect();
         let observed_on: Date = observed_on.parse().unwrap();
         Snapshot {
-            schema: SCHEMA,
+            schema: 2,
             login: "test".into(),
             account_id: 1,
             range: DateRange {
@@ -420,6 +427,7 @@ mod tests {
             archived_repos: Vec::new(),
             achievement_dates: BTreeMap::new(),
             archived_dates: BTreeMap::new(),
+            start: None,
         }
     }
 
