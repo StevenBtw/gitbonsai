@@ -1242,7 +1242,9 @@ fn grow_eras(sk: &mut Skeleton, c: &Ctx, wood: &Wood) {
             .flat_map(|&i| life.years[i].dead.values())
             .map(|d| d.0)
             .sum();
-        let era_dead = named > 0.0 && gone_v / named >= 0.8;
+        // Its public work speaks for the era only when there is enough of it:
+        // one dropped contribution among years of private work kills nothing.
+        let era_dead = named >= 0.25 * era_total && named > 0.0 && gone_v / named >= 0.8;
         // A limb dies with the last drop that made it dead: it starts
         // bark-brown and bleaches from then, never already white.
         let died = era
@@ -2218,6 +2220,42 @@ mod tests {
             // Every crown arm belongs to a crown language.
             assert!(arms.iter().all(|a| c.sector_of(&a.lang) > 0.0), "{name}");
         }
+    }
+
+    /// Years of private work with one public contribution, in a language
+    /// later dropped, keep a living limb: private work is never dropped.
+    #[test]
+    fn a_private_era_with_one_dropped_contribution_stays_alive() {
+        use crate::date::Date;
+        let d = |s: &str| -> Date { s.parse().unwrap() };
+        let mut days: Vec<(Date, u32, &[(&str, u32)])> = Vec::new();
+        let mut day = d("2018-04-14");
+        while day < d("2024-01-01") {
+            // Private only, but for one Python contribution in 2021.
+            let langs: &[(&str, u32)] = if day == d("2021-03-02") {
+                &[("Python", 1)]
+            } else {
+                &[]
+            };
+            days.push((day, 4, langs));
+            day = day.add_days(3);
+        }
+        while day < d("2026-11-17") {
+            days.push((day, 9, &[("Rust", 6)]));
+            day = day.add_days(1);
+        }
+        let snapshot = crate::growth::testkit::snap(&days, d("2026-11-17"));
+        let timeline = Timeline::new(&snapshot);
+        let life = Life::of(&timeline, &[]).unwrap();
+        let mut sk = root_only();
+        let leader = Leader::new(crate::config::Style::Moyogi, 1, None);
+        tree(&mut sk, &life, 1, &leader, Reach::default(), None);
+        let flow = sk.flows();
+        let dead = (0..sk.nodes.len())
+            .filter(|&i| sk.nodes[i].language.as_deref() == Some(crate::growth::JIN))
+            .map(|i| flow[i])
+            .fold(0.0, f64::max);
+        assert!(dead < 50.0, "a private era died: dead wood carries {dead}");
     }
 
     /// A whole era in a dropped language is an unmistakable dead limb, not a
