@@ -20,6 +20,10 @@ Wood release: limbs stay in proportion to their trunk, dropped languages keep vi
 - **Gateway timeouts rarely fail collection**: a window GitHub's gateway gives up on (HTTP 502 or 504) is split and fetched in halves, down to single days, on the first request and on a repeat for missing days. A single day that still times out fails the run, as before.
 - **Ages read naturally**: a new tree's description says "just planted" and a one-week tree's "grown over 1 week", and `explain` says "1 week" (was "0 weeks" and "1 weeks").
 
+### Dependencies
+
+- **resvg 0.50.0** (was 0.49.0), for `render`'s PNG.
+
 ## [0.3.0] - 2026-11-18
 
 Growth release: a tree now changes a little each month and never all at once, its trunk only grows, and dead wood weathers where it grew. Every tree looks different from 0.2.3: languages come away from the trunk as strands instead of growing twin trunks, and crowns are fuller; stay on 0.2.3 to keep the old look. Snapshots from 0.2.3 still load, and `collect` fetches the whole history once to record the new dates.
