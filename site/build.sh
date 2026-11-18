@@ -7,7 +7,7 @@
 set -euo pipefail
 site=$(cd "$(dirname "$0")" && pwd)
 out=${1:-_site}
-bin=${GITBONSAI:-target/release/gitbonsai}
+bin=${GITBONSAI:-$site/../target/release/gitbonsai}
 version=$(sed -n 's/^version = "\(.*\)"/\1/p' "$site/../Cargo.toml" | head -1)
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT

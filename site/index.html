@@ -121,7 +121,7 @@
         <form class="form" id="form">
           <label for="login">GitHub login</label>
           <div class="field">
-            <div class="at"><span>@</span><input id="login" name="login" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="your-login" required maxlength="39" pattern="[A-Za-z0-9\-]{1,39}"></div>
+            <div class="at"><span>@</span><input id="login" name="login" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="your-login" required maxlength="39" pattern="[A-Za-z0-9](-?[A-Za-z0-9])*"></div>
             <button class="btn btn-primary" type="submit" id="grow">Grow</button>
           </div>
           <label class="check"><input type="checkbox" id="legend"> Show the legend</label>
@@ -152,7 +152,7 @@
           <div class="bar"><i></i><i></i><i></i><span id="scenepath">you/you</span></div>
           <div class="scene type" data-scene="0">
             <p class="path">you/you / <em>.github/workflows/bonsai.yml</em></p>
-<pre class="code"><span class="ln">name: bonsai</span><span class="ln">on:</span><span class="ln">  schedule:</span><span class="ln">    - cron: "17 6 * * 1"</span><span class="ln">  workflow_dispatch:</span><span class="ln">permissions:</span><span class="ln">  contents: write</span><span class="ln">jobs:</span><span class="ln">  bonsai:</span><span class="ln">    runs-on: ubuntu-latest</span><span class="ln">    steps:</span><span class="ln">      - uses: actions/checkout@v7</span><span class="ln">      - uses: StevenBtw/gitbonsai@v@VERSION@</span><span class="ln"><span class="c">        # then commit assets/bonsai-*.svg</span></span></pre>
+<pre class="code"><span class="ln">name: bonsai</span><span class="ln">on:</span><span class="ln">  schedule:</span><span class="ln">    - cron: "17 6 * * 1"</span><span class="ln">  workflow_dispatch:</span><span class="ln">permissions:</span><span class="ln">  contents: write</span><span class="ln">jobs:</span><span class="ln">  bonsai:</span><span class="ln">    runs-on: ubuntu-latest</span><span class="ln">    steps:</span><span class="ln">      - uses: actions/checkout@v7</span><span class="ln">      - uses: StevenBtw/gitbonsai@v@VERSION@</span><span class="ln">        with:</span><span class="ln">          output-dir: assets</span><span class="ln"><span class="c">      # then commit the SVGs and bonsai.snapshot.json</span></span></pre>
           </div>
           <div class="scene" data-scene="1">
             <p class="path">you/you / <em>Actions</em></p>

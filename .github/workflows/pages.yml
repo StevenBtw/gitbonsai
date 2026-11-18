@@ -1,14 +1,12 @@
-# Builds gitbonsai.dev (site/) and deploys it to GitHub Pages: on each release,
-# when the site changes on main, or by hand. The github-pages environment only
-# accepts deploys from main.
+# Builds gitbonsai.dev (site/) and deploys it to GitHub Pages on every push to
+# main (a release reaches main as a merged pull request, so its trees are drawn
+# with the released code) or by hand. The github-pages environment only accepts
+# deploys from main, so there is no release or tag trigger.
 name: pages
 
 on:
-  release:
-    types: [published]
   push:
     branches: [main]
-    paths: ["site/**", ".github/workflows/pages.yml"]
   workflow_dispatch:
 
 permissions:
@@ -23,6 +21,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@92e73e19cbfb3981e63ef478a16f95f415e634d3 # 1.99.0

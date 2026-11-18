@@ -9,7 +9,7 @@ const theme = () => root.dataset.theme === "light" ? "light" : "dark";
 function paint() {
   document.querySelectorAll("img[data-tree]").forEach(i => { i.src = i.dataset.tree + "-" + theme() + ".svg"; });
   $("theme").setAttribute("aria-label", theme() === "dark" ? "Switch to light mode" : "Switch to dark mode");
-  if (grown) showTree();
+  if (showing) showTree();
   if (cur) { stop(); load(true); }
 }
 $("theme").addEventListener("click", () => {
@@ -45,7 +45,7 @@ function select(id) {
   stage.style.aspectRatio = T().w + " / " + T().h;
   scrub.max = last();
   const picks = $("picks"), pick = picks.querySelector('[data-id="' + id + '"]');
-  picks.querySelectorAll(".pick").forEach(p => p.setAttribute("aria-checked", p === pick));
+  picks.querySelectorAll(".pick").forEach(p => { p.setAttribute("aria-checked", p === pick); p.tabIndex = p === pick ? 0 : -1; });
   // on phones the picks are a sideways strip: bring the chosen one into it
   picks.scrollLeft += pick.getBoundingClientRect().left - picks.getBoundingClientRect().left - 16;
   load(false); label(last());
@@ -102,35 +102,39 @@ const ERRORS = {
   busy: "The grower is busy with other trees. Try again in {wait}.",
   failed: "This tree didn't grow. Try again in a while."
 };
-const art = $("yourart"), grow = $("grow");
-let grown = null, asked = null, busy = false;
-function say(text) { const p = document.createElement("p"); p.className = "msg"; p.textContent = text; art.replaceChildren(p); }
+const art = $("yourart"), grow = $("grow"), legend = $("legend");
+let grown = null, showing = false, asked = null, timer = null;
+// Grow and the legend box are locked while a tree grows or a wait runs down,
+// so one request is ever in flight and the box always matches the tree shown.
+function lock(on) { grow.disabled = on; legend.disabled = on; }
+function say(text) { const p = document.createElement("p"); p.className = "msg"; p.textContent = text; art.replaceChildren(p); showing = false; }
 function showTree() {
   const img = document.createElement("img");
   img.src = grown[theme()]; img.alt = "The bonsai grown from the public activity of @" + grown.login;
-  art.replaceChildren(img);
+  art.replaceChildren(img); showing = true;
 }
 function inWords(s) { return s < 90 ? s + " seconds" : Math.ceil(s / 60) + " minutes"; }
 function hold(seconds, template) {
   let left = seconds;
-  grow.disabled = true;
-  const t = setInterval(() => {
-    if (--left <= 0) { clearInterval(t); grow.disabled = false; say("Ready to try again."); return; }
-    say(template.replace("{wait}", inWords(left)));
-  }, 1000);
+  lock(true);
   say(template.replace("{wait}", inWords(left)));
+  timer = setInterval(() => {
+    if (--left > 0) return say(template.replace("{wait}", inWords(left)));
+    clearInterval(timer); timer = null; lock(false); say("Ready to try again.");
+  }, 1000);
 }
 async function fetchTree(login) {
-  if (busy) return;
-  busy = true; grow.disabled = true; asked = login;
+  if (grow.disabled) return;
+  lock(true); asked = login;
   say("Reading the public activity of @" + login + ". A first tree can take up to a minute.");
-  let r = null;
-  try { r = await fetch(API + encodeURIComponent(login) + ($("legend").checked ? "?legend=1" : "")); } catch (e) {}
-  busy = false; grow.disabled = false;
+  let r = null, body = {};
+  try {
+    r = await fetch(API + encodeURIComponent(login) + (legend.checked ? "?legend=1" : ""));
+    body = await r.json();
+  } catch (e) {}
+  lock(false);
   if (!r) return say("The grower can't be reached right now. Try again in a while.");
-  let body = {};
-  try { body = await r.json(); } catch (e) {}
-  if (!r.ok) {
+  if (!r.ok || !body.light) {
     const text = ERRORS[body.error] || ERRORS.failed;
     const wait = parseInt(r.headers.get("Retry-After"), 10);
     return text.includes("{wait}") ? hold(wait > 0 ? wait : 60, text) : say(text);
@@ -148,7 +152,7 @@ $("form").addEventListener("submit", e => {
   const login = $("login").value.trim().replace(/^@/, "");
   if (login) fetchTree(login);
 });
-$("legend").addEventListener("change", () => { if (asked && !grow.disabled) fetchTree(asked); });
+legend.addEventListener("change", () => { if (asked) fetchTree(asked); });
 
 /* How-to: the drawn screen plays the three steps in a loop, in step with the list */
 const scenes = [...document.querySelectorAll(".scene")], steps = [...document.querySelectorAll(".step")];
