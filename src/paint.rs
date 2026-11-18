@@ -1240,7 +1240,8 @@ fn pot_glaze(tier: u8, config: &Config, paints: &Paints) -> Rgb {
 /// trunk and old nebari, shorter toward the viewer, and always inside the pot
 /// rim (half-width `hw`). `u` in `[0, 1)` varies it.
 fn root_reach(base_r: f64, nebari: f64, hw: f64, az: f64, u: f64) -> f64 {
-    // At least 1.6 trunk radii, so a root shows past the trunk's foot.
+    // At least 1.6 trunk radii, so a root shows past the trunk's foot,
+    // unless the pot rim needs it shorter.
     let reach = (base_r * (1.35 + u * (0.25 + 0.5 * nebari.clamp(0.0, 1.0)))).max(base_r * 1.6);
     reach.min(hw * 0.78 * (0.45 + 0.55 * math::cos(az).abs()))
 }
