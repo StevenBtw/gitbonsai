@@ -2,6 +2,24 @@
 
 All notable changes to gitbonsai, a Japanese maple bonsai grown from GitHub activity. Any change to how a tree grows or looks is at least a minor version, because people notice their tree changing.
 
+## [0.3.1] - Unreleased
+
+Wood release: limbs stay in proportion to their trunk, dropped languages keep visible dead wood, and the roots grip the soil like a real maple's. Every tree looks different from 0.3.0; stay on 0.3.0 to keep the old look. It ships as a patch, although trees change, because it finishes the wood and roots of 0.3.0's redesign.
+
+### Changed
+
+- **Roots grip the soil**: surface roots are rounded ridges lying on the soil that widen into the trunk and flatten toward a blunt tip, and those facing the viewer are drawn over the trunk. A tree has 3 to 7 by age (was 5 to 9), longer and thicker the older it is, and a new root no longer moves the others.
+- **No limb outgrows its trunk**: a limb is at most a third of the trunk's radius where it leaves, and what it gives up thickens the lower trunk, so a tree whose busy early years dwarf its crown no longer rises as a thin trunk out of a lump of limbs.
+- **Dropped languages stay visible**: each era's two biggest dropped languages leave a dead twig, even when they were a small part of their years, and a weathered dead twig keeps 70% of its length and a few bare twigs.
+- **The wind chime's clapper hangs inside the bell**: at the lip, where it strikes the rim, under the glass or the metal.
+- **SVGs may reach 230 KB** (was 220 KB): the heaviest crowns keep more of their leaves.
+
+### Fixed
+
+- **Mostly private years keep their limb**: an era counts as dropped by its public work only when at least a quarter of it is public, so one dropped contribution among years of private work no longer kills the limb.
+- **Gateway timeouts no longer fail collection**: a window GitHub's gateway gives up on (HTTP 502 or 504) is split and fetched in halves, on the first request and on a repeat for missing days.
+- **Ages read naturally**: a new tree is "just planted" and a one-week tree "grown over 1 week" (was "0 weeks" and "1 weeks").
+
 ## [0.3.0] - 2026-11-18
 
 Growth release: a tree now changes a little each month and never all at once, its trunk only grows, and dead wood weathers where it grew. Every tree looks different from 0.2.3: languages come away from the trunk as strands instead of growing twin trunks, and crowns are fuller; stay on 0.2.3 to keep the old look. Snapshots from 0.2.3 still load, and `collect` fetches the whole history once to record the new dates.
