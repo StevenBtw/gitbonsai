@@ -1120,7 +1120,8 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
         Num((pot.ry - 3.0).max(1.0) * 0.7),
         paints.soil.shift(-0.12, 0.0)
     );
-    body.push_str(&moss(b, &paints, &pot));
+    let (moss_back, moss_front) = moss(b, &paints, &pot);
+    body.push_str(&moss_back);
     body.push_str(&egg.back);
     let (roots_back, roots_front) = nebari(
         b,
@@ -1131,10 +1132,38 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
         ls,
     );
     body.push_str(&roots_back);
+    // The trunk goes into the soil: nothing of it shows below the front edge
+    // of its footprint, so no flare or strand end sticks out under the roots.
+    let (fx, fy) = scene
+        .chains
+        .first()
+        .and_then(|c| c.0.first())
+        .map_or((CENTER_X, SOIL_Y), |p| {
+            let (x, y, _) = project(p.0);
+            (x, y)
+        });
+    let (fr, tilt) = (base_r * 1.5, pot.ry / pot.hw);
+    let mut cut = PathData::coarse();
+    cut.m((fx - 4000.0, fy - 4000.0))
+        .l((fx + 4000.0, fy - 4000.0))
+        .l((fx + 4000.0, fy + 4000.0))
+        .l((fx + fr, fy + 4000.0))
+        .l((fx + fr, fy))
+        .a(fr, fr * tilt, true, (fx - fr, fy))
+        .l((fx - fr, fy + 4000.0))
+        .l((fx - 4000.0, fy + 4000.0))
+        .z();
+    let _ = write!(
+        body,
+        r#"<clipPath id="soil"><path d="{}"/></clipPath><g clip-path="url(#soil)">"#,
+        cut.as_str()
+    );
     for (_, s) in &items {
         body.push_str(s);
     }
+    body.push_str("</g>");
     body.push_str(&roots_front);
+    body.push_str(&moss_front);
     // Momiji: in a milestone week a few leaves turn crimson and drift down.
     for (k, (x, y, h)) in fallen.iter().enumerate() {
         let duration = 7.0 + 5.0 * h;
@@ -1283,7 +1312,7 @@ fn nebari(
             let g = ground(a, d);
             let (px, pz) = (-math::sin(a), math::cos(a));
             // It widens into the trunk where it leaves it, like a fillet.
-            let w = w0 * (1.0 - 0.5 * t) * (1.0 + 0.7 * math::sq(math::sq(1.0 - t))) + 0.35;
+            let w = w0 * (1.0 - 0.5 * t) * (1.0 + 0.35 * math::sq(math::sq(1.0 - t))) + 0.35;
             // Rounded where it leaves the trunk, then low along the soil,
             // and blunt where it goes under.
             let h = (h0 * math::pow(1.0 - t, 1.2) + w0 * 0.25 * (1.0 - t * t))
@@ -1336,9 +1365,9 @@ fn nebari(
             r#"<clipPath id="{id}"><path d="{o}"/></clipPath><path d="{o}" fill="{base}"/><g clip-path="url(#{id})" fill="none" stroke-linecap="round"><path d="{shade}" stroke="{dark}" stroke-width="{sw}"/><path d="{ridge}" stroke="{light}" stroke-width="{rw}"/></g>"#,
             o = body.as_str(),
             base = bark.shift(-0.03, 0.0),
-            shade = line(-lit * 0.95, 0.05),
-            dark = bark.shift(-0.14, 0.0),
-            sw = Num(ww * 0.45),
+            shade = line(-lit * 0.7, 0.35),
+            dark = bark.shift(-0.09, 0.0),
+            sw = Num(ww * 0.6),
             ridge = line(lit * 0.25, 0.9),
             light = bark.shift(0.05, 0.0),
             rw = Num(ww * 0.18),
@@ -1367,12 +1396,17 @@ fn nebari(
 }
 
 /// Moss on the soil while a weekly streak runs.
-fn moss(b: &Bonsai, paints: &Paints, pot: &Pot) -> String {
+fn moss(b: &Bonsai, paints: &Paints, pot: &Pot) -> (String, String) {
     let clumps = (b.extras.moss * 34.0).round() as usize;
     if clumps == 0 {
-        return String::new();
+        return (String::new(), String::new());
     }
-    let (mut dark, mut light) = (String::new(), String::new());
+    // Clumps on the near half of the soil grow over the roots; the rest
+    // stay behind the trunk.
+    let (mut dark, mut light) = (
+        [String::new(), String::new()],
+        [String::new(), String::new()],
+    );
     for i in 0..clumps {
         let mut r = Rng::keyed(b.account_id, &format!("moss/{i}"));
         let a = r.range(0.0, math::TAU);
@@ -1381,8 +1415,9 @@ fn moss(b: &Bonsai, paints: &Paints, pot: &Pot) -> String {
         let y = SOIL_Y + math::sin(a) * d * (pot.ry - 2.5).max(1.0);
         let rx = r.range(3.0, 7.0);
         let ry = rx * r.range(0.25, 0.4);
+        let near = usize::from(y > SOIL_Y);
         let _ = write!(
-            dark,
+            dark[near],
             r#"<ellipse cx="{}" cy="{}" rx="{}" ry="{}"/>"#,
             Num(x),
             Num(y),
@@ -1390,7 +1425,7 @@ fn moss(b: &Bonsai, paints: &Paints, pot: &Pot) -> String {
             Num(ry)
         );
         let _ = write!(
-            light,
+            light[near],
             r#"<ellipse cx="{}" cy="{}" rx="{}" ry="{}"/>"#,
             Num(x - rx * 0.15),
             Num(y - ry * 0.35),
@@ -1398,10 +1433,16 @@ fn moss(b: &Bonsai, paints: &Paints, pot: &Pot) -> String {
             Num(ry * 0.55)
         );
     }
-    format!(
-        r#"<g fill="{}">{dark}</g><g fill="{}">{light}</g>"#,
-        paints.moss[0], paints.moss[1]
-    )
+    let group = |k: usize| {
+        if dark[k].is_empty() {
+            return String::new();
+        }
+        format!(
+            r#"<g fill="{}">{}</g><g fill="{}">{}</g>"#,
+            paints.moss[0], dark[k], paints.moss[1], light[k]
+        )
+    };
+    (group(0), group(1))
 }
 
 /// The pot's front wall, lit from the left, with its tier's details.
