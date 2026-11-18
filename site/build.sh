@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Builds gitbonsai.dev into a folder (default _site): the page, the hero trees
 # and a timelapse video per example and theme. Needs a release build of
-# gitbonsai (or GITBONSAI=<path>), python3 with cairosvg and pillow, and ffmpeg.
+# gitbonsai (or GITBONSAI=<path>), python3 with cairosvg and pillow, ffmpeg,
+# and the TypeScript compiler (`npm ci --prefix site`).
 #
-#   cargo build --release && bash site/build.sh _site
+#   cargo build --release && npm ci --prefix site && bash site/build.sh _site
 set -euo pipefail
 site=$(cd "$(dirname "$0")" && pwd)
 out=${1:-_site}
@@ -15,8 +16,10 @@ trap 'rm -rf "$work"' EXIT
 rm -rf "$out"
 mkdir -p "$out/hero"
 cp -r "$site/fonts" "$out/fonts"
+"$site/node_modules/.bin/tsc" -p "$site" --outDir "$work/js"
+cp "$work/js/app.js" "$site/index.html" "$site/style.css" "$site/tokens.css" "$site/fonts.css" "$site/CNAME" "$work/"
 for f in index.html app.js style.css tokens.css fonts.css CNAME; do
-  sed "s/@VERSION@/$version/g" "$site/$f" > "$out/$f"
+  sed "s/@VERSION@/$version/g" "$work/$f" > "$out/$f"
 done
 
 "$bin" render fixture:showcase --output-dir "$work/showcase" -q

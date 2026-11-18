@@ -1,0 +1,10 @@
+{
+  "private": true,
+  "description": "Build tools for gitbonsai.dev: the TypeScript compiler for app.ts.",
+  "scripts": {
+    "check": "tsc --noEmit -p ."
+  },
+  "devDependencies": {
+    "typescript": "7.0.2"
+  }
+}
