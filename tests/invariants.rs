@@ -1124,7 +1124,7 @@ fn branches_start_inside_their_parent() {
             let day = first.add_days(span * k / 4);
             let b = Bonsai::grow(snapshot, &Config::default(), Some(day));
             let scene = gitbonsai::scene::Scene::build(&b);
-            for (ci, (r, fork)) in &scene.joins {
+            for (ci, (r, fork, _)) in &scene.joins {
                 if scene.strands.contains(ci) {
                     continue;
                 }

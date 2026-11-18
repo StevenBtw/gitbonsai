@@ -268,6 +268,27 @@ pub fn tube_from(
     d
 }
 
+/// Dead wood narrows toward its end the more it has bleached, to a point
+/// when white.
+pub fn weather_tip(pts: &mut [(f64, f64, f64, f64)], bleach: f64) {
+    let Some(&(tx, ty, tr, _)) = pts.last() else {
+        return;
+    };
+    let length: f64 = pts
+        .windows(2)
+        .map(|w| (math::sq(w[1].0 - w[0].0) + math::sq(w[1].1 - w[0].1)).sqrt())
+        .sum();
+    let reach = (tr * 5.0).min(length * 0.6).max(1e-9);
+    let least = 1.0 - 0.9 * bleach;
+    for p in pts.iter_mut().rev() {
+        let d = (math::sq(p.0 - tx) + math::sq(p.1 - ty)).sqrt();
+        if d >= reach {
+            break;
+        }
+        p.2 *= least + (1.0 - least) * d / reach;
+    }
+}
+
 /// Narrows the last stretch of a branch, about three tip-widths long, so it
 /// ends in a slim rounded point instead of a blunt stub. Short stubs keep
 /// their round end: tapered, they would read as thorns.
@@ -289,6 +310,38 @@ pub fn taper_tip(pts: &mut [(f64, f64, f64, f64)]) {
             break;
         }
         p.2 *= 0.6 + 0.4 * d / reach;
+    }
+}
+
+/// The point of polyline `line` nearest to `p`.
+pub fn nearest_on(line: &[(f64, f64)], p: (f64, f64)) -> (f64, f64) {
+    let mut best = (f64::MAX, p);
+    for (i, &a) in line.iter().enumerate() {
+        let b = line.get(i + 1).copied().unwrap_or(a);
+        let (ux, uy) = (b.0 - a.0, b.1 - a.1);
+        let t = (((p.0 - a.0) * ux + (p.1 - a.1) * uy) / (ux * ux + uy * uy).max(1e-12))
+            .clamp(0.0, 1.0);
+        let q = (a.0 + ux * t, a.1 + uy * t);
+        let d = math::sq(q.0 - p.0) + math::sq(q.1 - p.1);
+        if d < best.0 {
+            best = (d, q);
+        }
+    }
+    best.1
+}
+
+/// Moves a branch's start by `d`, less further along, its tip not at all.
+pub fn follow(pts: &mut [(f64, f64, f64, f64)], d: (f64, f64)) {
+    let mut arc = vec![0.0; pts.len()];
+    for k in 1..pts.len() {
+        arc[k] = arc[k - 1]
+            + (math::sq(pts[k].0 - pts[k - 1].0) + math::sq(pts[k].1 - pts[k - 1].1)).sqrt();
+    }
+    let total = arc.last().copied().unwrap_or(0.0).max(1e-9);
+    for (p, s) in pts.iter_mut().zip(arc) {
+        let f = 1.0 - s / total;
+        p.0 += d.0 * f;
+        p.1 += d.1 * f;
     }
 }
 
@@ -450,6 +503,8 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
 
     // ---- wood, in pieces so leaves can pass in front of and behind it ----
     let mut twigs = [String::new(), String::new()];
+    // Each chain's line as drawn, by index.
+    let mut lines: Vec<Vec<(f64, f64)>> = Vec::with_capacity(scene.chains.len());
     for (ci, (chain, dead)) in scene.chains.iter().enumerate() {
         // Dead wood greys from bark to bleached; past half way it is drawn
         // the way jin is, inked and weathered.
@@ -472,15 +527,33 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
         }
         let thick = pts.iter().any(|p| p.2 > 3.2);
         let mut fine = simplify(&chaikin(&relaxed), if thick { 1.3 } else { 1.2 });
-        taper_tip(&mut fine);
+        // Dead wood ends snapped while fresh and weathers to a point as it
+        // bleaches.
+        let snapped = dead.is_some();
+        if snapped {
+            weather_tip(&mut fine, bleach);
+        } else {
+            taper_tip(&mut fine);
+        }
+        // Smoothing pulls a branch off its nodes, so a side branch moves with
+        // its parent's drawn line: it leaves the wood, not the air beside it.
+        let fork = scene.joins.get(&ci).map(|r| {
+            let (x0, y0, z0) = project(r.1);
+            let q = lines.get(r.2).map_or((x0, y0), |l| nearest_on(l, (x0, y0)));
+            (q.0, q.1, z0, q.0 - x0, q.1 - y0)
+        });
+        if let Some((.., dx, dy)) = fork {
+            follow(&mut fine, (dx, dy));
+        }
+        lines.push(fine.iter().map(|p| (p.0, p.1)).collect());
         // A limb flares where it leaves its parent, a collar that runs the two
         // woods together instead of one cutting into the other.
-        if let Some(r) = scene
+        if let Some((r, (x0, y0, ..))) = scene
             .joins
             .get(&ci)
+            .zip(fork)
             .filter(|_| thick && !scene.strands.contains(&ci))
         {
-            let (x0, y0, _) = project(r.1);
             let r = r.0 * WORLD;
             let own = fine.get(fine.len() / 3).map_or(0.0, |p| p.2);
             let reach = (own * 3.0).max(1e-9);
@@ -488,6 +561,11 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
             // girth inside and out, and never wider than the parent.
             for p in &mut fine {
                 let d = (math::sq(p.0 - x0) + math::sq(p.1 - y0)).sqrt() - r;
+                // The collar acts only near the join; past it a limb keeps its
+                // own girth and may thin to its tip.
+                if d >= reach {
+                    continue;
+                }
                 let k = if d < 0.0 {
                     1.0 + d / (0.5 * r).max(1e-9)
                 } else {
@@ -521,10 +599,9 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
             let ahead =
                 fine[..=end].iter().map(|p| p.3).sum::<f64>() / (end + 1) as f64 > fine[0].3 - 5.0;
             let join = (start == 0 && !strand && ahead)
-                .then(|| scene.joins.get(&ci))
+                .then(|| scene.joins.get(&ci).zip(fork))
                 .flatten()
-                .map(|r| {
-                    let (x0, y0, z0) = project(r.1);
+                .map(|(r, (x0, y0, z0, ..))| {
                     let k = (1..end)
                         .find(|&k| {
                             (math::sq(fine[k].0 - x0) + math::sq(fine[k].1 - y0)).sqrt()
@@ -551,10 +628,11 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                 |j| j.1,
             );
             let base = haze(paints.bark.mix(paints.jin, bleach), depth);
+            let splinter = snapped && last && bleach < 0.8;
             let d = tube_from(
                 &seg,
                 start == 0 && scene.joins.contains_key(&ci),
-                last,
+                last && !splinter,
                 true,
             );
             // Deadwood gets an inked edge, the way jin is drawn: bleached
@@ -580,6 +658,38 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
             } else {
                 format!(r#"<path d="{}" fill="{base}"/>"#, d.as_str())
             };
+            if splinter && seg.len() > 1 {
+                // Torn fibres across the broken end, shorter as it weathers.
+                let m = seg.len();
+                let (x, y, r) = seg[m - 1];
+                let (tx, ty) = norm((x - seg[m - 2].0, y - seg[m - 2].1));
+                let (nx, ny) = (-ty, tx);
+                let at =
+                    |u: f64, f: f64| (x + nx * r * u + tx * r * f, y + ny * r * u + ty * r * f);
+                let mut d = PathData::coarse();
+                d.m(at(-1.0, -0.6));
+                for k in 0..4 {
+                    let u0 = -1.0 + 0.5 * k as f64;
+                    let h = ((ci * 31 + k * 17) % 7) as f64 / 6.0;
+                    d.l(at(u0, 0.0));
+                    d.l(at(
+                        0.8 * (u0 + 0.25),
+                        (0.4 + 0.9 * h) * 1.6 * (1.0 - bleach),
+                    ));
+                }
+                d.l(at(1.0, 0.0));
+                d.l(at(1.0, -0.6));
+                d.z();
+                let ink = if *jin {
+                    format!(
+                        r#" stroke="{}" stroke-width="0.8" stroke-linejoin="round""#,
+                        paints.jin_ink
+                    )
+                } else {
+                    String::new()
+                };
+                let _ = write!(s, r#"<path d="{}" fill="{base}"{ink}/>"#, d.as_str());
+            }
             if seg.iter().any(|p| p.2 > 6.5) {
                 // The shadow falls on whichever side faces away from the light.
                 let m = seg.len();
@@ -1378,6 +1488,33 @@ fn drip_ends(scene: &Scene, paints: &Paints, pot: &Pot, animate: bool) -> String
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn follow_moves_the_start_and_keeps_the_tip_even_on_a_tiny_twig() {
+        let mut twig = [(100.0, 100.0, 0.5, 0.0), (100.01, 100.0, 0.5, 0.0)];
+        follow(&mut twig, (5.0, -3.0));
+        assert_eq!((twig[0].0, twig[0].1), (105.0, 97.0));
+        assert!(
+            (twig[1].0 - 100.01).abs() < 1e-9 && (twig[1].1 - 100.0).abs() < 1e-9,
+            "{twig:?}"
+        );
+        let mut limb = [
+            (0.0, 0.0, 1.0, 0.0),
+            (10.0, 0.0, 1.0, 0.0),
+            (20.0, 0.0, 1.0, 0.0),
+        ];
+        follow(&mut limb, (0.0, 4.0));
+        assert!((limb[1].1 - 2.0).abs() < 1e-9, "{limb:?}");
+    }
+
+    #[test]
+    fn nearest_on_finds_the_closest_point_of_a_polyline() {
+        let line = [(0.0, 0.0), (10.0, 0.0), (10.0, 10.0)];
+        assert_eq!(nearest_on(&line, (4.0, 3.0)), (4.0, 0.0));
+        assert_eq!(nearest_on(&line, (13.0, 6.0)), (10.0, 6.0));
+        assert_eq!(nearest_on(&line, (-5.0, -1.0)), (0.0, 0.0));
+        assert_eq!(nearest_on(&[(2.0, 2.0)], (9.0, 9.0)), (2.0, 2.0));
+    }
 
     #[test]
     fn roots_stay_inside_the_pot() {

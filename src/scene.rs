@@ -113,9 +113,9 @@ pub struct Scene {
     pub masses: Vec<(V3, f64, f64, f64, Rgb, bool)>,
     /// Chains that are strands along the trunk, by index into `chains`.
     pub strands: std::collections::BTreeSet<usize>,
-    /// Side chains by index into `chains`: the girth of the wood they leave
-    /// and the fork they leave it at, on its axis.
-    pub joins: std::collections::BTreeMap<usize, (f64, V3)>,
+    /// Side chains by index into `chains`: the girth of the wood they leave,
+    /// the fork they leave it at, on its axis, and the chain they leave.
+    pub joins: std::collections::BTreeMap<usize, (f64, V3, usize)>,
     /// A shari up the trunk, bleached this far ([`crate::growth::Skeleton::shari`]).
     pub shari: Option<f64>,
 }
@@ -160,6 +160,11 @@ impl Scene {
         // Chains: follow the child carrying the most flow; every other child
         // starts a chain of its own.
         let mut starts = vec![0usize];
+        // Each node's girth as drawn, so a side chain starts at its parent's
+        // drawn girth.
+        let mut drawn = vec![0.0f64; n];
+        // The chain each node is drawn in.
+        let mut chain_of = vec![usize::MAX; n];
         while let Some(s0) = starts.pop() {
             let mut chain = Vec::new();
             if let Some(p) = sk.nodes[s0].parent {
@@ -197,6 +202,13 @@ impl Scene {
                     flow[k] * (2.0 + cos) * kind
                 };
                 kids.sort_by(|a, c| along(*c).total_cmp(&along(*a)).then(a.cmp(c)));
+                // Dead wood is a chain of its own: a living limb never turns
+                // white because the wood at its end died.
+                let dead = |i: usize| sk.nodes[i].language.as_deref() == Some(JIN);
+                if dead(kids[0]) != dead(cur) {
+                    starts.extend_from_slice(&kids);
+                    break;
+                }
                 starts.extend_from_slice(&kids[1..]);
                 cur = kids[0];
             }
@@ -225,6 +237,58 @@ impl Scene {
                 &chain[1..]
             };
             let strand = own.iter().any(|&i| sk.nodes[i].strand);
+            // A limb is 30% thinner than its flow (a bonsai limb stays near a
+            // third of the trunk) and tapers steadily from where it leaves to
+            // a fine tip, never thinner than the wood that leaves it further on.
+            let first = usize::from(chain[0] != s0);
+            if first == 1 && drawn[chain[0]] > 0.0 {
+                wood[0].1 = drawn[chain[0]];
+            }
+            let limb = chain[0] != 0 && !strand;
+            let thin = |r: f64| 0.5 + (r - 0.5) * 0.7;
+            if limb {
+                for w in &mut wood[first..] {
+                    w.1 = thin(w.1);
+                }
+            }
+            if limb && wood.len() > first + 1 {
+                let leave: Vec<f64> = chain
+                    .iter()
+                    .enumerate()
+                    .map(|(j, &i)| {
+                        children[i]
+                            .iter()
+                            .filter(|&&k| chain.get(j + 1) != Some(&k))
+                            .map(|&k| thin(radius(flow[k])))
+                            .fold(0.0, f64::max)
+                    })
+                    .collect();
+                let last = wood.len() - 1;
+                let mut need = vec![0.0; wood.len()];
+                let mut m = 0.0f64;
+                for j in (0..wood.len()).rev() {
+                    m = m.max(leave[j]);
+                    need[j] = m;
+                }
+                let mut arc = vec![0.0; wood.len()];
+                for j in first + 1..wood.len() {
+                    let (a, b) = (wood[j - 1].0, wood[j].0);
+                    arc[j] = arc[j - 1]
+                        + (math::sq(b[0] - a[0]) + math::sq(b[1] - a[1]) + math::sq(b[2] - a[2]))
+                            .sqrt();
+                }
+                let total = (arc[last] - arc[first]).max(1e-9);
+                let r0 = wood[first].1;
+                let tip = 0.5f64.max(0.2 * r0);
+                for j in first..wood.len() {
+                    let f = (arc[last] - arc[j]) / total;
+                    let cap = (tip + (r0 - tip) * f).max(need[j] * 1.1);
+                    wood[j].1 = wood[j].1.min(cap);
+                }
+            }
+            for (j, &i) in chain.iter().enumerate().skip(first) {
+                drawn[i] = wood[j].1;
+            }
             // A side branch starts on its parent's surface and reaches back
             // inside a fixed short way, at most half the parent's girth: so
             // it never leaves a gap, and never shows through the far side.
@@ -261,7 +325,9 @@ impl Scene {
                     let start = at(hi);
                     wood.splice(..j, [(start, b.1)]);
                 }
-                scene.joins.insert(scene.chains.len(), (r, fork));
+                scene
+                    .joins
+                    .insert(scene.chains.len(), (r, fork, chain_of[chain[0]]));
                 wood[0].1 = wood[0].1.min(own * 1.3);
             }
             // Wood thins gradually above a fork, never in one step: where a
@@ -273,6 +339,9 @@ impl Scene {
             }
             if strand {
                 scene.strands.insert(scene.chains.len());
+            }
+            for &i in own {
+                chain_of[i] = scene.chains.len();
             }
             scene.chains.push((wood, jin));
         }

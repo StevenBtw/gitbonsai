@@ -23,6 +23,8 @@ Growth release: a tree now changes a little each month and never all at once, it
 - **Size follows the work**: crown and limb reach grow with the work done, not with the calendar, so a few contributions over many years stay a small tree.
 - **Fuller crowns**: 1.5 times as many leaves on the same clouds; the size budget the tests hold every SVG to is 190 KB (was 150 KB).
 - **Limbs come from behind the trunk**: limbs leave toward the side or back with a flared collar, and a side branch starts on its parent's surface, so no join shows a gap or a corner.
+- **Limbs taper to fine tips**: a limb is about a third of the trunk's girth where it leaves and thins steadily to its tip, and the collar flares only at the join, so no limb ends in a thick round stump.
+- **Broken dead wood splinters**: a fresh break in dead wood ends in torn fibres and weathers to a point as it bleaches.
 - **Smoother wood in smaller files**: branches are smoothed before their outlines are simplified, which cuts up to 7% from an SVG.
 - **A comeback keeps its old crown a while**: after a pause the old crown stays until the comeback year is a year old, then turns into a limb over a year.
 - **`collect` keeps what it knew**: a `--full` run, or one that cannot reach a profile page, keeps the dates an earlier run recorded, and a sign's first date is fetched only once.
