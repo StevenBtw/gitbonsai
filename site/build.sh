@@ -14,7 +14,8 @@ trap 'rm -rf "$work"' EXIT
 
 rm -rf "$out"
 mkdir -p "$out/hero"
-for f in index.html app.js style.css tokens.css CNAME; do
+cp -r "$site/fonts" "$out/fonts"
+for f in index.html app.js style.css tokens.css fonts.css CNAME; do
   sed "s/@VERSION@/$version/g" "$site/$f" > "$out/$f"
 done
 
