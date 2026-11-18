@@ -294,6 +294,8 @@ impl Scene {
             // it never leaves a gap, and never shows through the far side.
             // It starts at its own girth, a little flared, not the parent's:
             // else short stubs become thorns.
+            // How many of the chain's first nodes the side-branch start cut.
+            let mut cut = 0;
             if chain[0] != s0 && wood.len() > 1 {
                 let (fork, r) = wood[0];
                 let own = wood[1].1;
@@ -302,6 +304,10 @@ impl Scene {
                     let off = |p: V3| (math::sq(p[0] - fork[0]) + math::sq(p[1] - fork[1])).sqrt();
                     // Wholly inside its parent, a branch doesn't show at all.
                     let Some(j) = (1..wood.len()).find(|&j| off(wood[j].0) >= inset) else {
+                        // Its own side branches then leave the wood it hides in.
+                        for &i in &chain[1..] {
+                            chain_of[i] = chain_of[chain[0]];
+                        }
                         continue;
                     };
                     let (a, b) = (wood[j - 1], wood[j]);
@@ -324,6 +330,7 @@ impl Scene {
                     }
                     let start = at(hi);
                     wood.splice(..j, [(start, b.1)]);
+                    cut = j - 1;
                 }
                 scene
                     .joins
@@ -336,6 +343,10 @@ impl Scene {
                 let (a, b) = (wood[i - 1], wood[i]);
                 let run = (math::sq(b.0[0] - a.0[0]) + math::sq(b.0[1] - a.0[1])).sqrt();
                 wood[i].1 = b.1.max(a.1 - 0.3 * run);
+            }
+            // Side branches start at their parent's girth as finally drawn.
+            for (k, w) in wood.iter().enumerate().skip(1) {
+                drawn[chain[k + cut]] = w.1;
             }
             if strand {
                 scene.strands.insert(scene.chains.len());
@@ -353,7 +364,6 @@ impl Scene {
     }
 }
 
-/// A leaf's color: its language's, or silver for work without one.
 /// A public language for a grey leaf: drawn with odds `odds` against
 /// public work's share of the recent window, then by each language's part.
 fn pluck_lang(b: &Bonsai, odds: f64, which: f64) -> Option<&str> {
@@ -371,6 +381,7 @@ fn pluck_lang(b: &Bonsai, odds: f64, which: f64) -> Option<&str> {
     b.window.by_language.keys().last().map(String::as_str)
 }
 
+/// A leaf's color: its language's, or silver for work without one.
 fn leaf_color(b: &Bonsai, lang: Option<&str>, pick: f64) -> Rgb {
     match lang {
         Some(_) => b.maple.leaf(lang, pick),

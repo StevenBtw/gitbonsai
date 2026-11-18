@@ -268,10 +268,6 @@ fn plural(n: usize, one: &str, many: &str) -> String {
     format!("{} {}", count_word(n), if n == 1 { one } else { many })
 }
 
-/// The furthest the tree reached on the first of any month before
-/// `snapshot`'s observed day: a trunk never shrinks, so today's never falls
-/// short of it. Each month is grown from its own history, remembered by a
-/// hash of that history, so a timelapse grows each month once.
 /// Half `window` and `fullness`, half the average of `past` months'.
 fn settle_leaves(
     window: Window,
@@ -325,6 +321,10 @@ fn mean_leaves(all: &[Leaves]) -> Option<Leaves> {
     Some((window, full))
 }
 
+/// The furthest the tree reached on the first of any month before
+/// `snapshot`'s observed day: a trunk never shrinks, so today's never falls
+/// short of it. Each month is grown from its own history, remembered by a
+/// hash of that history, so a timelapse grows each month once.
 fn past_reach(
     snapshot: &Snapshot,
     periods: &[(Date, Date, Vec<String>)],

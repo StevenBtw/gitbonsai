@@ -260,8 +260,9 @@ pub fn frame(bonsai: &Bonsai, config: &Config) -> Frame {
 }
 
 /// One camera per timelapse frame: the box around this frame and every one
-/// before it, widened to the whole film's shape. It only ever zooms out, and
-/// every frame comes out the same size.
+/// before it, widened to the whole film's shape and kept inside the whole
+/// film. It only ever zooms out, every frame comes out the same size, and
+/// the last camera is the whole film.
 pub fn cameras(frames: &[Frame]) -> Vec<Frame> {
     let union = |a: Frame, b: Frame| {
         let (x, y) = (a.0.min(b.0), a.1.min(b.1));
@@ -284,11 +285,20 @@ pub fn cameras(frames: &[Frame]) -> Vec<Frame> {
             (x, y + h - w / aspect, w, w / aspect)
         }
     };
+    // A shaped box is never larger than the whole film, so it fits inside.
+    let fit = |(x, y, w, h): Frame| {
+        (
+            x.min(all.0 + all.2 - w).max(all.0),
+            y.min(all.1 + all.3 - h).max(all.1),
+            w,
+            h,
+        )
+    };
     let mut cam = frames[0];
     frames
         .iter()
         .map(|&f| {
-            cam = shape(union(cam, f));
+            cam = fit(shape(union(cam, f)));
             cam
         })
         .collect()
@@ -357,6 +367,13 @@ pub fn escape(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_narrow_first_frame_does_not_widen_the_last_camera() {
+        let cams = cameras(&[(0.0, 0.0, 10.0, 100.0), (0.0, 0.0, 150.0, 100.0)]);
+        assert_eq!(cams[1], (0.0, 0.0, 150.0, 100.0));
+        assert_eq!(cams[0], (0.0, 0.0, 150.0, 100.0));
+    }
 
     #[test]
     fn a_timelapse_camera_only_zooms_out_and_keeps_one_shape() {

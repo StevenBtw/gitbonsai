@@ -265,8 +265,8 @@ fn nothing_living_grows_from_dead_wood() {
     }
 }
 
-/// The seedling fills out into a tree over its second year: the crown never
-/// doubles from one month to the next.
+/// The seedling fills out into a tree over its second year: the crown at
+/// most doubles from one month to the next, past its first few clouds.
 #[test]
 fn the_seedling_grows_into_a_tree_gradually() {
     for name in ["steady", "veteran", "comeback", "dormant"] {
@@ -345,7 +345,8 @@ fn rendering_is_deterministic() {
     }
 }
 
-/// The budget: at most 150 KB, 2,500 elements and 80 animated elements.
+/// The budget: at most 190 KB, 2,500 elements and 80 animated elements.
+/// 0.3.0 raised it from 150 KB for crowns with 1.5 times the leaves.
 #[test]
 fn every_output_stays_within_budget() {
     for fixture in fixtures::all() {

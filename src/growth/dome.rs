@@ -197,6 +197,7 @@ fn crown_start(life: &Life, trunks: &[Trunk], act: &[usize], at: Date) -> usize 
             .last()
             .map(|h| h.1.iter().map(|l| (0, Some(l.clone()))).collect())
             .unwrap_or_default();
+        // No language trunk then (private work only): today's trunks judge.
         let then = if then.is_empty() { &upper } else { &then };
         if paused(a, b) || up_share(then, a) < 0.5 {
             break;
@@ -2126,7 +2127,7 @@ pub(crate) const SEEDLING_FLOW: f64 = 1.02;
 /// always the heavier one.
 const DEAD_SHARE: f64 = 0.35;
 /// The seedling's height at the end of its first year.
-const SEEDLING_TOP: f64 = 80.0;
+pub(crate) const SEEDLING_TOP: f64 = 80.0;
 /// What the root flare adds to a tree's flow.
 const FLARE: f64 = 1.21;
 

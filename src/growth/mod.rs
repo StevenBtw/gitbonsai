@@ -13,7 +13,7 @@ pub mod dome;
 pub mod life;
 pub mod seedling;
 #[cfg(test)]
-mod testkit;
+pub(crate) mod testkit;
 pub mod trunks;
 pub mod wood;
 
@@ -60,8 +60,10 @@ pub struct Skeleton {
     pub clouds: Vec<Cloud>,
     /// The account has been silent for a year: the tree stands bare.
     pub dormant: bool,
-    /// Strands wound round a trunk: each wound node with the trunk node it
-    /// lies on and its angle around it, then the strand's free nodes.
+    /// Strands wound round a trunk while the tree grows: each wound node
+    /// with the trunk node it lies on and its angle around it, then the
+    /// strand's free nodes. [`wood::hug`] lays them on the trunk and empties
+    /// it, so a grown tree holds none.
     pub wound: Vec<(Vec<(usize, usize, f64)>, Vec<usize>)>,
     /// The language that founded the trunk was dropped: a shari, a strip of
     /// dead wood up the main trunk, bleached this far (0 to 1).

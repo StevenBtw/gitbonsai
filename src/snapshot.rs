@@ -13,8 +13,9 @@ use crate::Error;
 use crate::color::Rgb;
 use crate::date::{Date, DateRange};
 
-/// The schema version this crate reads and writes.
-pub const SCHEMA: u32 = 2;
+/// The schema version this crate reads and writes: 3 adds the dates of
+/// achievements and archived repositories, which gitbonsai 0.2 can't read.
+pub const SCHEMA: u32 = 3;
 
 /// Snapshots before 0.2.1: no private count, so every contribution the
 /// languages leave is taken as private work.
@@ -129,7 +130,7 @@ impl Snapshot {
         let fail = |msg: String| Err(Error::Snapshot(msg));
         if !(LEGACY_SCHEMA..=SCHEMA).contains(&self.schema) {
             return fail(format!(
-                "schema {} is not supported; this gitbonsai reads schemas {LEGACY_SCHEMA} and {SCHEMA}. Re-run `gitbonsai collect`",
+                "schema {} is not supported; this gitbonsai reads schemas {LEGACY_SCHEMA} to {SCHEMA}. Re-run `gitbonsai collect`",
                 self.schema
             ));
         }
@@ -284,7 +285,7 @@ mod tests {
         assert!(minimal(LEGACY_SCHEMA).validate().is_ok());
         assert!(minimal(SCHEMA).validate().is_ok());
         assert!(minimal(SCHEMA + 1).validate().is_err());
-        assert_eq!(SCHEMA, 2);
+        assert_eq!(SCHEMA, 3);
     }
 
     #[test]

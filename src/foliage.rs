@@ -30,13 +30,13 @@ pub fn fullness(silent: i32) -> f64 {
     (1.0 - (f64::from(silent) - window) / (year - window)).clamp(0.0, 1.0)
 }
 
-/// Each language's foliage left ([`fullness`]), by its last complete week
-/// with work.
+/// Each language's foliage left ([`fullness`]), by its last week with work,
+/// counted in complete weeks: work in the week under way brings the leaves
+/// back at once.
 pub fn fullness_by_language(timeline: &Timeline) -> BTreeMap<String, f64> {
-    let weeks = timeline.complete_weeks();
-    let last = weeks.last().map_or(0, |w| w.no);
+    let last = timeline.complete_weeks().last().map_or(0, |w| w.no);
     let mut seen: BTreeMap<String, i32> = BTreeMap::new();
-    for week in weeks {
+    for week in &timeline.weeks {
         for (language, amount) in &week.by_language {
             if *amount > 0.0 {
                 seen.insert(language.clone(), week.no);
@@ -168,6 +168,21 @@ mod tests {
         assert!((fullness(32) - 0.5).abs() < 0.02, "half way");
         assert!(fullness(52).abs() < 1e-9, "gone after a year");
         assert!(fullness(80).abs() < 1e-9);
+    }
+
+    #[test]
+    fn work_in_the_week_under_way_brings_the_leaves_back() {
+        use crate::growth::testkit::snap;
+        let d = |m, day| Date::from_ymd(2026, m, day).unwrap();
+        let rust: &[(&str, u32)] = &[("Rust", 5)];
+        let python: &[(&str, u32)] = &[("Python", 5)];
+        let mut days = vec![(d(1, 5), 5, rust)];
+        days.extend((0..21).map(|w| (d(1, 12).add_days(7 * w), 5, python)));
+        days.push((d(6, 3), 5, rust));
+        // Thursday 4 June: the week of Monday 1 June is under way.
+        let timeline = Timeline::new(&snap(&days, d(6, 4)));
+        let full = fullness_by_language(&timeline);
+        assert!((full["Rust"] - 1.0).abs() < 1e-9, "{full:?}");
     }
 
     /// The density table.

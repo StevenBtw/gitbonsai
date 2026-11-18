@@ -9,6 +9,7 @@ use std::collections::BTreeMap;
 
 use crate::growth::Skeleton;
 use crate::growth::clouds::pad;
+use crate::growth::dome::SEEDLING_TOP;
 use crate::growth::life::{Lang, Life, Month, irr, shares_of};
 use crate::growth::wood::{at_frac, limb_to};
 use crate::math;
@@ -27,7 +28,7 @@ pub fn seedling(sk: &mut Skeleton, life: &Life, seed: u64) {
     let shares = shares_of(&all, total);
     let r = irr(life.life_cv);
     // Tall from the start, and no taller than the young tree it becomes.
-    let h = 76.0 + all.len().min(12) as f64 / 3.0;
+    let h = SEEDLING_TOP - (12 - all.len().min(12)) as f64 / 3.0;
     let lean = rng.range(-0.05, 0.05) * h;
     let top = (CENTER_X + lean, SOIL_Y - h);
     let stem = limb_to(

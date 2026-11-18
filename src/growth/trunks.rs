@@ -116,7 +116,7 @@ pub struct Strand {
     /// How far it leans out under its own weight, 0 to 1: a language that
     /// grew fast weighs on young wood, and wood once bent stays bent.
     pub sag: f64,
-    /// Its language's share of all the work so far.
+    /// The largest share of all the work its language has reached.
     pub share: f64,
 }
 
