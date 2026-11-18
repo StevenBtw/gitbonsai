@@ -2,13 +2,13 @@
 
 All notable changes to gitbonsai, a Japanese maple bonsai grown from GitHub activity. Any change to how a tree grows or looks is at least a minor version, because people notice their tree changing.
 
-## [0.3.1] - Unreleased
+## [0.3.1] - 2026-11-19
 
 Wood release: limbs stay in proportion to their trunk, dropped languages keep visible dead wood, and the roots grip the soil like a real maple's. Every tree looks different from 0.3.0; stay on 0.3.0 to keep the old look. It ships as a patch, although trees change, because it finishes the wood and roots of 0.3.0's redesign.
 
 ### Changed
 
-- **Roots grip the soil**: surface roots are rounded ridges lying on the soil that widen into the trunk and flatten toward a blunt tip, and those facing the viewer are drawn over the trunk. A tree has 3 to 7 by age (was 5 to 9), longer and thicker the older it is, and a new root no longer moves the others.
+- **Roots grip the soil**: surface roots are rounded ridges lying on the soil that widen into the trunk and flatten toward a blunt tip; the trunk ends where it enters the soil, and moss grows over the roots in front. A tree has 3 to 7 roots by age (was 5 to 9), longer and thicker the older it is, and a new root no longer moves the others.
 - **No limb outgrows its trunk**: a limb is at most a third of the trunk's radius where it leaves, and what it gives up thickens the lower trunk, so a tree whose busy early years dwarf its crown no longer rises as a thin trunk out of a lump of limbs.
 - **Dropped languages stay visible**: each era's two biggest dropped languages leave a dead twig, even when they were a small part of their years, and a weathered dead twig keeps 70% of its length and a few bare twigs.
 - **The wind chime's clapper hangs inside the bell**: at the lip, where it strikes the rim, under the glass or the metal.
