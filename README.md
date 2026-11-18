@@ -40,7 +40,7 @@ The four real trees are grown from their public GitHub activity with `gitbonsai 
 | Low limbs | Earlier eras, oldest lowest |
 | A gap of bare trunk | A long pause before your recent years |
 | Leaf color | The language, on the Japanese maple palette |
-| Silver leaves | Private work; only when your profile includes private contributions (Settings, Public profile); their tips take your public languages' colors |
+| Silver leaves | Private work; only when your profile includes private contributions (Settings, Public profile); their tips take your public languages' colors, encouraging open source work |
 | Fullness | How busy your recent years were; old leaves thin out |
 | Bronze tips | New growth from last week |
 | Bleached deadwood | A language you stopped using while you kept working; it dies in place and weathers over the years |
