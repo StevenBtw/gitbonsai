@@ -90,10 +90,12 @@ pub struct Tuft {
     pub size: f64,
     /// Private work: drawn in the private tone.
     pub private: bool,
+    /// A grey leaf's tip in a public language's color.
+    pub tip: Option<Rgb>,
 }
 
 /// A chain of wood: points with radii, and whether it is deadwood.
-pub type Chain = (Vec<(V3, f64)>, bool);
+pub type Chain = (Vec<(V3, f64)>, Option<f64>);
 
 /// Everything to draw, in world space.
 #[derive(Debug, Clone, Default)]
@@ -109,6 +111,13 @@ pub struct Scene {
     /// Solid cloud masses behind the leaves: center, rx, ry, rz, color,
     /// and whether it is private work.
     pub masses: Vec<(V3, f64, f64, f64, Rgb, bool)>,
+    /// Chains that are strands along the trunk, by index into `chains`.
+    pub strands: std::collections::BTreeSet<usize>,
+    /// Side chains by index into `chains`: the girth of the wood they leave,
+    /// the fork they leave it at, on its axis, and the chain they leave.
+    pub joins: std::collections::BTreeMap<usize, (f64, V3, usize)>,
+    /// A shari up the trunk, bleached this far ([`crate::growth::Skeleton::shari`]).
+    pub shari: Option<f64>,
 }
 
 /// How many of the side leaves (the lower flank of each cloud) carry
@@ -131,7 +140,10 @@ impl Scene {
     pub fn build(b: &Bonsai) -> Self {
         let sk = &b.skeleton;
         let n = sk.nodes.len();
-        let mut scene = Self::default();
+        let mut scene = Self {
+            shari: b.skeleton.shari,
+            ..Self::default()
+        };
         if n == 0 {
             return scene;
         }
@@ -148,6 +160,11 @@ impl Scene {
         // Chains: follow the child carrying the most flow; every other child
         // starts a chain of its own.
         let mut starts = vec![0usize];
+        // Each node's girth as drawn, so a side chain starts at its parent's
+        // drawn girth.
+        let mut drawn = vec![0.0f64; n];
+        // The chain each node is drawn in.
+        let mut chain_of = vec![usize::MAX; n];
         while let Some(s0) = starts.pop() {
             let mut chain = Vec::new();
             if let Some(p) = sk.nodes[s0].parent {
@@ -160,13 +177,45 @@ impl Scene {
                 if kids.is_empty() {
                     break;
                 }
-                kids.sort_by(|a, c| flow[*c].total_cmp(&flow[*a]).then(a.cmp(c)));
+                // The wood runs on into the child that carries the most, but
+                // straight on weighs half again: a heavy side limb must not cut
+                // the trunk off above it. Trunk runs on into trunk, strand into
+                // strand: a heavy strand never takes the trunk's line.
+                let p = sk.nodes[cur].p;
+                let back = sk.nodes[cur]
+                    .parent
+                    .map_or((p.0, p.1 + 1.0), |q| sk.nodes[q].p);
+                let along = |k: usize| {
+                    let (a, b) = (
+                        (p.0 - back.0, p.1 - back.1),
+                        (sk.nodes[k].p.0 - p.0, sk.nodes[k].p.1 - p.1),
+                    );
+                    let n = ((a.0 * a.0 + a.1 * a.1) * (b.0 * b.0 + b.1 * b.1))
+                        .sqrt()
+                        .max(1e-9);
+                    let cos = (a.0 * b.0 + a.1 * b.1) / n;
+                    let kind = if sk.nodes[k].strand == sk.nodes[cur].strand {
+                        1.0
+                    } else {
+                        0.1
+                    };
+                    flow[k] * (2.0 + cos) * kind
+                };
+                kids.sort_by(|a, c| along(*c).total_cmp(&along(*a)).then(a.cmp(c)));
+                // Dead wood is a chain of its own: a living limb never turns
+                // white because the wood at its end died.
+                let dead = |i: usize| sk.nodes[i].language.as_deref() == Some(JIN);
+                if dead(kids[0]) != dead(cur) {
+                    starts.extend_from_slice(&kids);
+                    break;
+                }
                 starts.extend_from_slice(&kids[1..]);
                 cur = kids[0];
             }
             // Deadwood is marked in the skeleton; the trunk never is.
             let last = chain[chain.len() - 1];
-            let jin = chain[0] != 0 && sk.nodes[last].language.as_deref() == Some(JIN);
+            let jin = (chain[0] != 0 && sk.nodes[last].language.as_deref() == Some(JIN))
+                .then_some(sk.nodes[last].bleach);
             let mut wood: Vec<(V3, f64)> = chain
                 .iter()
                 .map(|&i| {
@@ -181,10 +230,129 @@ impl Scene {
                     w.1 *= 1.0 + 0.35 * math::exp(-(j as f64) / 1.2);
                 }
             }
-            // A side branch starts inside its parent at its own girth, a
-            // little flared, not the parent's: else short stubs become thorns.
+            // A strand by its own wood: a limb forking from a strand is not one.
+            let own = if chain[0] == s0 {
+                &chain[..]
+            } else {
+                &chain[1..]
+            };
+            let strand = own.iter().any(|&i| sk.nodes[i].strand);
+            // A limb is 30% thinner than its flow (a bonsai limb stays near a
+            // third of the trunk) and tapers steadily from where it leaves to
+            // a fine tip, never thinner than the wood that leaves it further on.
+            let first = usize::from(chain[0] != s0);
+            if first == 1 && drawn[chain[0]] > 0.0 {
+                wood[0].1 = drawn[chain[0]];
+            }
+            let limb = chain[0] != 0 && !strand;
+            let thin = |r: f64| 0.5 + (r - 0.5) * 0.7;
+            if limb {
+                for w in &mut wood[first..] {
+                    w.1 = thin(w.1);
+                }
+            }
+            if limb && wood.len() > first + 1 {
+                let leave: Vec<f64> = chain
+                    .iter()
+                    .enumerate()
+                    .map(|(j, &i)| {
+                        children[i]
+                            .iter()
+                            .filter(|&&k| chain.get(j + 1) != Some(&k))
+                            .map(|&k| thin(radius(flow[k])))
+                            .fold(0.0, f64::max)
+                    })
+                    .collect();
+                let last = wood.len() - 1;
+                let mut need = vec![0.0; wood.len()];
+                let mut m = 0.0f64;
+                for j in (0..wood.len()).rev() {
+                    m = m.max(leave[j]);
+                    need[j] = m;
+                }
+                let mut arc = vec![0.0; wood.len()];
+                for j in first + 1..wood.len() {
+                    let (a, b) = (wood[j - 1].0, wood[j].0);
+                    arc[j] = arc[j - 1]
+                        + (math::sq(b[0] - a[0]) + math::sq(b[1] - a[1]) + math::sq(b[2] - a[2]))
+                            .sqrt();
+                }
+                let total = (arc[last] - arc[first]).max(1e-9);
+                let r0 = wood[first].1;
+                let tip = 0.5f64.max(0.2 * r0);
+                for j in first..wood.len() {
+                    let f = (arc[last] - arc[j]) / total;
+                    let cap = (tip + (r0 - tip) * f).max(need[j] * 1.1);
+                    wood[j].1 = wood[j].1.min(cap);
+                }
+            }
+            for (j, &i) in chain.iter().enumerate().skip(first) {
+                drawn[i] = wood[j].1;
+            }
+            // A side branch starts on its parent's surface and reaches back
+            // inside a fixed short way, at most half the parent's girth: so
+            // it never leaves a gap, and never shows through the far side.
+            // It starts at its own girth, a little flared, not the parent's:
+            // else short stubs become thorns.
+            // How many of the chain's first nodes the side-branch start cut.
+            let mut cut = 0;
             if chain[0] != s0 && wood.len() > 1 {
-                wood[0].1 = wood[0].1.min(wood[1].1 * 1.3);
+                let (fork, r) = wood[0];
+                let own = wood[1].1;
+                if !strand {
+                    let inset = r - own.min(0.5 * r);
+                    let off = |p: V3| (math::sq(p[0] - fork[0]) + math::sq(p[1] - fork[1])).sqrt();
+                    // Wholly inside its parent, a branch doesn't show at all.
+                    let Some(j) = (1..wood.len()).find(|&j| off(wood[j].0) >= inset) else {
+                        // Its own side branches then leave the wood it hides in.
+                        for &i in &chain[1..] {
+                            chain_of[i] = chain_of[chain[0]];
+                        }
+                        continue;
+                    };
+                    let (a, b) = (wood[j - 1], wood[j]);
+                    let at = |t: f64| -> V3 {
+                        [
+                            a.0[0] + (b.0[0] - a.0[0]) * t,
+                            a.0[1] + (b.0[1] - a.0[1]) * t,
+                            a.0[2] + (b.0[2] - a.0[2]) * t,
+                        ]
+                    };
+                    // Where the segment crosses `inset`, found by halving.
+                    let (mut lo, mut hi) = (0.0, 1.0);
+                    for _ in 0..40 {
+                        let mid = f64::midpoint(lo, hi);
+                        if off(at(mid)) < inset {
+                            lo = mid;
+                        } else {
+                            hi = mid;
+                        }
+                    }
+                    let start = at(hi);
+                    wood.splice(..j, [(start, b.1)]);
+                    cut = j - 1;
+                }
+                scene
+                    .joins
+                    .insert(scene.chains.len(), (r, fork, chain_of[chain[0]]));
+                wood[0].1 = wood[0].1.min(own * 1.3);
+            }
+            // Wood thins gradually above a fork, never in one step: where a
+            // heavy limb leaves, the trunk tapers over a short stretch.
+            for i in 1..wood.len() {
+                let (a, b) = (wood[i - 1], wood[i]);
+                let run = (math::sq(b.0[0] - a.0[0]) + math::sq(b.0[1] - a.0[1])).sqrt();
+                wood[i].1 = b.1.max(a.1 - 0.3 * run);
+            }
+            // Side branches start at their parent's girth as finally drawn.
+            for (k, w) in wood.iter().enumerate().skip(1) {
+                drawn[chain[k + cut]] = w.1;
+            }
+            if strand {
+                scene.strands.insert(scene.chains.len());
+            }
+            for &i in own {
+                chain_of[i] = scene.chains.len();
             }
             scene.chains.push((wood, jin));
         }
@@ -194,6 +362,23 @@ impl Scene {
         }
         scene
     }
+}
+
+/// A public language for a grey leaf: drawn with odds `odds` against
+/// public work's share of the recent window, then by each language's part.
+fn pluck_lang(b: &Bonsai, odds: f64, which: f64) -> Option<&str> {
+    let named: f64 = b.window.by_language.values().sum();
+    if b.window.total <= 0.0 || odds >= named / b.window.total {
+        return None;
+    }
+    let mut at = which * named;
+    for (l, v) in &b.window.by_language {
+        if at < *v {
+            return Some(l.as_str());
+        }
+        at -= v;
+    }
+    b.window.by_language.keys().last().map(String::as_str)
 }
 
 /// A leaf's color: its language's, or silver for work without one.
@@ -257,21 +442,31 @@ fn cloud_leaves(b: &Bonsai, scene: &mut Scene) {
         let a = area(cl);
         let k = (total * a / total_area).max(14.0);
         // Tufts sized so k of them cover the cloud about twice over.
-        let size = (a * 2.8 / (k * 30.0)).sqrt().clamp(0.9, 2.6);
+        // Fewer leaves in a crown too heavy to draw are larger, to cover it.
+        let size = (a * 2.8 / (k * 30.0)).sqrt().clamp(0.9, 2.6) / b.leaf_share.sqrt();
         let dom = cl
             .patches
             .iter()
             .map(|p| (p.3 / (1.0 + (p.0.0 - cl.c.0).abs() / cl.rx), p))
             .max_by(|x, y| x.0.total_cmp(&y.0))
             .and_then(|p| p.1.2.clone());
-        scene.masses.push((
-            c3,
-            cl.rx,
-            cl.ry,
-            cl.rz,
-            leaf_color(b, dom.as_deref(), 0.5),
-            dom.is_none(),
-        ));
+        // A dropped language's cloud keeps its place in the crown, bare: no
+        // leaves, nothing to water.
+        if dom.is_some() && b.state(dom.as_deref()) == crate::foliage::LanguageState::Jin {
+            continue;
+        }
+        // The mass behind the leaves shrinks as they fall.
+        let left = b.fullness(dom.as_deref()).sqrt();
+        if left > 0.02 {
+            scene.masses.push((
+                c3,
+                cl.rx * left,
+                cl.ry * left,
+                cl.rz * left,
+                leaf_color(b, dom.as_deref(), 0.5),
+                dom.is_none(),
+            ));
+        }
         scene.pads.push((c3, cl.rx, cl.ry));
         if b.extras.drip && (li == 0 || lobes[li - 1].0 != *ci) {
             // Tubing follows the wood from the cloud's nearest node down to
@@ -302,7 +497,8 @@ fn cloud_leaves(b: &Bonsai, scene: &mut Scene) {
             .iter()
             .map(|(p, z, l, w)| ([p.0 - CENTER_X, SOIL_Y - p.1, *z], l.as_deref(), *w))
             .collect();
-        let nn = (k / 0.36) as usize;
+        // Leaves at 1.5 times 0.2's count, at the same size: a full crown.
+        let nn = (k * 1.5 / 0.36 * b.leaf_share) as usize;
         let phase = hash01(seed, li as i64) * math::TAU;
         let ph2 = hash01(seed ^ 0x77, li as i64) * math::TAU;
         for i in 0..nn {
@@ -339,7 +535,19 @@ fn cloud_leaves(b: &Bonsai, scene: &mut Scene) {
                 })
                 .min_by(|x, y| x.0.total_cmp(&y.0))
                 .and_then(|x| x.1);
+            // A silent language's leaves fall one by one, never all at once.
+            if hash01(seed ^ 0xfa11, salt) >= b.fullness(lang) {
+                continue;
+            }
+            // A grey leaf's tip turns a public language's color: on as many
+            // grey leaves as named public work's share of the recent window.
+            let tip = lang
+                .is_none()
+                .then(|| pluck_lang(b, hash01(seed ^ 0x91c, salt), hash01(seed ^ 0x92d, salt)))
+                .flatten()
+                .map(|l| leaf_color(b, Some(l), hash01(seed ^ 0xc1, salt)));
             tufts.push(Tuft {
+                tip,
                 p,
                 n: normal,
                 q: 0.35 + 0.65 * u[1],

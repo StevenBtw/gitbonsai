@@ -13,7 +13,7 @@ pub mod dome;
 pub mod life;
 pub mod seedling;
 #[cfg(test)]
-mod testkit;
+pub(crate) mod testkit;
 pub mod trunks;
 pub mod wood;
 
@@ -38,6 +38,11 @@ pub struct Node {
     pub own: f64,
     /// The language whose points it grew toward; `None` for the leader.
     pub language: Option<String>,
+    /// How bleached dead wood ([`JIN`]) is, from 0 (still bark-brown, just
+    /// died) to 1 (white).
+    pub bleach: f64,
+    /// Part of a strand along the trunk ([`crate::growth::trunks::Strand`]).
+    pub strand: bool,
 }
 
 /// The grown wood.
@@ -55,6 +60,14 @@ pub struct Skeleton {
     pub clouds: Vec<Cloud>,
     /// The account has been silent for a year: the tree stands bare.
     pub dormant: bool,
+    /// Strands wound round a trunk while the tree grows: each wound node
+    /// with the trunk node it lies on and its angle around it, then the
+    /// strand's free nodes. [`wood::hug`] lays them on the trunk and empties
+    /// it, so a grown tree holds none.
+    pub wound: Vec<(Vec<(usize, usize, f64)>, Vec<usize>)>,
+    /// The language that founded the trunk was dropped: a shari, a strip of
+    /// dead wood up the main trunk, bleached this far (0 to 1).
+    pub shari: Option<f64>,
 }
 
 /// The language that marks deadwood (jin) in the skeleton.
@@ -92,12 +105,16 @@ impl Skeleton {
 }
 
 /// Grows the skeleton of `timeline`, seeded by the account id; `periods`
-/// declare languages for private work (first day, last day, languages).
+/// declare languages for private work (first day, last day, languages);
+/// `past` is the furthest the tree reached before, which it never falls
+/// short of.
 pub fn grow(
     timeline: &Timeline,
     seed: u64,
     leader: &Leader,
     periods: &[(Date, Date, Vec<String>)],
+    past: dome::Reach,
+    recent: Option<dome::Recent>,
 ) -> Skeleton {
-    dome::grow(timeline, seed, leader, periods)
+    dome::grow(timeline, seed, leader, periods, past, recent)
 }

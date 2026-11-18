@@ -4,3 +4,4 @@
 /bonsai
 *.snapshot.json
 target*/
+/testdata

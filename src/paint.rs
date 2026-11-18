@@ -202,6 +202,17 @@ pub fn smooth_through(d: &mut PathData, pts: &[(f64, f64)]) {
 /// curves when `smooth`; thin twigs don't need them, and straight sides are
 /// shorter to write.
 pub fn tube(points: &[(f64, f64, f64)], cap: bool, smooth: bool) -> PathData {
+    tube_from(points, false, cap, smooth)
+}
+
+/// A tube as [`tube`], with a round start too when `round_start`: a side
+/// branch's start, inside its parent, never shows a square corner.
+pub fn tube_from(
+    points: &[(f64, f64, f64)],
+    round_start: bool,
+    cap: bool,
+    smooth: bool,
+) -> PathData {
     let n = points.len();
     let mut d = PathData::coarse();
     if n < 2 {
@@ -243,8 +254,39 @@ pub fn tube(points: &[(f64, f64, f64)], cap: bool, smooth: bool) -> PathData {
         d.l(b);
     }
     side_line(&mut d, &right);
+    if round_start {
+        let (tx, ty) = tangent(0);
+        let r = points[0].2;
+        let (b, a) = (right[n - 1], left[0]);
+        d.c(
+            (b.0 - tx * r * 1.33, b.1 - ty * r * 1.33),
+            (a.0 - tx * r * 1.33, a.1 - ty * r * 1.33),
+            a,
+        );
+    }
     d.z();
     d
+}
+
+/// Dead wood narrows toward its end the more it has bleached, to a point
+/// when white.
+pub fn weather_tip(pts: &mut [(f64, f64, f64, f64)], bleach: f64) {
+    let Some(&(tx, ty, tr, _)) = pts.last() else {
+        return;
+    };
+    let length: f64 = pts
+        .windows(2)
+        .map(|w| (math::sq(w[1].0 - w[0].0) + math::sq(w[1].1 - w[0].1)).sqrt())
+        .sum();
+    let reach = (tr * 5.0).min(length * 0.6).max(1e-9);
+    let least = 1.0 - 0.9 * bleach;
+    for p in pts.iter_mut().rev() {
+        let d = (math::sq(p.0 - tx) + math::sq(p.1 - ty)).sqrt();
+        if d >= reach {
+            break;
+        }
+        p.2 *= least + (1.0 - least) * d / reach;
+    }
 }
 
 /// Narrows the last stretch of a branch, about three tip-widths long, so it
@@ -268,6 +310,38 @@ pub fn taper_tip(pts: &mut [(f64, f64, f64, f64)]) {
             break;
         }
         p.2 *= 0.6 + 0.4 * d / reach;
+    }
+}
+
+/// The point of polyline `line` nearest to `p`.
+pub fn nearest_on(line: &[(f64, f64)], p: (f64, f64)) -> (f64, f64) {
+    let mut best = (f64::MAX, p);
+    for (i, &a) in line.iter().enumerate() {
+        let b = line.get(i + 1).copied().unwrap_or(a);
+        let (ux, uy) = (b.0 - a.0, b.1 - a.1);
+        let t = (((p.0 - a.0) * ux + (p.1 - a.1) * uy) / (ux * ux + uy * uy).max(1e-12))
+            .clamp(0.0, 1.0);
+        let q = (a.0 + ux * t, a.1 + uy * t);
+        let d = math::sq(q.0 - p.0) + math::sq(q.1 - p.1);
+        if d < best.0 {
+            best = (d, q);
+        }
+    }
+    best.1
+}
+
+/// Moves a branch's start by `d`, less further along, its tip not at all.
+pub fn follow(pts: &mut [(f64, f64, f64, f64)], d: (f64, f64)) {
+    let mut arc = vec![0.0; pts.len()];
+    for k in 1..pts.len() {
+        arc[k] = arc[k - 1]
+            + (math::sq(pts[k].0 - pts[k - 1].0) + math::sq(pts[k].1 - pts[k - 1].1)).sqrt();
+    }
+    let total = arc.last().copied().unwrap_or(0.0).max(1e-9);
+    for (p, s) in pts.iter_mut().zip(arc) {
+        let f = 1.0 - s / total;
+        p.0 += d.0 * f;
+        p.1 += d.1 * f;
     }
 }
 
@@ -429,7 +503,13 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
 
     // ---- wood, in pieces so leaves can pass in front of and behind it ----
     let mut twigs = [String::new(), String::new()];
-    for (ci, (chain, jin)) in scene.chains.iter().enumerate() {
+    // Each chain's line as drawn, by index.
+    let mut lines: Vec<Vec<(f64, f64)>> = Vec::with_capacity(scene.chains.len());
+    for (ci, (chain, dead)) in scene.chains.iter().enumerate() {
+        // Dead wood greys from bark to bleached; past half way it is drawn
+        // the way jin is, inked and weathered.
+        let bleach = dead.unwrap_or(0.0);
+        let jin = &(dead.is_some() && bleach >= 0.5);
         let pts: Vec<(f64, f64, f64, f64)> = chain
             .iter()
             .map(|(p, r)| {
@@ -439,10 +519,62 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
             .collect();
         // Relax the growth zigzag, then subdivide; thin twigs need less. The
         // outline is drawn as curves, so few points carry a smooth branch.
-        let relaxed = relax(&relax(&relax(&pts)));
+        // Smoothed hard before simplifying: a smoother line needs fewer
+        // points, so the file shrinks as the wood rounds out.
+        let mut relaxed = pts.clone();
+        for _ in 0..8 {
+            relaxed = relax(&relaxed);
+        }
         let thick = pts.iter().any(|p| p.2 > 3.2);
         let mut fine = simplify(&chaikin(&relaxed), if thick { 1.3 } else { 1.2 });
-        taper_tip(&mut fine);
+        // Dead wood ends snapped while fresh and weathers to a point as it
+        // bleaches.
+        let snapped = dead.is_some();
+        if snapped {
+            weather_tip(&mut fine, bleach);
+        } else {
+            taper_tip(&mut fine);
+        }
+        // Smoothing pulls a branch off its nodes, so a side branch moves with
+        // its parent's drawn line: it leaves the wood, not the air beside it.
+        let fork = scene.joins.get(&ci).map(|r| {
+            let (x0, y0, z0) = project(r.1);
+            let q = lines.get(r.2).map_or((x0, y0), |l| nearest_on(l, (x0, y0)));
+            (q.0, q.1, z0, q.0 - x0, q.1 - y0)
+        });
+        if let Some((.., dx, dy)) = fork {
+            follow(&mut fine, (dx, dy));
+        }
+        lines.push(fine.iter().map(|p| (p.0, p.1)).collect());
+        // A limb flares where it leaves its parent, a collar that runs the two
+        // woods together instead of one cutting into the other.
+        if let Some((r, (x0, y0, ..))) = scene
+            .joins
+            .get(&ci)
+            .zip(fork)
+            .filter(|_| thick && !scene.strands.contains(&ci))
+        {
+            let r = r.0 * WORLD;
+            let own = fine.get(fine.len() / 3).map_or(0.0, |p| p.2);
+            let reach = (own * 3.0).max(1e-9);
+            // Widest where it leaves the parent's surface, back to its own
+            // girth inside and out, and never wider than the parent.
+            for p in &mut fine {
+                let d = (math::sq(p.0 - x0) + math::sq(p.1 - y0)).sqrt() - r;
+                // The collar acts only near the join; past it a limb keeps its
+                // own girth and may thin to its tip.
+                if d >= reach {
+                    continue;
+                }
+                let k = if d < 0.0 {
+                    1.0 + d / (0.5 * r).max(1e-9)
+                } else {
+                    1.0 - d / reach
+                }
+                .clamp(0.0, 1.0);
+                p.2 = p.2.max((own * (1.0 + 0.7 * k * k)).min(0.9 * r));
+            }
+        }
         for p in &fine {
             extent = (
                 extent.0.min(p.0 - p.2),
@@ -450,8 +582,9 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                 extent.2.min(p.1 - p.2),
             );
         }
+        let strand = scene.strands.contains(&ci);
         // Thin twigs all share one path per color, drawn behind the leaves.
-        if !thick {
+        if !thick && !strand {
             let seg: Vec<(f64, f64, f64)> = fine.iter().map(|p| (p.0, p.1, p.2)).collect();
             twigs[usize::from(*jin)].push_str(tube(&seg, true, false).as_str());
             continue;
@@ -460,6 +593,24 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
         let mut start = 0;
         while start + 1 < fine.len() {
             let end = (start + piece).min(fine.len() - 1);
+            // A side limb's first stretch, inside the wood it leaves, lies
+            // behind that wood: every limb comes out from behind its parent.
+            // Only a limb that would otherwise paint in front needs the cut.
+            let ahead =
+                fine[..=end].iter().map(|p| p.3).sum::<f64>() / (end + 1) as f64 > fine[0].3 - 5.0;
+            let join = (start == 0 && !strand && ahead)
+                .then(|| scene.joins.get(&ci).zip(fork))
+                .flatten()
+                .map(|(r, (x0, y0, z0, ..))| {
+                    let k = (1..end)
+                        .find(|&k| {
+                            (math::sq(fine[k].0 - x0) + math::sq(fine[k].1 - y0)).sqrt()
+                                > r.0 * WORLD
+                        })
+                        .unwrap_or(end);
+                    (k, z0.min(fine[0].3) - 5.0)
+                });
+            let end = join.map_or(end, |j| j.0);
             // Each piece runs two points into the next, which covers the seam,
             // so only the branch's real tip gets a cap.
             let last = end == fine.len() - 1;
@@ -472,10 +623,18 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                 .iter()
                 .map(|p| (p.0, p.1, p.2))
                 .collect();
-            let depth =
-                fine[start..=end].iter().map(|p| p.3).sum::<f64>() / (end - start + 1) as f64;
-            let base = haze(if *jin { paints.jin } else { paints.bark }, depth);
-            let d = tube(&seg, last, true);
+            let depth = join.map_or(
+                fine[start..=end].iter().map(|p| p.3).sum::<f64>() / (end - start + 1) as f64,
+                |j| j.1,
+            );
+            let base = haze(paints.bark.mix(paints.jin, bleach), depth);
+            let splinter = snapped && last && bleach < 0.8;
+            let d = tube_from(
+                &seg,
+                start == 0 && scene.joins.contains_key(&ci),
+                last && !splinter,
+                true,
+            );
             // Deadwood gets an inked edge, the way jin is drawn: bleached
             // wood alone is invisible on a white page.
             let mut s = if *jin {
@@ -484,9 +643,53 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                     d.as_str(),
                     paints.jin_ink
                 )
+            } else if strand {
+                // A strand lies in a soft groove of its own shadow: it reads
+                // apart from the trunk without an outline.
+                let wide: Vec<(f64, f64, f64)> =
+                    seg.iter().map(|p| (p.0, p.1, p.2 * 1.45)).collect();
+                format!(
+                    r#"<path d="{}" fill="{}"/><path d="{}" fill="{}"/>"#,
+                    tube(&wide, last, true).as_str(),
+                    base.shift(-0.1, 0.0),
+                    d.as_str(),
+                    base.shift(0.03, 0.0)
+                )
             } else {
                 format!(r#"<path d="{}" fill="{base}"/>"#, d.as_str())
             };
+            if splinter && seg.len() > 1 {
+                // Torn fibres across the broken end, shorter as it weathers.
+                let m = seg.len();
+                let (x, y, r) = seg[m - 1];
+                let (tx, ty) = norm((x - seg[m - 2].0, y - seg[m - 2].1));
+                let (nx, ny) = (-ty, tx);
+                let at =
+                    |u: f64, f: f64| (x + nx * r * u + tx * r * f, y + ny * r * u + ty * r * f);
+                let mut d = PathData::coarse();
+                d.m(at(-1.0, -0.6));
+                for k in 0..4 {
+                    let u0 = -1.0 + 0.5 * k as f64;
+                    let h = ((ci * 31 + k * 17) % 7) as f64 / 6.0;
+                    d.l(at(u0, 0.0));
+                    d.l(at(
+                        0.8 * (u0 + 0.25),
+                        (0.4 + 0.9 * h) * 1.6 * (1.0 - bleach),
+                    ));
+                }
+                d.l(at(1.0, 0.0));
+                d.l(at(1.0, -0.6));
+                d.z();
+                let ink = if *jin {
+                    format!(
+                        r#" stroke="{}" stroke-width="0.8" stroke-linejoin="round""#,
+                        paints.jin_ink
+                    )
+                } else {
+                    String::new()
+                };
+                let _ = write!(s, r#"<path d="{}" fill="{base}"{ink}/>"#, d.as_str());
+            }
             if seg.iter().any(|p| p.2 > 6.5) {
                 // The shadow falls on whichever side faces away from the light.
                 let m = seg.len();
@@ -544,6 +747,61 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                     r#"<path d="{}" fill="{lit}"/>"#,
                     strip(-0.35, -0.72).as_str(),
                 );
+                if let Some(g) = scene.shari.filter(|_| ci == 0) {
+                    // A shari: the founding language's dead wood, a strip up
+                    // the living trunk that narrows to a point as it climbs and
+                    // reaches higher as it bleaches.
+                    let top = 0.2 + 0.25 * g;
+                    let (y0, y1) = (fine[0].1, fine[fine.len() - 1].1);
+                    let height = |y: f64| (y0 - y) / (y0 - y1).max(1e-9);
+                    // The outline is simplified to few points: the strip takes
+                    // its own, every few units along the wood.
+                    let mut at: Vec<(f64, f64, f64, (f64, f64), f64)> = Vec::new();
+                    for i in 0..m.saturating_sub(1) {
+                        let (p, q) = (seg[i], seg[i + 1]);
+                        let len = (math::sq(q.0 - p.0) + math::sq(q.1 - p.1)).sqrt();
+                        let n = (len / 3.0).ceil().max(1.0) as usize;
+                        for j in 0..n {
+                            let u = j as f64 / n as f64;
+                            let y = p.1 + (q.1 - p.1) * u;
+                            let t = height(y);
+                            if t <= top {
+                                let x = p.0 + (q.0 - p.0) * u;
+                                at.push((x, y, p.2 + (q.2 - p.2) * u, away(i), t));
+                            }
+                        }
+                    }
+                    if at.len() > 2 {
+                        // It wanders with the grain, and its edges are torn.
+                        let edge = |&(x, y, r, n, t): &(f64, f64, f64, (f64, f64), f64),
+                                    side: f64| {
+                            let w = 0.26
+                                * (1.0 - t / top).max(0.0).sqrt()
+                                * (1.0 + 0.3 * math::sin(t * 90.0 + 2.0 * side));
+                            let k = 0.1 + 0.22 * math::sin(t / top * 5.0) + side * w;
+                            (x + n.0 * r * k, y + n.1 * r * k)
+                        };
+                        let there: Vec<(f64, f64)> = at.iter().map(|a| edge(a, -1.0)).collect();
+                        let back: Vec<(f64, f64)> = at.iter().rev().map(|a| edge(a, 1.0)).collect();
+                        let mut d = PathData::coarse();
+                        d.m(there[0]);
+                        smooth_through(&mut d, &there);
+                        d.l(back[0]);
+                        smooth_through(&mut d, &back);
+                        d.z();
+                        let ink = if g >= 0.5 {
+                            format!(r#" stroke="{}" stroke-width=".6""#, paints.jin_ink)
+                        } else {
+                            String::new()
+                        };
+                        let _ = write!(
+                            s,
+                            r#"<path d="{}" fill="{}"{ink}/>"#,
+                            d.as_str(),
+                            haze(paints.bark.mix(paints.jin, 0.8 * g), depth).shift(0.04, 0.0)
+                        );
+                    }
+                }
                 if *jin && start == 0 {
                     // The dark line where dead wood meets living bark.
                     let n = away(0);
@@ -641,24 +899,28 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
         // Light from the pad's ball normal and height in the pad, then a
         // ramp: cool shadow, the leaf color, warm light, with soft steps.
         let s = 0.62 * diffuse + 0.38 * t.q;
+        let back = (-t.p[2] / 70.0).clamp(0.0, 1.0);
+        let front = (t.p[2] / 70.0).clamp(0.0, 1.0);
+        let lighting = |base: Rgb| {
+            let dark = base.shift(-0.15, -0.01).mix(Rgb::hex(0x2f3d63), 0.28);
+            let lit = base.shift(0.09, -0.005).mix(Rgb::hex(0xfff0c2), 0.22);
+            let mut c = base
+                .mix(dark, 1.0 - smoothstep(0.33, 0.39, s))
+                .mix(lit, smoothstep(0.66, 0.72, s));
+            if t.fresh {
+                // Japanese maples flush bronze-red before the leaves settle.
+                c = c.mix(Rgb::hex(0xc8553d), 0.45).shift(0.06, 0.0);
+            }
+            haze(c, depth)
+                .mix(air, 0.34 * back)
+                .shift(-0.04 * front, 0.0)
+        };
         let base = if t.private {
             private_tone(t.color, paints.dark)
         } else {
             t.color.shift(paints.leaf_shift, 0.0)
         };
-        let dark = base.shift(-0.15, -0.01).mix(Rgb::hex(0x2f3d63), 0.28);
-        let lit = base.shift(0.09, -0.005).mix(Rgb::hex(0xfff0c2), 0.22);
-        let mut c = base
-            .mix(dark, 1.0 - smoothstep(0.33, 0.39, s))
-            .mix(lit, smoothstep(0.66, 0.72, s));
-        if t.fresh {
-            // Japanese maples flush bronze-red before the leaves settle.
-            c = c.mix(Rgb::hex(0xc8553d), 0.45).shift(0.06, 0.0);
-        }
-        c = haze(c, depth);
-        let back = (-t.p[2] / 70.0).clamp(0.0, 1.0);
-        let front = (t.p[2] / 70.0).clamp(0.0, 1.0);
-        c = c.mix(air, 0.34 * back).shift(-0.04 * front, 0.0);
+        let c = lighting(base);
         let h = hash01(seed, j as i64 + 7);
         let (sx, sy, _) = project(v_add(t.p, t.n));
         let angle = math::deg(math::atan2(sy - y, sx - x)) + 90.0 + (h - 0.5) * 50.0;
@@ -667,10 +929,12 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
             * t.size
             * (0.85 + 0.3 * hash01(seed, j as i64 + 11))
             * if t.fresh { 0.75 } else { 1.0 };
+        // Larger leaves on a thinned crown reach further.
+        let reach = 8.0 / b.leaf_share.sqrt();
         extent = (
-            extent.0.min(x - 8.0),
-            extent.1.max(x + 8.0),
-            extent.2.min(y - 8.0),
+            extent.0.min(x - reach),
+            extent.1.max(x + reach),
+            extent.2.min(y - reach),
         );
         let mut s = format!(
             r##"<use href="#{symbol}" transform="translate({} {})rotate({})scale({})" fill="{c}"/>"##,
@@ -679,6 +943,21 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
             Num::coarse(angle),
             Num::coarse(scale)
         );
+        if let Some(tip) = t.tip {
+            // A grey leaf's tip in a public language's color: the same leaf,
+            // smaller, toward the tip.
+            let a = math::rad(angle);
+            let k = 2.6 * scale;
+            let _ = write!(
+                s,
+                r##"<use href="#{symbol}" transform="translate({} {})rotate({})scale({})" fill="{}"/>"##,
+                Num::coarse(x + math::sin(a) * k),
+                Num::coarse(y - math::cos(a) * k),
+                Num::coarse(angle),
+                Num::coarse(scale * 0.5),
+                lighting(tip.shift(paints.leaf_shift, 0.0))
+            );
+        }
         if t.samara {
             // Samaras: a pair of winged seeds hanging below the leaves.
             let red = paints.crimson.shift((shade - 0.6) * 0.18, 0.0);
@@ -1097,7 +1376,7 @@ fn pot_front(b: &Bonsai, pot: &Pot) -> String {
                 SOIL_Y + rng.range(0.5, 0.9) * depth + ry * 0.6,
             );
             crackle.m(p);
-            for _ in 0..3 {
+            for _ in 0..8 {
                 p = (p.0 + rng.range(-5.0, 5.0), p.1 + rng.range(-3.0, 3.0));
                 crackle.l(p);
             }
@@ -1211,6 +1490,33 @@ fn drip_ends(scene: &Scene, paints: &Paints, pot: &Pot, animate: bool) -> String
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn follow_moves_the_start_and_keeps_the_tip_even_on_a_tiny_twig() {
+        let mut twig = [(100.0, 100.0, 0.5, 0.0), (100.01, 100.0, 0.5, 0.0)];
+        follow(&mut twig, (5.0, -3.0));
+        assert_eq!((twig[0].0, twig[0].1), (105.0, 97.0));
+        assert!(
+            (twig[1].0 - 100.01).abs() < 1e-9 && (twig[1].1 - 100.0).abs() < 1e-9,
+            "{twig:?}"
+        );
+        let mut limb = [
+            (0.0, 0.0, 1.0, 0.0),
+            (10.0, 0.0, 1.0, 0.0),
+            (20.0, 0.0, 1.0, 0.0),
+        ];
+        follow(&mut limb, (0.0, 4.0));
+        assert!((limb[1].1 - 2.0).abs() < 1e-9, "{limb:?}");
+    }
+
+    #[test]
+    fn nearest_on_finds_the_closest_point_of_a_polyline() {
+        let line = [(0.0, 0.0), (10.0, 0.0), (10.0, 10.0)];
+        assert_eq!(nearest_on(&line, (4.0, 3.0)), (4.0, 0.0));
+        assert_eq!(nearest_on(&line, (13.0, 6.0)), (10.0, 6.0));
+        assert_eq!(nearest_on(&line, (-5.0, -1.0)), (0.0, 0.0));
+        assert_eq!(nearest_on(&[(2.0, 2.0)], (9.0, 9.0)), (2.0, 2.0));
+    }
 
     #[test]
     fn roots_stay_inside_the_pot() {

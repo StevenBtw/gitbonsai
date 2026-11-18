@@ -24,6 +24,8 @@ pub fn root_only() -> Skeleton {
         parent: None,
         own: 0.0,
         language: None,
+        bleach: 1.0,
+        strand: false,
     });
     sk.node_z.push(0.0);
     sk
@@ -36,9 +38,20 @@ pub fn add(sk: &mut Skeleton, p: P, z: f64, parent: usize, language: &Lang) -> u
         parent: Some(parent),
         own: 0.0,
         language: language.clone(),
+        bleach: 1.0,
+        strand: false,
     });
     sk.node_z.push(z);
     sk.nodes.len() - 1
+}
+
+/// Sets how bleached the dead wood grown since node `from` is.
+pub fn bleach_from(sk: &mut Skeleton, from: usize, bleach: f64) {
+    for n in &mut sk.nodes[from..] {
+        if n.language.as_deref() == Some(JIN) {
+            n.bleach = bleach;
+        }
+    }
 }
 
 /// The depth of node `i`.
@@ -263,21 +276,6 @@ pub fn dead_limb(sk: &mut Skeleton, rng: &mut Rng, limb: Limb, len: f64, amount:
     );
 }
 
-/// A dropped trunk language: a big bleached snag, a second trunk that died,
-/// rising beside the living one.
-pub fn dead_trunk(sk: &mut Skeleton, rng: &mut Rng, limb: Limb, len: f64, amount: f64) {
-    dead_kinked(
-        sk,
-        rng,
-        &limb,
-        len.max(40.0),
-        amount.clamp(700.0, 3000.0),
-        &[0.5, 0.3, 0.2],
-        true,
-        5.0,
-    );
-}
-
 /// How far behind the trunk dead wood starts, so it never meets the bark
 /// in an abrupt joint.
 const BEHIND: f64 = 16.0;
@@ -404,41 +402,150 @@ pub fn trunk3(
     out
 }
 
-/// One of a twin trunk's stems from `from`: rises `h`, sets off `gap` to
-/// `side` at once, then opens out to `reach` at the top, a V; `amp`, `freq`
-/// and `ph` bend it, `zd` drifts it in depth.
+/// How a second trunk winds around the main one.
+#[derive(Debug, Clone, Copy)]
+pub struct Wind {
+    /// Turns around the main trunk from the foot to the top.
+    pub turns: f64,
+    /// How far from the main trunk's line the strand runs, at the foot.
+    pub radius: f64,
+    /// Where the strand ends up parting from the trunk, 0 (foot) to 1 (top).
+    pub part_at: f64,
+    /// How far the free part leans out under its own weight, 0 to 1.
+    pub sag: f64,
+    /// Where around the trunk it runs, in turns.
+    pub offset: f64,
+}
+
+/// A second trunk grown around the main trunk `around` from its node
+/// `start`: wound up the trunk, then, as `peel` goes from 0 to 1, parting
+/// from the top down to `wind.part_at`, sagging out to `side` under its own
+/// weight before rising to `top`. Returns the strand's nodes from `start`
+/// and the index in it where the free part begins.
 #[allow(clippy::too_many_arguments, reason = "the shape of a trunk")]
-pub fn twin(
+pub fn strand(
     sk: &mut Skeleton,
-    from: usize,
-    h: f64,
+    around: &[usize],
+    start: usize,
+    wind: Wind,
+    peel: f64,
     side: f64,
-    gap: f64,
-    reach: f64,
-    amp: f64,
-    freq: f64,
-    ph: f64,
-    zd: f64,
+    top: P,
     lang: &Lang,
-) -> Vec<usize> {
-    let (x0, y0) = sk.nodes[from].p;
-    let z0 = zof(sk, from);
-    let n = steps_for(h);
-    let mut at = from;
-    let mut out = vec![from];
-    let g_end = gap * (1.0 - math::exp(-5.0));
+) -> (Vec<usize>, usize) {
+    let m = around.len() - 1;
+    let span = (m - start).max(1) as f64;
+    // It parts first just under the crown, where it shows, then lower.
+    const SHOWS: f64 = 0.72;
+    let part = if peel <= 0.0 {
+        1.0
+    } else {
+        SHOWS - (SHOWS - wind.part_at.min(SHOWS)) * peel.clamp(0.0, 1.0)
+    };
+    // The strand reaches the parting side where it finally parts, wound
+    // round the back of the trunk on either side, never across its front.
+    let (target, dir) = if side > 0.0 { (0.0, 1.0) } else { (PI, -1.0) };
+    let phase = target - dir * math::TAU * (wind.turns * wind.part_at - wind.offset);
+    let mut out = vec![around[start]];
+    let mut at = around[start];
+    let mut last = (sk.nodes[at].p, zof(sk, at));
+    let mut wound = Vec::new();
+    for j in start + 1..=m {
+        let s = (j - start) as f64 / span;
+        if s > part + 1e-9 {
+            break;
+        }
+        let c = sk.nodes[around[j]].p;
+        let (a, b) = (
+            sk.nodes[around[j - 1]].p,
+            sk.nodes[around[(j + 1).min(m)]].p,
+        );
+        let len = ((b.0 - a.0) * (b.0 - a.0) + (b.1 - a.1) * (b.1 - a.1))
+            .sqrt()
+            .max(1e-9);
+        let n = (-(b.1 - a.1) / len, (b.0 - a.0) / len);
+        // Hugs the trunk, a little closer as the trunk tapers.
+        let r = wind.radius * (1.0 - 0.45 * s);
+        let phi = phase + dir * math::TAU * wind.turns * s;
+        let p = (
+            c.0 + n.0 * r * math::cos(phi),
+            c.1 + n.1 * r * math::cos(phi),
+        );
+        let z = zof(sk, around[j]) + r * math::sin(phi);
+        at = add(sk, p, z, at, lang);
+        out.push(at);
+        wound.push((at, around[j], phi));
+        last = (p, z);
+    }
+    let free = out.len();
+    if peel <= 0.0 {
+        sk.wound.push((wound, Vec::new()));
+        return (out, free);
+    }
+    // The free part: out and down first, as if heavy, then up to its top.
+    let (p0, z0) = last;
+    let l = ((top.0 - p0.0) * (top.0 - p0.0) + (top.1 - p0.1) * (top.1 - p0.1)).sqrt();
+    // Heavier, it leans further out and lower before it rises.
+    let g = wind.sag.clamp(0.0, 1.0);
+    // It never sags into the soil: a strand parting low dips only a little,
+    // or its thick wood folds over itself at the turn.
+    let above = (crate::style::SOIL_Y - p0.1).max(0.0);
+    let p1 = (
+        p0.0 + side * l * (0.3 + 0.45 * g),
+        p0.1 + (l * (0.05 + 0.45 * g)).min(above / 3.0),
+    );
+    let p2 = (
+        top.0 + side * l * (0.08 + 0.25 * g),
+        top.1 + l * (0.4 - 0.15 * g),
+    );
+    let n = steps_for(l);
     for i in 1..=n {
-        let u = i as f64 / n as f64;
-        let x = x0
-            + side * (gap * (1.0 - math::exp(-5.0 * u)) + (reach - g_end) * math::pow(u, 1.35))
-            + amp * h * (math::sin(ph + freq * math::TAU * u) - math::sin(ph)) * (1.0 - 0.4 * u);
-        let y = y0 - h * u;
-        let z =
-            z0 + zd * u + amp * h * 0.5 * (math::cos(ph + freq * math::TAU * u) - math::cos(ph));
-        at = add(sk, (x, y), z, at, lang);
+        let t = i as f64 / n as f64;
+        let u = 1.0 - t;
+        let x =
+            u * u * u * p0.0 + 3.0 * u * u * t * p1.0 + 3.0 * u * t * t * p2.0 + t * t * t * top.0;
+        let y =
+            u * u * u * p0.1 + 3.0 * u * u * t * p1.1 + 3.0 * u * t * t * p2.1 + t * t * t * top.1;
+        at = add(sk, (x, y), z0 * u, at, lang);
         out.push(at);
     }
-    out
+    sk.wound.push((wound, out[free..].to_vec()));
+    (out, free)
+}
+
+/// Lays every wound strand on its trunk's surface, now that the wood's
+/// girth is known: no gap between them, the strand a little sunk in. The
+/// free part follows, less toward its tip, so the parting stays smooth.
+pub fn hug(sk: &mut Skeleton) {
+    let flow = sk.flows();
+    let radius = crate::scene::radius;
+    for (wound, free) in std::mem::take(&mut sk.wound) {
+        let mut moved = (0.0, 0.0);
+        for &(n, t, phi) in &wound {
+            let tp = sk.nodes[t].p;
+            let back = sk.nodes[t]
+                .parent
+                .map_or((tp.0, tp.1 + 1.0), |q| sk.nodes[q].p);
+            let len = (math::sq(tp.0 - back.0) + math::sq(tp.1 - back.1))
+                .sqrt()
+                .max(1e-9);
+            let normal = (-(tp.1 - back.1) / len, (tp.0 - back.0) / len);
+            let off = radius(flow[t]) + radius(flow[n]) * 0.25;
+            let p = (
+                tp.0 + normal.0 * off * math::cos(phi),
+                tp.1 + normal.1 * off * math::cos(phi),
+            );
+            moved = (p.0 - sk.nodes[n].p.0, p.1 - sk.nodes[n].p.1);
+            sk.nodes[n].p = p;
+            sk.node_z[n] = zof(sk, t) + off * math::sin(phi);
+        }
+        let m = free.len().max(1) as f64;
+        for (k, &n) in free.iter().enumerate() {
+            let f = 1.0 - (k + 1) as f64 / m;
+            sk.nodes[n].p.0 += moved.0 * f;
+            sk.nodes[n].p.1 += moved.1 * f;
+        }
+    }
 }
 
 /// Bare twigs where a cloud would be in winter: a stem from the nearest of
@@ -453,6 +560,7 @@ pub fn winter_fan(
     tz: f64,
     side: f64,
     lang: &Lang,
+    grown: f64,
 ) {
     let Some(&near) = under.iter().min_by(|a, b| {
         let (pa, pb) = (sk.nodes[**a].p, sk.nodes[**b].p);
@@ -462,6 +570,14 @@ pub fn winter_fan(
     }) else {
         return;
     };
+    // A fan still growing in, or breaking back, reaches part of the way from
+    // its branch, with fewer twigs; one broken back to nothing is gone.
+    if grown < 0.02 {
+        return;
+    }
+    let p = sk.nodes[near].p;
+    let c = (p.0 + (c.0 - p.0) * grown, p.1 + (c.1 - p.1) * grown);
+    let rx = rx * grown;
     let stem = limb_to(
         sk,
         near,
@@ -475,7 +591,14 @@ pub fn winter_fan(
     );
     let from = stem[stem.len() / 2];
     let mid = *stem.last().unwrap_or(&from);
-    for (dx, dy) in [(-0.75, -0.25), (0.75, -0.3), (-0.3, -0.75), (0.35, -0.7)] {
+    let twigs = [0.0, 0.25, 0.5, 0.75]
+        .iter()
+        .filter(|&&t| grown > t)
+        .count();
+    for (dx, dy) in [(-0.75, -0.25), (0.75, -0.3), (-0.3, -0.75), (0.35, -0.7)]
+        .into_iter()
+        .take(twigs)
+    {
         let to = (
             c.0 + side * dx * rx * rng.range(0.8, 1.1),
             c.1 + dy * rx * rng.range(0.8, 1.1),

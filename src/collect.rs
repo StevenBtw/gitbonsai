@@ -78,17 +78,14 @@ pub struct GhCli;
 
 impl GraphQl for GhCli {
     fn fetch_page(&self, url: &str) -> Option<String> {
-        let output = Command::new("curl")
-            .args([
-                "-sfL",
-                "--max-time",
-                "20",
-                "-A",
-                "Mozilla/5.0 (gitbonsai)",
-                url,
-            ])
-            .output()
-            .ok()?;
+        let mut command = Command::new("curl");
+        command.args(["-sfL", "--max-time", "20", "-A", "Mozilla/5.0 (gitbonsai)"]);
+        // An achievement's detail is a fragment GitHub serves only to the
+        // page that asks for it (406 otherwise).
+        if url.ends_with("/detail") {
+            command.args(["-H", "X-Requested-With: XMLHttpRequest"]);
+        }
+        let output = command.arg(url).output().ok()?;
         output
             .status
             .success()
@@ -97,8 +94,11 @@ impl GraphQl for GhCli {
 
     fn query(&self, query: &str, variables: &[(&str, &str)]) -> Result<Value, Error> {
         let mut last_error = String::new();
-        // One retry: GitHub occasionally answers a heavy query with a 502.
-        for _ in 0..2 {
+        // Two retries: GitHub occasionally answers a heavy query with a 502.
+        for attempt in 0..3 {
+            if attempt > 0 {
+                std::thread::sleep(std::time::Duration::from_secs(2));
+            }
             let mut command = Command::new("gh");
             command
                 .args(["api", "graphql", "-f"])
@@ -126,9 +126,10 @@ impl GraphQl for GhCli {
 }
 
 /// Collects `login`'s history through `observed_on`, reporting progress.
-/// With a usable `previous` snapshot ([`reusable`]), only the days from the
-/// start of the previous calendar quarter are fetched again; older days are
-/// kept as they were.
+/// With a usable `previous` snapshot ([`reusable`]) and not `full`, only the
+/// days from the start of the previous calendar quarter are fetched again;
+/// older days are kept as they were. Either way the dates `previous` knew
+/// for achievement tiers are kept: GitHub shows only the first.
 ///
 /// # Errors
 ///
@@ -139,6 +140,7 @@ pub fn collect(
     login: &str,
     observed_on: Date,
     previous: Option<&Snapshot>,
+    full: bool,
     progress: &mut dyn FnMut(&str),
 ) -> Result<Snapshot, Error> {
     let data = api.query(USER_QUERY, &[("login", login)])?;
@@ -170,7 +172,7 @@ pub fn collect(
     // Reuse what an earlier run of this version collected, up to the
     // previous quarter.
     let cut = refetch_from(observed_on);
-    let kept = previous.filter(|p| reusable(p, account_id, from, cut));
+    let kept = previous.filter(|p| !full && reusable(p, account_id, from, cut));
     if let Some(p) = kept {
         progress(&format!(
             "reusing {} days before {cut}",
@@ -218,11 +220,37 @@ pub fn collect(
     let days: Vec<Day> = older.chain(fresh).collect();
     let from = kept.map_or(from, |p| p.range.from.min(from));
     progress("archived repositories and achievements");
-    let archived_repos = archived(api, &login)?;
+    let archived = archived(api, &login)?;
+    let archived_dates = archived
+        .iter()
+        .filter_map(|(name, at)| Some((name.clone(), (*at)?)))
+        .collect();
+    let archived_repos = archived.into_iter().map(|(name, _)| name).collect();
+    // An earlier run of this account dated the tiers it saw.
+    let seen = previous.filter(|p| p.account_id == account_id);
+    // A page GitHub won't serve right now (429, 5xx) keeps what the earlier
+    // run saw, instead of clearing the eggs.
     let achievements = api
         .fetch_page(&format!("https://github.com/{login}?tab=achievements"))
         .map(|page| parse_achievements(&page, &login))
+        .or_else(|| seen.map(|p| p.achievements.clone()))
         .unwrap_or_default();
+    let achievement_dates = achievements
+        .iter()
+        .map(|(slug, &tier)| {
+            let before = seen.and_then(|p| p.achievement_dates.get(slug));
+            // A tier-1 date never changes: only a new achievement is fetched.
+            let first = before.and_then(|b| b.first().copied()).or_else(|| {
+                api.fetch_page(&format!(
+                    "https://github.com/users/{login}/achievements/{slug}/detail"
+                ))
+                .and_then(|page| parse_first_unlocked(&page))
+            });
+            let dates = tier_dates(tier, first, before.map(Vec::as_slice), observed_on);
+            (slug.clone(), dates)
+        })
+        .filter(|(_, dates)| !dates.is_empty())
+        .collect();
     let snapshot = Snapshot {
         schema: SCHEMA,
         login,
@@ -238,6 +266,9 @@ pub fn collect(
         truncated_windows: acc.truncated,
         achievements,
         archived_repos,
+        achievement_dates,
+        archived_dates,
+        start: None,
     };
     snapshot.validate()?;
     Ok(snapshot)
@@ -270,9 +301,9 @@ pub fn reusable(previous: &Snapshot, account_id: u64, from: Date, cut: Date) -> 
 
 const ARCHIVED_QUERY: &str = "query($login:String!){user(login:$login){repositories(first:100,ownerAffiliations:OWNER,isArchived:true){nodes{name archivedAt}}}}";
 
-/// The archived repositories `login` owns, oldest archive first (one kintsugi
-/// break each).
-fn archived(api: &dyn GraphQl, login: &str) -> Result<Vec<String>, Error> {
+/// The archived repositories `login` owns with the day each was archived,
+/// oldest archive first (one kintsugi break each).
+fn archived(api: &dyn GraphQl, login: &str) -> Result<Vec<(String, Option<Date>)>, Error> {
     let data = api.query(ARCHIVED_QUERY, &[("login", login)])?;
     let mut repos: Vec<(String, String)> = data
         .pointer("/user/repositories/nodes")
@@ -290,12 +321,48 @@ fn archived(api: &dyn GraphQl, login: &str) -> Result<Vec<String>, Error> {
         })
         .collect();
     repos.sort();
-    Ok(repos.into_iter().map(|(_, name)| name).collect())
+    Ok(repos
+        .into_iter()
+        .map(|(at, name)| (name, at.get(..10).and_then(|d| d.parse().ok())))
+        .collect())
+}
+
+/// The day an achievement was first unlocked, from its detail fragment:
+/// "First unlocked" for one with tiers, "Unlocked" for one without.
+pub fn parse_first_unlocked(page: &str) -> Option<Date> {
+    // "Unlocked" right before its date; HTML may break the line between.
+    let rest = page.match_indices("nlocked").find_map(|(i, w)| {
+        let after = &page[i + w.len()..];
+        after
+            .trim_start()
+            .starts_with("<relative-time")
+            .then_some(after)
+    })?;
+    let at = rest.find("datetime=\"")? + "datetime=\"".len();
+    rest.get(at..at + 10)?.parse().ok()
+}
+
+/// The day each tier up to `tier` was reached: tier 1 on `first` (or as an
+/// earlier run recorded it), each higher tier as an earlier run recorded it,
+/// else `observed_on`, the first run that saw it. Undated without tier 1.
+pub fn tier_dates(
+    tier: u8,
+    first: Option<Date>,
+    previous: Option<&[Date]>,
+    observed_on: Date,
+) -> Vec<Date> {
+    let previous = previous.unwrap_or(&[]);
+    let Some(first) = first.or_else(|| previous.first().copied()) else {
+        return Vec::new();
+    };
+    std::iter::once(first)
+        .chain((1..usize::from(tier)).map(|i| previous.get(i).copied().unwrap_or(observed_on)))
+        .collect()
 }
 
 /// Achievement tiers from the public achievements page: each card links to
 /// `?achievement=<slug>`, with an `x2`..`x4` label for higher tiers. The page
-/// lists every card twice; the first wins.
+/// lists every card twice; the first wins. A card ends at its `</a>`.
 pub fn parse_achievements(page: &str, login: &str) -> BTreeMap<String, u8> {
     let marker = format!("href=\"/{login}?achievement=");
     let starts: Vec<usize> = page.match_indices(&marker).map(|(i, _)| i).collect();
@@ -305,10 +372,13 @@ pub fn parse_achievements(page: &str, login: &str) -> BTreeMap<String, u8> {
         let Some(slug) = rest.split(['&', '"']).next().filter(|s| !s.is_empty()) else {
             continue;
         };
+        // A card ends at its link's end; the last card has no next marker.
+        let close = page[start..].find("</a>").map_or(page.len(), |i| start + i);
         let mut end = starts
             .get(k + 1)
             .copied()
             .unwrap_or(page.len())
+            .min(close)
             .min(start + 4000);
         // A page is not ASCII: never cut a character in half.
         while !page.is_char_boundary(end) {
@@ -369,6 +439,26 @@ pub fn quarters(from: Date, to: Date) -> Vec<DateRange> {
     out
 }
 
+/// Fetches `window` as two halves.
+fn split_window(
+    api: &dyn GraphQl,
+    login: &str,
+    window: DateRange,
+    acc: &mut Accumulator,
+) -> Result<(), Error> {
+    let mid = window.from.add_days(window.len_days() / 2 - 1);
+    let first = DateRange {
+        from: window.from,
+        to: mid,
+    };
+    fetch_window(api, login, first, acc)?;
+    let second = DateRange {
+        from: mid.add_days(1),
+        to: window.to,
+    };
+    fetch_window(api, login, second, acc)
+}
+
 fn fetch_window(
     api: &dyn GraphQl,
     login: &str,
@@ -377,10 +467,18 @@ fn fetch_window(
 ) -> Result<(), Error> {
     let from = format!("{}T00:00:00Z", window.from);
     let to = format!("{}T23:59:59Z", window.to);
-    let mut data = api.query(
+    let mut data = match api.query(
         WINDOW_QUERY,
         &[("login", login), ("from", &from), ("to", &to)],
-    )?;
+    ) {
+        // A busy window can be too heavy for GitHub in one query.
+        Err(Error::Collect(why))
+            if why.contains("RESOURCE_LIMITS_EXCEEDED") && window.from < window.to =>
+        {
+            return split_window(api, login, window, acc);
+        }
+        answer => answer?,
+    };
     let mut calendar = calendar_days(&data, window);
     if calendar.len() != usize::try_from(window.len_days()).unwrap_or(0) {
         // GitHub sometimes leaves out days (git-koi 1.0.2: across February 29).
@@ -448,26 +546,7 @@ fn fetch_window(
 
     if cut_off(&commits) || cut_off(&prs) || cut_off(&issues) || cut_off(&reviews) || more_created {
         if window.from < window.to {
-            let half = window.len_days() / 2;
-            let mid = window.from.add_days(half - 1);
-            fetch_window(
-                api,
-                login,
-                DateRange {
-                    from: window.from,
-                    to: mid,
-                },
-                acc,
-            )?;
-            return fetch_window(
-                api,
-                login,
-                DateRange {
-                    from: mid.add_days(1),
-                    to: window.to,
-                },
-                acc,
-            );
+            return split_window(api, login, window, acc);
         }
         acc.truncated.push(window);
     }
@@ -833,9 +912,16 @@ mod tests {
                 data_of(&nobody())
             }
         }
-        let err = collect(&Nobody, "octo-typo", d("2026-11-15"), None, &mut |_| {})
-            .unwrap_err()
-            .to_string();
+        let err = collect(
+            &Nobody,
+            "octo-typo",
+            d("2026-11-15"),
+            None,
+            false,
+            &mut |_| {},
+        )
+        .unwrap_err()
+        .to_string();
         assert!(err.contains("there is no GitHub user `octo-typo`"), "{err}");
     }
 
@@ -869,6 +955,65 @@ mod tests {
         assert_eq!(found["pull-shark"], 3);
         assert_eq!(found["public-sponsor"], 1);
         assert_eq!(found.len(), 2);
+    }
+
+    #[test]
+    fn the_detail_names_the_first_unlock() {
+        let page = r#"<span > Bronze and Silver unlocked </span> &middot; First unlocked <relative-time datetime="2024-12-13T20:51:00Z" month="short">"#;
+        assert_eq!(
+            parse_first_unlocked(page),
+            Some("2024-12-13".parse().unwrap())
+        );
+        assert_eq!(parse_first_unlocked("<div>nothing</div>"), None);
+        // An achievement without tiers says "Unlocked".
+        let single = "<span> 100% unlocked </span> &middot; Unlocked
+      <relative-time datetime=\"2025-12-17T05:14:29Z\">";
+        assert_eq!(
+            parse_first_unlocked(single),
+            Some("2025-12-17".parse().unwrap())
+        );
+    }
+
+    #[test]
+    fn higher_tiers_are_dated_by_the_run_that_first_saw_them() {
+        let d = |s: &str| -> Date { s.parse().unwrap() };
+        let today = d("2026-11-16");
+        let first = Some(d("2024-12-13"));
+        assert_eq!(tier_dates(1, first, None, today), [d("2024-12-13")]);
+        assert_eq!(
+            tier_dates(3, first, None, today),
+            [d("2024-12-13"), today, today],
+            "seen for the first time today"
+        );
+        let before = [d("2024-12-13"), d("2025-06-01")];
+        assert_eq!(
+            tier_dates(3, first, Some(&before), today),
+            [d("2024-12-13"), d("2025-06-01"), today],
+            "an earlier run's dates are kept"
+        );
+        assert_eq!(tier_dates(2, None, Some(&before), today), before, "kept");
+        assert_eq!(tier_dates(2, None, None, today), [], "undated");
+    }
+
+    #[test]
+    fn the_last_card_ends_at_its_link() {
+        let card = |slug: &str, label: &str| {
+            format!(r#"<a href="/octo?achievement={slug}&amp;tab=achievements">{label}</a>"#)
+        };
+        let page = format!(
+            "{}{}<div><span class=\"achievement-tier-label--gold\">x3</span></div>",
+            card(
+                "starstruck",
+                r#"<span class="achievement-tier-label--gold">x2</span>"#
+            ),
+            card("quickdraw", "")
+        );
+        let found = parse_achievements(&page, "octo");
+        assert_eq!(found["starstruck"], 2);
+        assert_eq!(
+            found["quickdraw"], 1,
+            "the label after the link is not its own"
+        );
     }
 
     #[test]
@@ -906,7 +1051,7 @@ mod tests {
             calls: RefCell::new(0),
         };
         let observed: Date = "2026-03-31".parse().unwrap();
-        let snapshot = collect(&fake, "octo", observed, None, &mut |_| {}).unwrap();
+        let snapshot = collect(&fake, "octo", observed, None, false, &mut |_| {}).unwrap();
         assert_eq!(snapshot.account_id, 42);
         assert_eq!(snapshot.days.len(), 90);
         assert!(
@@ -919,6 +1064,39 @@ mod tests {
         assert!(*fake.calls.borrow() > 2, "the quarter was split");
     }
 
+    /// Refuses windows longer than 20 days as too heavy, as GitHub does for a
+    /// busy quarter.
+    struct Heavy(Fake);
+
+    impl GraphQl for Heavy {
+        fn query(&self, query: &str, variables: &[(&str, &str)]) -> Result<Value, Error> {
+            let span = |v: &[(&str, &str)]| -> Option<i32> {
+                let get = |n: &str| v.iter().find(|(k, _)| *k == n).map(|(_, v)| *v);
+                let from: Date = get("from")?[..10].parse().ok()?;
+                let to: Date = get("to")?[..10].parse().ok()?;
+                Some(to.days_since(from) + 1)
+            };
+            if span(variables).is_some_and(|s| s > 20) {
+                return data_of(
+                    &json!({"data": null, "errors": [{"type": "RESOURCE_LIMITS_EXCEEDED", "message": "Resource limits for this query exceeded."}]}),
+                );
+            }
+            self.0.query(query, variables)
+        }
+    }
+
+    #[test]
+    fn a_window_too_heavy_for_github_is_split() {
+        let heavy = Heavy(Fake {
+            split_above: 1000,
+            calls: RefCell::new(0),
+        });
+        let observed: Date = "2026-03-31".parse().unwrap();
+        let snapshot = collect(&heavy, "octo", observed, None, false, &mut |_| {}).unwrap();
+        assert_eq!(snapshot.days.len(), 90);
+        assert_eq!(snapshot.truncated_windows, []);
+    }
+
     /// A snapshot collected through 2026-10-31 by the fake, with a marker:
     /// 2026-02-10 holds 99 contributions.
     fn earlier() -> Snapshot {
@@ -926,7 +1104,7 @@ mod tests {
             split_above: 1000,
             calls: RefCell::new(0),
         };
-        let mut s = collect(&fake, "octo", d("2026-10-31"), None, &mut |_| {}).unwrap();
+        let mut s = collect(&fake, "octo", d("2026-10-31"), None, false, &mut |_| {}).unwrap();
         let day = s
             .days
             .iter_mut()
@@ -943,13 +1121,119 @@ mod tests {
             split_above: 1000,
             calls: RefCell::new(0),
         };
-        let s = collect(&fake, "octo", d("2026-11-15"), Some(previous), &mut |_| {}).unwrap();
+        let s = collect(
+            &fake,
+            "octo",
+            d("2026-11-15"),
+            Some(previous),
+            false,
+            &mut |_| {},
+        )
+        .unwrap();
         let marker = s
             .days
             .iter()
             .any(|x| x.date == d("2026-02-10") && x.total == 99);
         // Minus the user and archived queries.
         (*fake.calls.borrow() - 2, marker)
+    }
+
+    /// `earlier()` with a starstruck x2 reached on two known days.
+    fn with_eggs() -> Snapshot {
+        let mut s = earlier();
+        s.achievements.insert("starstruck".into(), 2);
+        s.achievement_dates
+            .insert("starstruck".into(), vec![d("2025-01-10"), d("2025-06-01")]);
+        s
+    }
+
+    /// `Fake` with an achievements page of one starstruck x2, counting the
+    /// detail pages asked for.
+    struct Paged {
+        fake: Fake,
+        details: RefCell<usize>,
+    }
+
+    impl GraphQl for Paged {
+        fn fetch_page(&self, url: &str) -> Option<String> {
+            if url.ends_with("/detail") {
+                *self.details.borrow_mut() += 1;
+                return None;
+            }
+            Some(
+                r#"<a href="/octo?achievement=starstruck&amp;tab=achievements"><span class="achievement-tier-label--gold">x2</span></a>"#
+                    .into(),
+            )
+        }
+
+        fn query(&self, query: &str, variables: &[(&str, &str)]) -> Result<Value, Error> {
+            self.fake.query(query, variables)
+        }
+    }
+
+    #[test]
+    fn a_known_first_unlock_is_not_fetched_again() {
+        let api = Paged {
+            fake: Fake {
+                split_above: 1000,
+                calls: RefCell::new(0),
+            },
+            details: RefCell::new(0),
+        };
+        let previous = with_eggs();
+        let s = collect(
+            &api,
+            "octo",
+            d("2026-11-15"),
+            Some(&previous),
+            false,
+            &mut |_| {},
+        )
+        .unwrap();
+        assert_eq!(*api.details.borrow(), 0, "the date was known");
+        assert_eq!(s.achievement_dates, previous.achievement_dates);
+    }
+
+    #[test]
+    fn an_unreachable_achievements_page_keeps_the_eggs() {
+        // `Fake` can't fetch pages, like GitHub answering 429.
+        let fake = Fake {
+            split_above: 1000,
+            calls: RefCell::new(0),
+        };
+        let previous = with_eggs();
+        let s = collect(
+            &fake,
+            "octo",
+            d("2026-11-15"),
+            Some(&previous),
+            false,
+            &mut |_| {},
+        )
+        .unwrap();
+        assert_eq!(s.achievements, previous.achievements);
+        assert_eq!(s.achievement_dates, previous.achievement_dates);
+    }
+
+    #[test]
+    fn a_full_collect_keeps_the_tier_dates() {
+        let fake = Fake {
+            split_above: 1000,
+            calls: RefCell::new(0),
+        };
+        let previous = with_eggs();
+        let s = collect(
+            &fake,
+            "octo",
+            d("2026-11-15"),
+            Some(&previous),
+            true,
+            &mut |_| {},
+        )
+        .unwrap();
+        // Minus the user and archived queries: every quarter of 2026 again.
+        assert_eq!(*fake.calls.borrow() - 2, 4, "full fetches every day again");
+        assert_eq!(s.achievement_dates, previous.achievement_dates);
     }
 
     #[test]

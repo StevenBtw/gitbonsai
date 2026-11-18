@@ -8,17 +8,37 @@ use std::collections::BTreeMap;
 
 use crate::date::Date;
 use crate::growth::life::Life;
-use crate::math;
-use crate::timeline::{Timeline, WEEKLY_CAP, WINDOW_WEEKS};
+use crate::timeline::{Timeline, WINDOW_WEEKS};
 
 /// Complete silent weeks after which a language's branches can turn to jin,
 /// once it is also dropped.
 pub const JIN_AFTER: i32 = 52;
 
-/// Leaf density for an average of `v` contributions per week: 0 to 1, with
-/// 1,000 per week at the top.
-pub fn density(v: f64) -> f64 {
-    math::ln(1.0 + v.clamp(0.0, WEEKLY_CAP) / 10.0) / math::ln(101.0)
+/// How much of a language's foliage is left after `silent` complete weeks
+/// without it: all of it through the 13-week window, then less each week,
+/// none after a year. Leaves fall before wood dies or a tree rests.
+pub fn fullness(silent: i32) -> f64 {
+    let window = WINDOW_WEEKS;
+    let year = f64::from(JIN_AFTER);
+    (1.0 - (f64::from(silent) - window) / (year - window)).clamp(0.0, 1.0)
+}
+
+/// Each language's foliage left ([`fullness`]), by its last week with work,
+/// counted in complete weeks: work in the week under way brings the leaves
+/// back at once.
+pub fn fullness_by_language(timeline: &Timeline) -> BTreeMap<String, f64> {
+    let last = timeline.complete_weeks().last().map_or(0, |w| w.no);
+    let mut seen: BTreeMap<String, i32> = BTreeMap::new();
+    for week in &timeline.weeks {
+        for (language, amount) in &week.by_language {
+            if *amount > 0.0 {
+                seen.insert(language.clone(), week.no);
+            }
+        }
+    }
+    seen.into_iter()
+        .map(|(l, week)| (l, fullness(last - week)))
+        .collect()
 }
 
 /// What a language's branches look like now.
@@ -134,14 +154,27 @@ pub fn last_week_total(timeline: &Timeline) -> f64 {
 mod tests {
     use super::*;
 
-    /// The density table.
     #[test]
-    fn density_follows_the_documented_curve() {
-        let pct = |v: f64| (density(v) * 100.0).round();
-        assert_eq!(pct(1.0), 2.0);
-        assert_eq!(pct(10.0), 15.0);
-        assert_eq!(pct(100.0), 52.0);
-        assert_eq!(pct(1000.0), 100.0);
-        assert_eq!(pct(5000.0), 100.0);
+    fn leaves_thin_from_the_window_to_a_year_of_silence() {
+        assert!((fullness(0) - 1.0).abs() < 1e-9);
+        assert!((fullness(13) - 1.0).abs() < 1e-9, "the window keeps them");
+        assert!((fullness(32) - 0.5).abs() < 0.02, "half way");
+        assert!(fullness(52).abs() < 1e-9, "gone after a year");
+        assert!(fullness(80).abs() < 1e-9);
+    }
+
+    #[test]
+    fn work_in_the_week_under_way_brings_the_leaves_back() {
+        use crate::growth::testkit::snap;
+        let d = |m, day| Date::from_ymd(2026, m, day).unwrap();
+        let rust: &[(&str, u32)] = &[("Rust", 5)];
+        let python: &[(&str, u32)] = &[("Python", 5)];
+        let mut days = vec![(d(1, 5), 5, rust)];
+        days.extend((0..21).map(|w| (d(1, 12).add_days(7 * w), 5, python)));
+        days.push((d(6, 3), 5, rust));
+        // Thursday 4 June: the week of Monday 1 June is under way.
+        let timeline = Timeline::new(&snap(&days, d(6, 4)));
+        let full = fullness_by_language(&timeline);
+        assert!((full["Rust"] - 1.0).abs() < 1e-9, "{full:?}");
     }
 }

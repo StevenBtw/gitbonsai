@@ -111,6 +111,11 @@ pub struct Bonsai {
     pub truncated_windows: Vec<DateRange>,
     /// Declared private work: first day, last day, languages.
     pub periods: Vec<(Date, Date, Vec<String>)>,
+    /// Each language's foliage left, 0 to 1 ([`foliage::fullness`]).
+    pub fullness: BTreeMap<String, f64>,
+    /// The share of its leaves the crown is drawn with, 1 unless the SVG
+    /// would be too heavy ([`render::SVG_BUDGET`]).
+    pub leaf_share: f64,
 }
 
 impl Bonsai {
@@ -123,10 +128,24 @@ impl Bonsai {
         };
         let leader = Leader::new(config.tree.style, snapshot.account_id, config.tree.wind);
         let timeline = Timeline::new(&snapshot);
-        let window = Window::of(&timeline);
         let periods = config.private_periods();
+        let (past, recent, leaves) = past_reach(&snapshot, &periods);
+        // The leaves follow the work half at once, half as the last two
+        // months saw it.
+        let (window, fullness) = settle_leaves(
+            Window::of(&timeline),
+            foliage::fullness_by_language(&timeline),
+            leaves,
+        );
         let (states, order) = foliage::language_states(&timeline, &window, &periods);
-        let skeleton = growth::grow(&timeline, snapshot.account_id, &leader, &periods);
+        let skeleton = growth::grow(
+            &timeline,
+            snapshot.account_id,
+            &leader,
+            &periods,
+            past,
+            recent,
+        );
         let maple = MaplePalette::new(
             &window,
             &order,
@@ -141,7 +160,6 @@ impl Bonsai {
             observed_on: snapshot.observed_on,
             leader,
             last_week_total: foliage::last_week_total(&timeline),
-            timeline,
             skeleton,
             window,
             states,
@@ -152,6 +170,9 @@ impl Bonsai {
             archived: snapshot.archived_repos.clone(),
             truncated_windows: snapshot.truncated_windows.clone(),
             periods,
+            fullness,
+            timeline,
+            leaf_share: 1.0,
         }
     }
 
@@ -168,6 +189,20 @@ impl Bonsai {
             None => LanguageState::Bare,
             Some(l) => self.states.get(l).copied().unwrap_or(LanguageState::Bare),
         }
+    }
+
+    /// How much of `language`'s foliage is left, 0 to 1, by its last week
+    /// with work, the week under way included; private work by the
+    /// account's.
+    pub fn fullness(&self, language: Option<&str>) -> f64 {
+        let busy = (self.timeline.weeks.last()).is_some_and(|w| !w.complete && w.total > 0.0);
+        let account = match self.silent_weeks() {
+            Some(w) if !busy => foliage::fullness(i32::try_from(w).unwrap_or(i32::MAX)),
+            _ => 1.0,
+        };
+        language
+            .and_then(|l| self.fullness.get(l).copied())
+            .unwrap_or(account)
     }
 
     /// Complete weeks since the last contribution.
@@ -238,4 +273,156 @@ fn count_word(n: usize) -> String {
 
 fn plural(n: usize, one: &str, many: &str) -> String {
     format!("{} {}", count_word(n), if n == 1 { one } else { many })
+}
+
+/// Half `window` and `fullness`, half the average of `past` months'.
+fn settle_leaves(
+    window: Window,
+    fullness: BTreeMap<String, f64>,
+    past: Option<Leaves>,
+) -> (Window, BTreeMap<String, f64>) {
+    let Some((pw, pf)) = past else {
+        return (window, fullness);
+    };
+    let mut by_language: BTreeMap<String, f64> = BTreeMap::new();
+    for (l, v) in window.by_language.iter().chain(&pw.by_language) {
+        *by_language.entry(l.clone()).or_default() += 0.5 * v;
+    }
+    // A language the past months didn't know yet keeps today's fullness:
+    // missing there means the account's own, not none.
+    let full: BTreeMap<String, f64> = fullness
+        .iter()
+        .map(|(l, v)| (l.clone(), 0.5 * v + 0.5 * pf.get(l).copied().unwrap_or(*v)))
+        .collect();
+    (
+        Window {
+            total: f64::midpoint(window.total, pw.total),
+            unattributed: f64::midpoint(window.unattributed, pw.unattributed),
+            by_language,
+        },
+        full,
+    )
+}
+
+/// A month's leaves: its foliage window and each language's fullness.
+type Leaves = (Window, BTreeMap<String, f64>);
+
+/// The average of `all` months' leaves.
+fn mean_leaves(all: &[Leaves]) -> Option<Leaves> {
+    if all.is_empty() {
+        return None;
+    }
+    let n = all.len() as f64;
+    let mut window = Window::default();
+    let mut full: BTreeMap<String, f64> = BTreeMap::new();
+    for (w, f) in all {
+        window.total += w.total / n;
+        window.unattributed += w.unattributed / n;
+        for (l, v) in &w.by_language {
+            *window.by_language.entry(l.clone()).or_default() += v / n;
+        }
+        for (l, v) in f {
+            *full.entry(l.clone()).or_default() += v / n;
+        }
+    }
+    Some((window, full))
+}
+
+/// The furthest the tree reached on the first of any month before
+/// `snapshot`'s observed day: a trunk never shrinks, so today's never falls
+/// short of it. Each month is grown from its own history, remembered by a
+/// hash of that history, so a timelapse grows each month once.
+fn past_reach(
+    snapshot: &Snapshot,
+    periods: &[(Date, Date, Vec<String>)],
+) -> (
+    growth::dome::Reach,
+    Option<growth::dome::Recent>,
+    Option<Leaves>,
+) {
+    use growth::dome::{Reach, Recent};
+    use std::collections::HashMap;
+    use std::sync::{Mutex, OnceLock};
+    // shortcut: a process-wide memo that is cleared whole past 100 000
+    // months; enough for a gallery or test run, revisit for a server.
+    type Month = (Option<(Reach, Recent)>, Leaves);
+    static SEEN: OnceLock<Mutex<HashMap<(u64, i32), Month>>> = OnceLock::new();
+    let seen = SEEN.get_or_init(Mutex::default);
+    let Some(first) = snapshot.first_active() else {
+        return (Reach::default(), None, None);
+    };
+    // The start once: each month is cut from it.
+    let folded = snapshot.with_start();
+    let mut hash = rng::siphash13(
+        format!(
+            "{}/{}/{periods:?}/{:?}",
+            snapshot.account_id, snapshot.schema, folded.start
+        )
+        .as_bytes(),
+    );
+    let mut days = folded.days.iter().peekable();
+    let (y, m, _) = first.ymd();
+    let mut out = Reach::default();
+    let mut months: Vec<Recent> = Vec::new();
+    let mut leaves: Vec<Leaves> = Vec::new();
+    for no in (y * 12 + m.cast_signed())..i32::MAX {
+        let Some(day) = Date::from_ymd(no / 12, (no % 12 + 1).cast_unsigned(), 1) else {
+            break;
+        };
+        if day >= snapshot.observed_on {
+            break;
+        }
+        let mut bytes = hash.to_le_bytes().to_vec();
+        while let Some(d) = days.next_if(|d| d.date <= day) {
+            bytes.extend_from_slice(format!("{d:?}").as_bytes());
+        }
+        hash = rng::siphash13(&bytes);
+        let known = seen.lock().ok().and_then(|m| m.get(&(hash, no)).cloned());
+        let month: Month = known.unwrap_or_else(|| {
+            let then = Timeline::new(&folded.cut(day));
+            let tree = growth::life::Life::of(&then, periods)
+                .and_then(|life| growth::dome::measures(&life, snapshot.account_id));
+            let month = (
+                tree,
+                (Window::of(&then), foliage::fullness_by_language(&then)),
+            );
+            if let Ok(mut m) = seen.lock() {
+                if m.len() > 100_000 {
+                    m.clear();
+                }
+                m.insert((hash, no), month.clone());
+            }
+            month
+        });
+        let (tree, leaf) = month;
+        if let Some((r, recent)) = tree {
+            // As that month showed it: settled by its own three before.
+            let before = Recent::mean(&months[months.len().saturating_sub(3)..]);
+            out = out.max(before.map_or(r, |b| r.settled(&b)));
+            months.push(recent);
+        }
+        leaves.push(leaf);
+    }
+    let last = months.len().saturating_sub(3);
+    let last_leaves = leaves.len().saturating_sub(2);
+    (
+        out,
+        Recent::mean(&months[last..]),
+        mean_leaves(&leaves[last_leaves..]),
+    )
+}
+
+#[cfg(test)]
+mod leaf_tests {
+    use super::*;
+
+    /// A language too new for the past months keeps today's leaves: missing
+    /// there is not zero.
+    #[test]
+    fn a_new_language_keeps_its_leaves() {
+        let now: BTreeMap<String, f64> = [("Rust".to_string(), 1.0)].into();
+        let past: Leaves = (Window::default(), BTreeMap::new());
+        let (_, full) = settle_leaves(Window::default(), now, Some(past));
+        assert_eq!(full["Rust"], 1.0);
+    }
 }

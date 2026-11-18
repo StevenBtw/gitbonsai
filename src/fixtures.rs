@@ -185,6 +185,9 @@ impl Builder {
             truncated_windows: Vec::new(),
             achievements: BTreeMap::new(),
             archived_repos: Vec::new(),
+            achievement_dates: BTreeMap::new(),
+            archived_dates: BTreeMap::new(),
+            start: None,
         }
     }
 }
@@ -283,6 +286,25 @@ pub fn all() -> Vec<Fixture> {
             .collect();
         snapshot.archived_repos = (0..archived)
             .map(|i| format!("{name}-archive-{i}"))
+            .collect();
+        // Earned and archived over the fixture's life, so a past view shows
+        // what was there by then.
+        let (from, span) = (
+            snapshot.range.from,
+            snapshot.observed_on.days_since(snapshot.range.from),
+        );
+        let on = |k: i32, n: i32| from.add_days(span * (k + 1) / (n + 1));
+        snapshot.achievement_dates = eggs
+            .iter()
+            .map(|(slug, tier)| {
+                let n = i32::from(*tier);
+                ((*slug).to_string(), (0..n).map(|k| on(k, n)).collect())
+            })
+            .collect();
+        let n = i32::try_from(archived).unwrap_or(i32::MAX);
+        snapshot.archived_dates = (0..)
+            .zip(&snapshot.archived_repos)
+            .map(|(k, r)| (r.clone(), on(k, n)))
             .collect();
         Fixture {
             name,
@@ -557,4 +579,25 @@ pub fn by_name(name: &str) -> Option<Fixture> {
 /// Every fixture's name.
 pub fn names() -> Vec<&'static str> {
     all().iter().map(|f| f.name).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_past_view_of_a_fixture_keeps_what_it_had_earned() {
+        for f in all() {
+            let s = &f.snapshot;
+            let late = s.truncated(s.observed_on.add_days(-1));
+            assert_eq!(late.achievements, s.achievements, "{}", f.name);
+            assert_eq!(late.archived_repos, s.archived_repos, "{}", f.name);
+            let start = s.truncated(s.range.from);
+            assert!(
+                start.achievements.is_empty() && start.archived_repos.is_empty(),
+                "{}",
+                f.name
+            );
+        }
+    }
 }

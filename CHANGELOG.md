@@ -2,6 +2,51 @@
 
 All notable changes to gitbonsai, a Japanese maple bonsai grown from GitHub activity. Any change to how a tree grows or looks is at least a minor version, because people notice their tree changing.
 
+## [0.3.0] - 2026-11-18
+
+Growth release: a tree now changes a little each month and never all at once, its trunk only grows, and dead wood weathers where it grew. Every tree looks different from 0.2.3: languages come away from the trunk as strands instead of growing twin trunks, and crowns are fuller; stay on 0.2.3 to keep the old look. Snapshots from 0.2.3 still load, and `collect` fetches the whole history once to record the new dates.
+
+### Added
+
+- **Strands**: a language with 10% or more of the work claims one of the strands wound round the trunk, which comes away as a trunk of its own the more the language is used and leans out after a quick change of language. Strands replace the 23% twin trunks.
+- **Shari**: when the language that founded the trunk is dropped, a bleached strip of dead wood climbs the living trunk, bleaching over the year after.
+- **Tinted leaf tips**: silver leaves (private work, or work GitHub could not attribute to a language) take the public languages' colors at their tips, on as many leaves as public work's share of the recent weeks.
+- **Monthly and quarterly timelapses**: `gitbonsai timelapse --every 1m` (or `1q`) steps by calendar month or quarter, and the frames come out the same size with a view that only ever widens, so the tree never jumps in the frame.
+- **Past views show only what existed then**: `collect` records the day each profile sign was earned and each repository was archived, so `--as-of` and timelapse frames leave out what came later.
+
+### Changed
+
+- **Growth is smooth**: every measure of a tree is half today's value and half the average of the last three months (the leaves, two), so a burst of work shows half at once and the rest over a season. A test grows the fixtures month by month and checks for jumps.
+- **A trunk never shrinks**: height, girth, bend and how far a strand has come away are the furthest they reached in any earlier month.
+- **Dead wood stays where it grew**: a dropped language's wood dies in place and bleaches over a year, nothing living grows from it, and dead branches of years leaving the crown break back over two years before they fall.
+- **The crown follows the recent years**: a language owns a sector of the crown once it has 14% of the crown years' work, growing in up to 22%, and sectors keep their places as shares change.
+- **Size follows the work**: crown and limb reach grow with the work done, not with the calendar, so a few contributions over many years stay a small tree.
+- **Fuller crowns**: 1.5 times as many leaves on the same clouds; a typical SVG stays within 190 KB (was 150 KB), and the heaviest crowns keep fewer, larger leaves so no SVG passes 220 KB.
+- **Limbs come from behind the trunk**: limbs leave toward the side or back with a flared collar, and a side branch starts on its parent's surface, so no join shows a gap or a corner.
+- **Limbs taper to fine tips**: a limb is about a third of the trunk's girth where it leaves and thins steadily to its tip, and the collar flares only at the join, so no limb ends in a thick round stump.
+- **Broken dead limbs splinter**: a fresh break in a dead limb ends in torn fibres and weathers to a point as it bleaches; fine dead twigs keep their round ends.
+- **Smoother wood in smaller files**: branches are smoothed before their outlines are simplified, which cuts up to 7% from an SVG.
+- **A rested seedling fills out over a year**: a seedling that rested past its first year becomes a tree the day work resumes and fills out from there, instead of standing full grown that month.
+- **A comeback keeps its old crown a while**: after a pause the old crown stays until the comeback year is a year old, then turns into a limb over a year.
+- **`collect` keeps what it knew**: a `--full` run, or one that cannot reach a profile page, keeps the dates an earlier run recorded, and a sign's first date is fetched only once.
+- **`explain` shows the leaves left**: each language and the crown show the share of leaves left, which follows how recent the work is, in place of a density figure the render no longer used.
+- **Snapshots are schema 3**: they add the dates signs were earned and repositories archived; gitbonsai 0.2 cannot read them, so going back means running its `collect` again.
+
+### Removed
+
+- **Twin trunks and the dead snag beside the trunk**: a dropped trunk language now leaves a dead strand or a shari instead.
+
+### Fixed
+
+- **A past view never shrinks the tree**: `--as-of` and timelapse frames keep the start date the whole history gives, so a tree no longer drops back to a seedling in the month steady work begins after a few early stray days.
+- **Heavy windows no longer fail collection**: a window GitHub refuses as too heavy (`RESOURCE_LIMITS_EXCEEDED`) is split and fetched in halves.
+- **A huge `--every` is refused**: `timelapse --every 2147480000d` overflowed the day count and never finished.
+
+### Dependencies
+
+- **clap 4.6.8** (was 4.6.7).
+- **toml 1.2.1** (was 1.1.8).
+
 ## [0.2.3] - 2026-11-17
 
 Maintenance release: a release created in the GitHub UI gets its binaries again and the crate on crates.io, and the Action checks each binary's build provenance instead of the release's attestation. Trees change only on antique pots with kintsugi and where a dropped language held part of the recent years, which would make this a minor version; it ships as a patch because the changes are small.

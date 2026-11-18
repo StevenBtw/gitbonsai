@@ -105,7 +105,8 @@ enum Command {
         #[command(flatten)]
         tree: TreeArgs,
 
-        /// Interval between frames: `4w`, `2w` or `10d`
+        /// Interval between frames: `4w`, `10d`, or `1m` and `1q` for calendar
+        /// months and quarters
         #[arg(long, default_value = "4w")]
         every: String,
 
@@ -182,12 +183,13 @@ fn run(cli: Cli) -> Result<()> {
         } => {
             let observed_on = Date::today_utc().add_days(-1);
             status(&format!("collecting @{login} through {observed_on}"));
-            let previous = previous_snapshot(output.as_deref(), full, &mut |line| status(line));
+            let previous = previous_snapshot(output.as_deref(), &mut |line| status(line));
             let snapshot = collect::collect(
                 &collect::GhCli,
                 &login,
                 observed_on,
                 previous.as_ref(),
+                full,
                 &mut |line| status(line),
             )?;
             let json = snapshot.to_json();
@@ -246,23 +248,30 @@ fn run(cli: Cli) -> Result<()> {
                 .unwrap_or(snapshot.observed_on)
                 .min(snapshot.observed_on);
             let start = snapshot.first_active().unwrap_or(end);
+            let mut days = vec![start];
+            while let Some(&day) = days.last().filter(|&&d| d < end) {
+                days.push(step.after(day).min(end));
+            }
+            // Two passes, one tree in memory at a time: every frame's box for
+            // the shared camera, then each frame grown again and written.
+            let grow = |day: Date| Bonsai::grow(&snapshot, &config, Some(day));
+            let boxes: Vec<_> = days
+                .iter()
+                .map(|&day| render::frame(&grow(day), &config))
+                .collect();
             let mut frames = Vec::new();
-            let mut day = start;
-            loop {
-                let bonsai = Bonsai::grow(&snapshot, &config, Some(day));
+            for (&day, camera) in days.iter().zip(render::cameras(&boxes)) {
+                let bonsai = &grow(day);
                 let base = format!("{:04}", frames.len() + 1);
                 for theme in Theme::ALL {
                     let path = output_dir.join(format!("{base}-{}.svg", theme.name()));
-                    output::write_atomic(&path, render::svg(&bonsai, &config, theme).as_bytes())?;
+                    let svg = render::svg_in(bonsai, &config, theme, Some(camera));
+                    output::write_atomic(&path, svg.as_bytes())?;
                 }
                 frames.push((
                     base,
                     format!("{day}  ·  week {}", bonsai.timeline.age_weeks()),
                 ));
-                if day >= end {
-                    break;
-                }
-                day = day.add_days(step).min(end);
             }
             let page = html::timelapse(&format!("@{} timelapse", snapshot.login), &frames);
             output::write_atomic(&output_dir.join("index.html"), page.as_bytes())?;
@@ -384,15 +393,10 @@ fn as_of(args: &TreeArgs) -> Result<Option<Date>> {
         .map_err(Into::into)
 }
 
-/// The snapshot at `output` to reuse, unless `full`: `None` for stdout, a
-/// first run, or a file that isn't a valid snapshot (reported, then
-/// replaced).
-fn previous_snapshot(
-    output: Option<&Path>,
-    full: bool,
-    status: &mut dyn FnMut(&str),
-) -> Option<Snapshot> {
-    let path = output.filter(|p| !full && p.exists())?;
+/// The snapshot at `output` from an earlier run: `None` for stdout, a first
+/// run, or a file that isn't a valid snapshot (reported, then replaced).
+fn previous_snapshot(output: Option<&Path>, status: &mut dyn FnMut(&str)) -> Option<Snapshot> {
+    let path = output.filter(|p| p.exists())?;
     match Snapshot::load(path) {
         Ok(snapshot) => Some(snapshot),
         Err(e) => {
@@ -402,25 +406,52 @@ fn previous_snapshot(
     }
 }
 
-fn parse_interval(text: &str) -> Result<i32> {
+/// A timelapse step: a number of days, or of calendar months.
+#[derive(Debug, Clone, Copy)]
+enum Interval {
+    Days(i32),
+    Months(i32),
+}
+
+impl Interval {
+    /// The next frame's day after `day`: days later, or the first day of the
+    /// next month that starts a whole step (a quarter starts in January,
+    /// April, July or October).
+    fn after(self, day: Date) -> Date {
+        match self {
+            Self::Days(n) => day.add_days(n),
+            Self::Months(n) => {
+                let (y, m, _) = day.ymd();
+                let i = (y * 12 + m.cast_signed() - 1) / n * n + n;
+                Date::from_ymd(i.div_euclid(12), (i.rem_euclid(12) + 1).cast_unsigned(), 1)
+                    .unwrap_or(day)
+            }
+        }
+    }
+}
+
+fn parse_interval(text: &str) -> Result<Interval> {
     let invalid = || {
         Error::Config(format!(
-            "`{text}` is not an interval; use for example 4w or 10d"
+            "`{text}` is not an interval; use for example 4w, 10d, 1m or 1q"
         ))
     };
     // The unit is the last character, which need not be one byte.
     let cut = text.char_indices().last().map_or(0, |(i, _)| i);
     let (number, unit) = text.split_at(cut);
     let n: i32 = number.parse().map_err(|_| invalid())?;
-    let days = match unit {
-        "w" => n.checked_mul(7).ok_or_else(invalid)?,
-        "d" => n,
-        _ => return Err(invalid().into()),
-    };
-    if days < 1 {
+    if n < 1 {
         return Err(invalid().into());
     }
-    Ok(days)
+    Ok(match unit {
+        // Steps beyond ten thousand years are no step, and would wrap.
+        "w" if n <= 520_000 => Interval::Days(n * 7),
+        "d" if n <= 3_650_000 => Interval::Days(n),
+        // Months beyond ten thousand years are no step.
+        "m" if n <= 120_000 => Interval::Months(n),
+        "q" if n <= 40_000 => Interval::Months(n * 3),
+        _ => return Err(invalid().into()),
+    })
 }
 
 fn render_outputs(bonsai: &Bonsai, config: &Config, dir: &Path) -> Result<()> {
@@ -560,7 +591,7 @@ fn summary(b: &Bonsai) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{config_file, parse_interval, previous_snapshot};
+    use super::{Date, config_file, parse_interval, previous_snapshot};
 
     #[test]
     fn an_explicit_missing_config_warns() {
@@ -584,38 +615,49 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let mut said = Vec::new();
         let missing = dir.join("none.json");
-        assert!(
-            previous_snapshot(Some(&missing), false, &mut |s| said.push(s.to_string())).is_none()
-        );
+        assert!(previous_snapshot(Some(&missing), &mut |s| said.push(s.to_string())).is_none());
         assert!(said.is_empty(), "a first run says nothing");
         let corrupt = dir.join("bad.json");
         std::fs::write(&corrupt, "{not json").unwrap();
-        assert!(
-            previous_snapshot(Some(&corrupt), false, &mut |s| said.push(s.to_string())).is_none()
-        );
+        assert!(previous_snapshot(Some(&corrupt), &mut |s| said.push(s.to_string())).is_none());
         assert_eq!(said.len(), 1, "a corrupt file is reported: {said:?}");
         let good = dir.join("good.json");
         let snapshot = gitbonsai::fixtures::by_name("mono").unwrap().snapshot;
         std::fs::write(&good, snapshot.to_json()).unwrap();
-        assert!(previous_snapshot(Some(&good), false, &mut |_| {}).is_some());
-        assert!(
-            previous_snapshot(Some(&good), true, &mut |_| {}).is_none(),
-            "--full"
-        );
-        assert!(
-            previous_snapshot(None, false, &mut |_| {}).is_none(),
-            "stdout"
-        );
+        assert!(previous_snapshot(Some(&good), &mut |_| {}).is_some());
+        assert!(previous_snapshot(None, &mut |_| {}).is_none(), "stdout");
         std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
     fn an_interval_with_a_multibyte_unit_is_an_error() {
+        // A step too long to take would wrap the day count and never end.
+        assert!(parse_interval("2147480000d").is_err());
+        assert!(parse_interval("300000000w").is_err());
         assert!(parse_interval("4\u{e9}").is_err());
         assert!(parse_interval("\u{e9}").is_err());
-        assert_eq!(parse_interval("4w").unwrap(), 28);
-        assert_eq!(parse_interval("10d").unwrap(), 10);
+        let day: Date = "2024-05-20".parse().unwrap();
+        let next = |text: &str| parse_interval(text).unwrap().after(day).to_string();
+        assert_eq!(next("4w"), "2024-06-17");
+        assert_eq!(next("10d"), "2024-05-30");
         assert!(parse_interval("400000000w").is_err(), "too many weeks");
         assert!(parse_interval("613566757w").is_err(), "no wrap-around");
+    }
+
+    #[test]
+    fn months_and_quarters_step_to_calendar_starts() {
+        let next = |text: &str, day: &str| {
+            parse_interval(text)
+                .unwrap()
+                .after(day.parse().unwrap())
+                .to_string()
+        };
+        assert_eq!(next("1m", "2024-05-20"), "2024-06-01");
+        assert_eq!(next("1m", "2024-12-01"), "2025-01-01");
+        assert_eq!(next("1q", "2024-05-20"), "2024-07-01");
+        assert_eq!(next("1q", "2024-10-01"), "2025-01-01");
+        assert_eq!(next("2q", "2024-02-01"), "2024-07-01");
+        assert!(parse_interval("0m").is_err());
+        assert!(parse_interval("2000000000q").is_err(), "no wrap-around");
     }
 }

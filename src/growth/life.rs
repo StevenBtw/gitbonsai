@@ -20,6 +20,8 @@ pub const FULL_YEAR: f64 = 3200.0;
 
 /// Days of silence before a language can count as dropped.
 const DROP_AFTER_DAYS: i32 = 52 * 7;
+/// Days over which a change in the tree's structure grows in.
+pub const RAMP_DAYS: f64 = 91.0;
 /// Days of total silence before the tree stands bare for the winter.
 const DORMANT_AFTER_DAYS: i32 = crate::DORMANT_AFTER.cast_signed() * 7;
 /// Active days the account must keep working without a language to drop it.
@@ -60,6 +62,12 @@ pub struct Year {
     pub total: f64,
     /// Contributions per language.
     pub langs: BTreeMap<String, f64>,
+    /// The day it became a year of growth ([`Life::is_active_year`]).
+    pub active_on: Option<Date>,
+    /// Work per language that was later dropped (a year of silence while the
+    /// account kept working): (all of it, weighted by how far it has died
+    /// back). It stays dead wood even when the language comes back.
+    pub dead: BTreeMap<String, (f64, f64)>,
 }
 
 impl Year {
@@ -81,8 +89,6 @@ pub struct Life {
     pub total: f64,
     /// Coefficient of variation of monthly totals over the whole life.
     pub life_cv: f64,
-    /// Months from the first to the last active month, both included.
-    pub span_months: i32,
     first: Date,
     last_active: Date,
     observed: Date,
@@ -105,6 +111,7 @@ impl Life {
         let last_active = active.last()?.date;
         let mut years: BTreeMap<i32, Year> = BTreeMap::new();
         let mut last_used = BTreeMap::new();
+        let mut uses: BTreeMap<String, Vec<(Date, f64)>> = BTreeMap::new();
         let mut lang: BTreeMap<String, f64> = BTreeMap::new();
         for d in &active {
             let (y, m, _) = d.date.ymd();
@@ -114,6 +121,9 @@ impl Life {
             });
             year.days += 1;
             year.total += d.total;
+            if year.active_on.is_none() && (year.days >= 5 || year.total >= 20.0) {
+                year.active_on = Some(d.date);
+            }
             let month = year.months.entry(m).or_default();
             month.days += 1;
             month.total += d.total;
@@ -136,6 +146,35 @@ impl Life {
                 *year.langs.entry(l.clone()).or_default() += v;
                 *lang.entry(l.clone()).or_default() += v;
                 last_used.insert(l.clone(), d.date);
+                uses.entry(l.clone()).or_default().push((d.date, *v));
+            }
+        }
+        // Each stretch of a language's use that ended in a drop is dead wood,
+        // dying back over the year after the drop.
+        let active_days: Vec<Date> = active.iter().map(|d| d.date).collect();
+        for (l, list) in &uses {
+            let mut start = 0;
+            for k in 0..list.len() {
+                let next = list.get(k + 1).map(|u| u.0);
+                // Only a year's gap can be a drop.
+                if next.unwrap_or(observed).days_since(list[k].0) < DROP_AFTER_DAYS {
+                    continue;
+                }
+                let Some(on) = drop_day(list[k].0, &active_days)
+                    .filter(|on| next.map_or(*on <= observed, |n| *on < n))
+                else {
+                    continue;
+                };
+                let died = (f64::from(observed.days_since(on)) / f64::from(DROP_AFTER_DAYS))
+                    .clamp(0.0, 1.0);
+                for &(date, v) in &list[start..=k] {
+                    if let Some(year) = years.get_mut(&date.year()) {
+                        let e = year.dead.entry(l.clone()).or_default();
+                        e.0 += v;
+                        e.1 += v * died;
+                    }
+                }
+                start = k + 1;
             }
         }
         let (fy, fm, _) = first.ymd();
@@ -155,8 +194,6 @@ impl Life {
                 series.push(y.months.get(&m).map_or(0.0, |x| x.total));
             }
         }
-        let month_no = |m: u32| i32::try_from(m).unwrap_or(1);
-        let span_months = (ly - fy) * 12 + month_no(lm) - month_no(fm) + 1;
         let mut lang: Vec<(String, f64)> = lang.into_iter().collect();
         lang.sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
         let total = lang.iter().map(|l| l.1).sum::<f64>().max(1e-9);
@@ -165,12 +202,11 @@ impl Life {
             lang,
             total,
             life_cv: cv(&series),
-            span_months,
             first,
             last_active,
             observed,
             last_used,
-            active_days: active.iter().map(|d| d.date).collect(),
+            active_days,
         })
     }
 
@@ -181,6 +217,131 @@ impl Life {
         self.last_used
             .get(lang)
             .is_some_and(|last| dropped(*last, self.observed, &self.active_days))
+    }
+
+    /// Whether the account has worked for under a year, first active day to
+    /// last: a seedling, not yet a tree.
+    pub fn is_seedling(&self) -> bool {
+        self.last_active.days_since(self.first) < 365
+    }
+
+    /// How far a young tree has filled out, from 0 the day it stops being a
+    /// seedling to 1 a year of work later; it stays young while it rests. A
+    /// seedling that rested past its first year becomes a tree the day work
+    /// resumes, and fills out from there, never all at once. Only time at
+    /// work counts: a gap past a month adds a month.
+    pub fn maturity(&self) -> f64 {
+        let mut days = 0;
+        let mut prev: Option<Date> = None;
+        for &d in self
+            .active_days
+            .iter()
+            .skip_while(|d| d.days_since(self.first) < 365)
+        {
+            if let Some(p) = prev {
+                days += d.days_since(p).min(30);
+            }
+            prev = Some(d);
+        }
+        (f64::from(days) / 365.0).clamp(0.0, 1.0)
+    }
+
+    /// The observed day as a fractional year (2026.5 is about July 2).
+    pub fn now(&self) -> f64 {
+        let (y, _, _) = self.observed.ymd();
+        let jan1 = Date::from_ymd(y, 1, 1).unwrap_or(self.observed);
+        f64::from(y) + f64::from(self.observed.days_since(jan1)) / 365.25
+    }
+
+    /// How long ago year `i` grew: from the middle of its part up to the
+    /// observed day, in years. It grows a little every day, never in steps.
+    pub fn years_ago(&self, i: usize) -> f64 {
+        let now = self.now();
+        let y = f64::from(self.years[i].y);
+        (now - f64::midpoint(y, (y + 1.0).min(now))).max(0.0)
+    }
+
+    /// How far `lang` has died back, from 0 the day it was dropped to 1 a
+    /// year later: its branches draw back as its dead wood grows in. 0 while
+    /// it isn't dropped.
+    pub fn drop_progress(&self, lang: &str) -> f64 {
+        let Some(&last) = self.last_used.get(lang) else {
+            return 0.0;
+        };
+        if !self.dropped(lang) {
+            return 0.0;
+        }
+        // Dropped on the later of a year after its last use and the 30th
+        // active day without it.
+        let busy = self
+            .active_days
+            .iter()
+            .filter(|a| **a > last)
+            .nth(DROP_AFTER_ACTIVE - 1)
+            .copied()
+            .unwrap_or(last);
+        let on = busy.max(last.add_days(DROP_AFTER_DAYS));
+        (f64::from(self.observed.days_since(on)) / f64::from(DROP_AFTER_DAYS)).clamp(0.0, 1.0)
+    }
+
+    /// How bare `lang`'s branches stand, 0 to 1: as its leaves fall
+    /// ([`crate::foliage::fullness`]) its twigs show. Private work goes by
+    /// the account's silence.
+    pub fn bare(&self, lang: &Lang) -> f64 {
+        let last = lang
+            .as_deref()
+            .and_then(|l| self.last_used.get(l))
+            .copied()
+            .unwrap_or(self.last_active);
+        1.0 - crate::foliage::fullness(self.observed.days_since(last) / 7)
+    }
+
+    /// Years of real work: each calendar year counts fully at 300
+    /// contributions or more, in proportion below. A busy account's work
+    /// years keep pace with its age; a few contributions over many years
+    /// add up to a fraction of one.
+    pub fn work_years(&self) -> f64 {
+        self.years.iter().map(|y| (y.total / 300.0).min(1.0)).sum()
+    }
+
+    /// How much of year `i`'s `lang` work is dead wood: (the share later
+    /// dropped, the share that has died back so far), each 0 to 1.
+    pub fn dead_share(&self, i: usize, lang: &Lang) -> (f64, f64) {
+        let Some(y) = self.years.get(i) else {
+            return (0.0, 0.0);
+        };
+        let total = match lang {
+            Some(l) => y.langs.get(l).copied().unwrap_or(0.0),
+            None => return (0.0, 0.0),
+        };
+        lang.as_deref()
+            .and_then(|l| y.dead.get(l))
+            .map_or((0.0, 0.0), |(full, grown)| {
+                (
+                    (full / total.max(1e-9)).min(1.0),
+                    (grown / total.max(1e-9)).min(1.0),
+                )
+            })
+    }
+
+    /// A language's dead wood over the whole life: (all of it, how much has
+    /// died back so far), in contributions.
+    pub fn dead_total(&self, lang: &str) -> (f64, f64) {
+        self.years
+            .iter()
+            .filter_map(|y| y.dead.get(lang))
+            .fold((0.0, 0.0), |a, d| (a.0 + d.0, a.1 + d.1))
+    }
+
+    /// The day the life is seen on.
+    pub fn observed(&self) -> Date {
+        self.observed
+    }
+
+    /// The observed month, as `year * 12 + month`.
+    pub fn observed_month(&self) -> i32 {
+        let (y, m, _) = self.observed.ymd();
+        y * 12 + m.cast_signed()
     }
 
     /// Years since the first active day.
@@ -196,10 +357,31 @@ impl Life {
     /// Whether year `i` counts as a year of growth: five active days or
     /// twenty contributions. A stray day or two does not.
     pub fn is_active_year(&self, i: usize) -> bool {
+        self.years.get(i).is_some_and(|y| y.active_on.is_some())
+    }
+
+    /// How far year `i` has grown in, from 0 the day it became a year of
+    /// growth to 1 a quarter later: what it adds to the tree arrives over a
+    /// quarter, not in one day.
+    pub fn grown_in(&self, i: usize) -> f64 {
         self.years
             .get(i)
-            .is_some_and(|y| y.days >= 5 || y.total >= 20.0)
+            .and_then(|y| y.active_on)
+            .map_or(0.0, |on| {
+                (f64::from(self.observed.days_since(on)) / RAMP_DAYS).clamp(0.0, 1.0)
+            })
     }
+}
+
+/// The day a language last used on `last_use` counts as dropped if it isn't
+/// used again: a year later, once the account has 30 more active days;
+/// `None` before it has them.
+fn drop_day(last_use: Date, active_days: &[Date]) -> Option<Date> {
+    let busy = active_days
+        .iter()
+        .filter(|a| **a > last_use)
+        .nth(DROP_AFTER_ACTIVE - 1)?;
+    Some((*busy).max(last_use.add_days(DROP_AFTER_DAYS)))
 }
 
 /// Whether a language last used on `last_use` is dropped by `observed`:
@@ -282,6 +464,56 @@ mod tests {
 
     fn life(days: &[(Date, u32, &[(&str, u32)])], observed: Date) -> Life {
         Life::of(&Timeline::new(&snap(days, observed)), &[]).unwrap()
+    }
+
+    #[test]
+    fn a_rested_seedling_fills_out_from_when_work_resumes() {
+        let go: &[(&str, u32)] = &[("Go", 5)];
+        let weekly =
+            |from: Date, weeks: i32| (0..weeks).map(move |w| (from.add_days(7 * w), 5, go));
+        let mut days: Vec<_> = weekly(d("2010-01-04"), 12).collect();
+        days.extend(weekly(d("2012-06-04"), 2));
+        let rested = life(&days, d("2012-06-15"));
+        assert!(rested.maturity() < 0.1, "{}", rested.maturity());
+        let mut young: Vec<_> = weekly(d("2010-01-04"), 61).collect();
+        young.extend(weekly(d("2014-03-03"), 2));
+        let young = life(&young, d("2014-03-15"));
+        assert!(
+            young.maturity() < 0.25,
+            "a rest keeps it young: {}",
+            young.maturity()
+        );
+        let steady: Vec<_> = weekly(d("2010-01-04"), 78).collect();
+        let steady = life(&steady, d("2011-07-01"));
+        assert!(
+            (steady.maturity() - 0.5).abs() < 0.05,
+            "{}",
+            steady.maturity()
+        );
+    }
+
+    #[test]
+    fn a_dropped_language_dies_back_over_a_year() {
+        // Go for 100 days, then Python every day.
+        let start = d("2020-01-01");
+        let go: Vec<_> = (0..100)
+            .map(|i| (start.add_days(i), 3, &[("Go", 3)][..]))
+            .chain((100..1200).map(|i| (start.add_days(i), 3, &[("Python", 3)][..])))
+            .collect();
+        let at = |n: i32| {
+            let days: Vec<_> = go
+                .iter()
+                .filter(|x| x.0 <= start.add_days(n))
+                .copied()
+                .collect();
+            life(&days, start.add_days(n)).drop_progress("Go")
+        };
+        let dropped = 99 + 364;
+        assert!(at(dropped - 1).abs() < 1e-9, "not dropped yet");
+        assert!(at(dropped).abs() < 1e-9, "dropped today");
+        assert!((at(dropped + 182) - 0.5).abs() < 0.01, "half way");
+        assert!((at(dropped + 500) - 1.0).abs() < 1e-9, "dead wood");
+        assert!(at(1100).abs() > 0.99 && at(300).abs() < 1e-9);
     }
 
     /// `n` consecutive active days of Python from `from`.

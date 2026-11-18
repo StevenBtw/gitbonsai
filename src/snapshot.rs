@@ -13,8 +13,9 @@ use crate::Error;
 use crate::color::Rgb;
 use crate::date::{Date, DateRange};
 
-/// The schema version this crate reads and writes.
-pub const SCHEMA: u32 = 2;
+/// The schema version this crate reads and writes: 3 adds the dates of
+/// achievements and archived repositories, which gitbonsai 0.2 can't read.
+pub const SCHEMA: u32 = 3;
 
 /// Snapshots before 0.2.1: no private count, so every contribution the
 /// languages leave is taken as private work.
@@ -51,6 +52,19 @@ pub struct Snapshot {
     /// Archived repositories the account owns, oldest archive first.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub archived_repos: Vec<String>,
+    /// The day each achievement tier was reached, tier 1 first: tier 1 from
+    /// its "first unlocked" date, higher tiers from the first run that saw
+    /// them. Without dates an achievement stays out of past views.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub achievement_dates: BTreeMap<String, Vec<Date>>,
+    /// The day each archived repository was archived. Without a date it stays
+    /// out of past views.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub archived_dates: BTreeMap<String, Date>,
+    /// The day growth starts, kept by a past view cut from a longer history
+    /// ([`Snapshot::truncated`]); never written to a file.
+    #[serde(skip)]
+    pub start: Option<Date>,
 }
 
 /// One day of contributions.
@@ -120,7 +134,7 @@ impl Snapshot {
         let fail = |msg: String| Err(Error::Snapshot(msg));
         if !(LEGACY_SCHEMA..=SCHEMA).contains(&self.schema) {
             return fail(format!(
-                "schema {} is not supported; this gitbonsai reads schemas {LEGACY_SCHEMA} and {SCHEMA}. Re-run `gitbonsai collect`",
+                "schema {} is not supported; this gitbonsai reads schemas {LEGACY_SCHEMA} to {SCHEMA}. Re-run `gitbonsai collect`",
                 self.schema
             ));
         }
@@ -159,6 +173,28 @@ impl Snapshot {
     /// dropped and the range ended there (`--as-of`).
     #[must_use]
     pub fn truncated(&self, as_of: Date) -> Self {
+        if as_of >= self.observed_on {
+            return self.clone();
+        }
+        self.with_start().cut(as_of)
+    }
+
+    /// The snapshot keeping the start its whole history gives: cut from it,
+    /// a past tree folds its stray days into that day as today's does, so
+    /// it never starts earlier and then grows younger. Before its start the
+    /// pot is empty.
+    #[must_use]
+    pub(crate) fn with_start(&self) -> Self {
+        let mut snapshot = self.clone();
+        snapshot.start = self
+            .start
+            .or_else(|| crate::timeline::Timeline::new(self).first_active);
+        snapshot
+    }
+
+    /// [`Snapshot::truncated`] for a snapshot already [`Snapshot::with_start`].
+    #[must_use]
+    pub(crate) fn cut(&self, as_of: Date) -> Self {
         let mut snapshot = self.clone();
         if as_of >= self.observed_on {
             return snapshot;
@@ -169,6 +205,23 @@ impl Snapshot {
         snapshot.range.to = as_of;
         snapshot.observed_on = as_of;
         snapshot.truncated_windows.retain(|w| w.from <= as_of);
+        // Only what was reached by then; an undated one is left out.
+        let reached = |slug: &str| {
+            self.achievement_dates
+                .get(slug)
+                .map_or(0, |d| d.iter().filter(|d| **d <= as_of).count())
+        };
+        snapshot.achievements = self
+            .achievements
+            .iter()
+            .filter_map(|(slug, &tier)| {
+                let by_then = u8::try_from(reached(slug)).unwrap_or(u8::MAX).min(tier);
+                (by_then > 0).then(|| (slug.clone(), by_then))
+            })
+            .collect();
+        snapshot
+            .archived_repos
+            .retain(|r| self.archived_dates.get(r).is_some_and(|d| *d <= as_of));
         snapshot
     }
 
@@ -206,7 +259,43 @@ mod tests {
             truncated_windows: Vec::new(),
             achievements: BTreeMap::new(),
             archived_repos: Vec::new(),
+            achievement_dates: BTreeMap::new(),
+            archived_dates: BTreeMap::new(),
+            start: None,
         }
+    }
+
+    #[test]
+    fn a_past_view_keeps_the_start_the_whole_history_gives() {
+        let d = |s: &str| -> Date { s.parse().unwrap() };
+        let day = |date: Date, total: u32| Day {
+            date,
+            total,
+            by_language: [("Rust".to_string(), total)].into(),
+            private: 0,
+        };
+        let mut s = minimal(SCHEMA);
+        let start = d("2003-08-05");
+        s.days = vec![day(d("2001-04-09"), 1), day(d("2002-03-01"), 1)];
+        s.days.extend((0..20).map(|k| day(start.add_days(k), 2)));
+        s.range = DateRange {
+            from: d("2001-01-01"),
+            to: d("2003-12-31"),
+        };
+        s.observed_on = d("2003-12-31");
+        let before = crate::timeline::Timeline::new(&s.truncated(d("2003-08-01")));
+        assert_eq!(
+            before.first_active, None,
+            "before its start the pot is empty"
+        );
+        let after = s.truncated(d("2003-08-10"));
+        assert!(after.validate().is_ok());
+        let timeline = crate::timeline::Timeline::new(&after);
+        assert_eq!(timeline.first_active, Some(start));
+        assert!(
+            (timeline.days[0].total - 4.0).abs() < 1e-9,
+            "the strays fold into the start"
+        );
     }
 
     #[test]
@@ -220,11 +309,44 @@ mod tests {
     }
 
     #[test]
+    fn the_past_has_only_the_achievements_and_archives_of_its_day() {
+        let d = |s: &str| -> Date { s.parse().unwrap() };
+        let mut s = minimal(SCHEMA);
+        s.achievements = [("pull-shark", 3), ("yolo", 1), ("starstruck", 2)]
+            .map(|(k, v)| (k.to_string(), v))
+            .into();
+        s.achievement_dates = [
+            (
+                "pull-shark",
+                vec![d("2024-12-13"), d("2025-06-01"), d("2026-09-01")],
+            ),
+            ("yolo", vec![d("2026-03-01")]),
+        ]
+        .map(|(k, v)| (k.to_string(), v))
+        .into();
+        s.archived_repos = vec!["old".into(), "undated".into(), "later".into()];
+        s.archived_dates = [("old", d("2023-01-01")), ("later", d("2026-02-01"))]
+            .map(|(k, v)| (k.to_string(), v))
+            .into();
+        let past = s.truncated(d("2025-07-01"));
+        assert_eq!(
+            past.achievements,
+            [("pull-shark".to_string(), 2)].into(),
+            "tier 2 by then; yolo later; starstruck undated"
+        );
+        assert_eq!(past.archived_repos, ["old"]);
+        let now = s.truncated(s.observed_on);
+        assert_eq!(now.achievements.len(), 3, "today shows everything");
+        assert_eq!(now.archived_repos.len(), 3);
+    }
+
+    #[test]
     fn schema_one_and_two_load() {
         assert!(minimal(LEGACY_SCHEMA).validate().is_ok());
+        assert!(minimal(2).validate().is_ok(), "0.2 snapshots still load");
         assert!(minimal(SCHEMA).validate().is_ok());
         assert!(minimal(SCHEMA + 1).validate().is_err());
-        assert_eq!(SCHEMA, 2);
+        assert_eq!(SCHEMA, 3);
     }
 
     #[test]

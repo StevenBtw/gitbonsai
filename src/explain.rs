@@ -7,7 +7,7 @@ use std::fmt::Write as _;
 use crate::Bonsai;
 use crate::date::Date;
 use crate::eggs::{DRAWN, MAX_SEAMS};
-use crate::foliage::{LanguageState, density};
+use crate::foliage::LanguageState;
 use crate::growth::clouds::lead_of;
 use crate::growth::dome::crown_years;
 use crate::growth::life::Life;
@@ -138,11 +138,11 @@ pub fn report(b: &Bonsai) -> String {
             .count();
         let _ = writeln!(
             out,
-            "  {:<18} {state:<5}  lifetime {:>8.0}  window {:>6.1}/wk  density {:>6}  clouds {clouds}  leaves {}",
+            "  {:<18} {state:<5}  lifetime {:>8.0}  window {:>6.1}/wk  leaves {:>6}  clouds {clouds}  color {}",
             truncate(language, 18),
             lifetime.get(language.as_str()).copied().unwrap_or(0.0),
             v,
-            pct(density(v)),
+            pct(b.fullness(Some(language))),
             b.maple
                 .colors
                 .get(language)
@@ -154,9 +154,9 @@ pub fn report(b: &Bonsai) -> String {
     let _ = writeln!(out, "Leaves (13-week window)");
     let _ = writeln!(
         out,
-        "  average             {:.1}/week, crown density {}",
+        "  average             {:.1}/week; leaves left {} (they follow how recent the work is, not how much)",
         b.window.total,
-        pct(density(b.window.total))
+        pct(b.fullness(None))
     );
     let _ = writeln!(
         out,
