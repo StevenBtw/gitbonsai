@@ -27,7 +27,7 @@ for t in light dark; do
 done
 
 "$bin" timelapse fixture:showcase --every 1m --output-dir "$work/tl/showcase" -q
-"$bin" timelapse fixture:steady --as-of 2022-03-06 --every 2w --output-dir "$work/tl/newcomer" -q
+"$bin" timelapse fixture:newbie --every 2w --output-dir "$work/tl/newcomer" -q
 for who in stevenbtw tj torvalds steipete; do
   "$bin" timelapse "$site/snapshots/$who.snapshot.json" --every 1m --output-dir "$work/tl/$who" -q
 done

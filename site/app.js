@@ -21,7 +21,7 @@ $("theme").addEventListener("click", () => {
 /* Timelapse player: one MP4 per tree and theme, frames on a shared canvas */
 const EX = [
   ["showcase", "Showcase", "simulated", "Fourteen years; C# swapped for Java, early private work, then Python, Rust and TypeScript."],
-  ["newcomer", "Newcomer", "simulated", "A few months in, three languages: a thin sprout in its first pot."],
+  ["newcomer", "Newcomer", "simulated", "A few months in, two languages: a thin sprout in its first pot."],
   ["stevenbtw", "@StevenBtw", "real", "Around 9 years; mainly Python and Rust, Rust coming away from the trunk on its own strand."],
   ["tj", "@tj", "real", "Around 19 years; JavaScript, later Go; resting since 2021, so bare for the winter."],
   ["torvalds", "@torvalds", "real", "Around 16 years of C, every single week; one steady trunk."],
@@ -90,7 +90,7 @@ $("picks").addEventListener("keydown", e => {
 fetch("frames.json").then(r => r.json()).then(f => {
   FRAMES = f;
   const s = f.showcase.frames; $("heroweek").textContent = s[s.length - 1].wk;
-  select("stevenbtw");
+  select("showcase");
 }, () => { $("caption").textContent = "The timelapses didn't load. Reload the page to try again."; });
 
 /* Your tree: grown by api.gitbonsai.dev, shown only as <img> from a blob URL */
