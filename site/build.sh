@@ -16,6 +16,7 @@ trap 'rm -rf "$work"' EXIT
 rm -rf "$out"
 mkdir -p "$out/hero"
 cp -r "$site/fonts" "$out/fonts"
+cp "$site/og.png" "$out/og.png"   # link-preview card; bump ?v= in index.html when it changes
 "$site/node_modules/.bin/tsc" -p "$site" --outDir "$work/js"
 cp "$work/js/app.js" "$site/index.html" "$site/style.css" "$site/tokens.css" "$site/fonts.css" "$site/CNAME" "$work/"
 for f in index.html app.js style.css tokens.css fonts.css CNAME; do
