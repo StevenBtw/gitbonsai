@@ -53,8 +53,8 @@ type Example = [id: string, name: string, kind: "simulated" | "real", blurb: str
 // By size, smallest first; Showcase still opens first (see the frames fetch).
 const EX: Example[] = [
   ["newcomer", "Newcomer", "simulated", "A few months in, two languages: a thin sprout in its first pot."],
-  ["jacobwilliams", "@jacobwilliams", "real", "Around 13 years, mostly Fortran with Python alongside; a legacy language, so it cascades over the rim."],
   ["stevenbtw", "@StevenBtw", "real", "Around 9 years; Python and Rust on two trunks. Quiet summers without commits swept it to one side: windswept."],
+  ["jacobwilliams", "@jacobwilliams", "real", "Around 13 years, mostly Fortran with Python alongside; a legacy language, so it cascades over the rim."],
   ["showcase", "Showcase", "simulated", "Fourteen years; C# swapped for Java, early private work, then Python, Rust and TypeScript."],
   ["tj", "@tj", "real", "Around 19 years; JavaScript, later Go. Long pauses slant it; resting since 2021, so bare for the winter."],
   ["torvalds", "@torvalds", "real", "Around 16 years of C, every single week: a thick, symmetric formal upright."],
