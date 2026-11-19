@@ -17,11 +17,53 @@ use crate::color::Rgb;
 use crate::config::Legend;
 use crate::foliage::LanguageState;
 use crate::maple::{MAPLE_GREEN, private_tone};
+use crate::math;
 use crate::paint::{Frame, Paints};
-use crate::render::{Num, escape};
+use crate::render::{Num, PathData, escape};
 
 /// The most languages listed; the rest are counted.
 const MAX_LANGUAGES: usize = 8;
+
+/// The legend's leaf, apart from the crown's: alone at icon size, narrow
+/// lobes read as another plant, so this one has five broad pointed lobes
+/// joined halfway, the lowest pair held out sideways and the middle one
+/// shorter, as on a Japanese maple. About 9 units across, stalk at the origin.
+fn legend_leaf_path() -> String {
+    const LOBES: [(f64, f64); 5] = [
+        (-88.0, 0.66),
+        (-44.0, 0.95),
+        (0.0, 0.84),
+        (44.0, 0.95),
+        (88.0, 0.66),
+    ];
+    // Lobe length, how far up the lobes join, and the lobe's width near its
+    // base and near its tip, in degrees.
+    let (len, web, wide, tip) = (4.8, 0.55, 36.0, 10.0);
+    let pt = |deg: f64, r: f64| {
+        let a = math::rad(deg - 90.0);
+        (math::cos(a) * r, math::sin(a) * r - 0.2)
+    };
+    let edge = web * len * 0.35;
+    let mut d = PathData::new();
+    d.m(pt(LOBES[0].0 - 25.0, edge));
+    for (i, &(deg, l)) in LOBES.iter().enumerate() {
+        let l = l * len;
+        let (v, vr) = match LOBES.get(i + 1) {
+            Some(&(next, nl)) => (f64::midpoint(deg, next), web * l.min(nl * len)),
+            None => (deg + 25.0, edge),
+        };
+        d.c(pt(deg - wide, 0.55 * l), pt(deg - tip, 0.8 * l), pt(deg, l));
+        d.c(pt(deg + tip, 0.8 * l), pt(deg + wide, 0.55 * l), pt(v, vr));
+    }
+    d.z();
+    // The stalk.
+    d.m((-0.22, 0.3))
+        .l((0.22, 0.3))
+        .l((0.12, 2.6))
+        .l((-0.12, 2.6))
+        .z();
+    d.as_str().to_string()
+}
 
 /// What the tree shows besides its languages.
 #[derive(Debug, Clone, Copy, Default)]
@@ -136,11 +178,10 @@ fn rows(b: &Bonsai, paints: &Paints, signs: Signs) -> Vec<Row> {
         });
         v
     };
-    let (alive, resting, dead) = (
-        of(LanguageState::Alive),
-        of(LanguageState::Bare),
-        of(LanguageState::Jin),
-    );
+    // Deadwood only for languages whose dead wood the tree actually shows.
+    let mut dead = of(LanguageState::Jin);
+    dead.retain(|l| b.skeleton.deadwood.contains(l.as_str()));
+    let (alive, resting) = (of(LanguageState::Alive), of(LanguageState::Bare));
 
     let mut rows = vec![Row::heading("Leaves")];
     let shown: Vec<&String> = alive.iter().chain(&resting).copied().collect();
@@ -293,6 +334,11 @@ pub fn legend(
         r#"<g font-family="system-ui,-apple-system,'Segoe UI',sans-serif" font-size="{}" fill="{ink}">"#,
         Num(fs)
     );
+    let _ = write!(
+        s,
+        r#"<defs><path id="ll" d="{}"/></defs>"#,
+        legend_leaf_path()
+    );
     for (i, row) in rows.iter().enumerate() {
         let cy = top + (i as f64 + 0.5) * lh;
         let baseline = cy + fs * 0.35;
@@ -335,7 +381,7 @@ fn marker(mark: &Mark, x: f64, y: f64, size: f64, paints: &Paints) -> String {
     let h = size / 2.0;
     match mark {
         Mark::Leaf(color) => format!(
-            r##"<use href="#ml" transform="translate({} {})scale({})" fill="{color}"/>"##,
+            r##"<use href="#ll" transform="translate({} {})scale({})" fill="{color}"/>"##,
             Num(x),
             Num(y + h),
             Num(size / 5.2)
@@ -376,7 +422,7 @@ fn marker(mark: &Mark, x: f64, y: f64, size: f64, paints: &Paints) -> String {
             paints.crimson
         ),
         Mark::Falling => format!(
-            r##"<use href="#ml" transform="translate({} {})rotate(140)scale({})" fill="{}"/>"##,
+            r##"<use href="#ll" transform="translate({} {})rotate(140)scale({})" fill="{}"/>"##,
             Num(x),
             Num(y - h * 0.4),
             Num(size / 5.6),

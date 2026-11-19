@@ -41,6 +41,9 @@ pub struct Extras {
     pub bloom: Option<u8>,
     /// Level 11 reached: drip irrigation, permanently.
     pub drip: bool,
+    /// Weekend work in the window: 1 from 3/7 of the contributions on
+    /// Saturday and Sunday, 2 from 4/7. An evenly spread week gives 2/7.
+    pub weekend: u8,
 }
 
 impl Extras {
@@ -71,7 +74,34 @@ impl Extras {
             level,
             bloom,
             drip: level >= 11,
+            weekend: weekend(timeline),
         }
+    }
+}
+
+/// Measures how much of the window's work falls on the weekend: 0 below
+/// 3/7, 1 from 3/7 and 2 from 4/7. Under 10 contributions you get 0.
+// Weekends by UTC date, the only date the snapshot keeps.
+fn weekend(timeline: &Timeline) -> u8 {
+    let (mut all, mut end) = (0.0, 0.0);
+    // The first day carries the strays folded into it: not that day's work.
+    for day in timeline
+        .window_days()
+        .filter(|d| Some(d.date) != timeline.first_active)
+    {
+        all += day.total;
+        if day.date.weekday() >= 5 {
+            end += day.total;
+        }
+    }
+    // Capped totals are fractions: a hair of slack keeps 3/7 and 4/7 exact.
+    let slack = 1e-9 * all;
+    if all < crate::timeline::SUSTAINED {
+        0
+    } else if 7.0 * end + slack >= 4.0 * all {
+        2
+    } else {
+        u8::from(7.0 * end + slack >= 3.0 * all)
     }
 }
 
@@ -164,6 +194,39 @@ mod tests {
         assert_eq!(roots(260), 5);
         assert_eq!(roots(520), 6);
         assert_eq!(roots(1040), 7);
+    }
+
+    /// 13 weeks to 2026-10-31 (a Saturday) with `week` contributions on
+    /// Monday to Friday and `end` on Saturday and Sunday, every week, after
+    /// a month of daily work in January, so the window holds no first day.
+    fn weeks(week: u32, end: u32) -> Timeline {
+        let observed: Date = "2026-10-31".parse().unwrap();
+        let january: Date = "2026-01-05".parse().unwrap();
+        let days: Vec<(Date, u32, &[(&str, u32)])> = (0..28)
+            .map(|i| (january.add_days(i), 3, &[][..]))
+            .chain(
+                (0..91)
+                    .map(|i| observed.add_days(-i))
+                    .rev()
+                    .map(|d| (d, if d.weekday() >= 5 { end } else { week }, &[][..])),
+            )
+            .filter(|d| d.1 > 0)
+            .collect();
+        Timeline::new(&crate::growth::testkit::snap(&days, observed))
+    }
+
+    #[test]
+    fn weekend_work_reaches_its_tiers() {
+        let weekend = |week, end| Extras::new(&weeks(week, end), 52).weekend;
+        // Evenly spread is 2/7 of the work on the weekend: nothing.
+        assert_eq!(weekend(3, 3), 0);
+        // 3/7 and up: x1.
+        assert_eq!(weekend(4, 8), 1);
+        // 4/7 and up: x2.
+        assert_eq!(weekend(3, 10), 2);
+        assert_eq!(weekend(0, 5), 2);
+        // Too little work to say.
+        assert_eq!(Extras::new(&empty(), 52).weekend, 0);
     }
 
     fn empty() -> Timeline {

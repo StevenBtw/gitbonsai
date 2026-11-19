@@ -68,6 +68,12 @@ pub struct Skeleton {
     /// The language that founded the trunk was dropped: a shari, a strip of
     /// dead wood up the main trunk, bleached this far (0 to 1).
     pub shari: Option<f64>,
+    /// How far a cascade's legacy trunk has turned to white deadwood, 0 to
+    /// 1 (kengai with a second language's living strand along it).
+    pub legacy_jin: f64,
+    /// The dropped languages whose dead wood the tree shows: a dead limb,
+    /// twig, stub or strand, or the shari. The legend names only these.
+    pub deadwood: std::collections::BTreeSet<String>,
 }
 
 /// The language that marks deadwood (jin) in the skeleton.
@@ -91,6 +97,21 @@ pub struct Cloud {
 }
 
 impl Skeleton {
+    /// Mirrors the skeleton about the pot's center line: wood, apex and clouds.
+    pub fn mirror(&mut self) {
+        let m = |x: &mut f64| *x = crate::style::CENTER_X - (*x - crate::style::CENTER_X);
+        for n in &mut self.nodes {
+            m(&mut n.p.0);
+        }
+        m(&mut self.apex.0);
+        for c in &mut self.clouds {
+            m(&mut c.c.0);
+            for p in &mut c.patches {
+                m(&mut p.0.0);
+            }
+        }
+    }
+
     /// The total contributions carried by each node: its own plus everything
     /// above it (the pipe model's flow).
     pub fn flows(&self) -> Vec<f64> {

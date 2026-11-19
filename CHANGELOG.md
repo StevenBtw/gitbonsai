@@ -2,6 +2,34 @@
 
 All notable changes to gitbonsai, a Japanese maple bonsai grown from GitHub activity. Any change to how a tree grows or looks is at least a minor version, because people notice their tree changing.
 
+## [0.4.0] - 2026-11-19
+
+Styles release: a tree's last three years now pick its style, and each of the five styles has its own shape. Every tree may change shape from 0.3.2; set `style` in `bonsai.toml` (or the action's `style` input) to keep one style.
+
+### Added
+
+- **The style comes from the last three years**: with no `style` set, steady work in one main language grows a formal upright (chokkan), new languages an informal upright (moyogi), pauses a slanting tree (shakan), and pauses with several languages a windswept one (fukinagashi). Recent months weigh more, so a tree eases from one style into the next.
+- **Kengai, the cascade**: steady work in a legacy language (COBOL, Fortran, Pascal, Perl and 19 others) grows a semi-cascade that leans over the rim of a deeper pot in flat pads, never below the pot. `style = "kengai"` sets it.
+- **A legacy trunk turns to white deadwood**: on a kengai tree with a second language's trunk, the legacy trunk whitens over a year and a half and stays full size as deadwood, with the living trunk running over it.
+- **A sprout for the first 60 contributions**: a shoot breaks the soil, two seed leaves open in the languages of the 2nd and 3rd contributions, and young leaf pairs follow in the two largest languages (private work in silver), before the seedling takes over at 60.
+- **A tree leans to its own side**: the rhythm of its first 60 contributions picks left or right (unless `[tree] wind` sets it), and the windswept, slanting and cascade styles follow it. A left tree is the right one's mirror image, and the side never changes after the 60th contribution.
+- **`explain` says where the style comes from**: the share of pauses, of work past one language and of legacy work, or that the style is configured.
+
+### Changed
+
+- **Steady years grow a formal upright**: a chokkan tree is a symmetric triangle in soft layers on a straight trunk, and from the fourth steady year on (120 or more active days each) its lower trunk and root flare thicken.
+- **Informal uprights bend deeper and slanting trees lean further**: moyogi trunks make deep S-bends, and shakan trunks lean about 25 degrees with roots braced on the uphill side.
+- **Windswept trees stream downwind**: the windward trunk curls in a C and carries its crown on the top arm, the downwind crown hangs lower with air above it, and low branches run level downwind.
+- **The pot sits on its table**: a soft shadow under the pot, the light from the upper left.
+- **The description names what the tree shows**: the SVG's description (and alt text) names the languages turned to deadwood ("C# turned to deadwood."), lists a small share of the leaves as "a bit of", and says "Mostly private work." when most recent work is private.
+- **The legend's leaf is a Japanese maple's**: five broad, pointed lobes joined halfway, the lowest pair held out sideways and the middle one shorter. The crown's leaves are unchanged.
+
+### Fixed
+
+- **The crown's shadow stays on the soil**: on a tree whose crown leans to one side it no longer reaches past the rim as a grey disc beside the pot.
+- **No branch ends blunt**: a thick branch end outside the leaves tapers on into the nearest foliage, and twigs no longer poke out through the far side of a cloud.
+- **Deadwood is named only where it shows**: the legend and the SVG's description name a dropped language only when the tree draws its dead wood, so a language dropped after a handful of contributions is no longer listed.
+
 ## [0.3.2] - 2026-11-19
 
 Release fix: 0.3.2 is 0.3.1 with its binaries. The v0.3.1 release on GitHub has none, so the action at `@v0.3.1` fails; use `@v0.3.2`.

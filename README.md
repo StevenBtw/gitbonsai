@@ -13,22 +13,30 @@ Grow a Japanese maple bonsai from your GitHub activity: an animated SVG for your
 
 A newcomer is a thin sprout; years of work make it short, thick and wide, the way a prize bonsai is. Your first language is the trunk; another that reaches a tenth of your work claims a strand of it, and the languages of your recent years share the crown, each in its color. Nothing is erased: the tree changes a little each month, and its trunk only grows.
 
+Unless you set a style, your last three years pick the shape: steady work in one language grows a formal upright (chokkan), new languages an informal upright (moyogi), pauses a slanting tree (shakan), pauses with several languages a windswept one (fukinagashi), and steady work in a legacy language such as COBOL or Fortran a cascade (kengai).
+
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/row-dark.svg" />
-    <img src="assets/row-light.svg" width="100%" alt="Five bonsai at one scale: a simulated newcomer sprout, then the trees of StevenBtw, tj, torvalds and steipete" />
+    <source media="(prefers-color-scheme: dark)" srcset="assets/row-top-dark.svg" />
+    <img src="assets/row-top-light.svg" width="87%" alt="Four bonsai at one scale: a simulated sprout three days in and the same account months later, then the trees of jacobwilliams and StevenBtw" />
+  </picture>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/row-bottom-dark.svg" />
+    <img src="assets/row-bottom-light.svg" width="100%" alt="Three more bonsai at the same scale: the trees of tj, torvalds and steipete" />
   </picture>
 </p>
 
-From left:
+From top left:
 
-- **Newcomer** (simulated): a thin sprout, a few months in.
-- **[@StevenBtw](https://github.com/StevenBtw)**: 9 years; Rust on its own strand.
-- **[@tj](https://github.com/tj)**: 19 years; resting since 2021, bare for the winter.
-- **[@torvalds](https://github.com/torvalds)**: 16 years of C; one steady trunk.
-- **[@steipete](https://github.com/steipete)**: 17 years; new languages on new strands.
+- **Sprout** (simulated): three days and 12 contributions in, its seed leaves still open.
+- **Newcomer**: the same account a few months in, a thin seedling.
+- **[@jacobwilliams](https://github.com/jacobwilliams)**: 13 years, mostly Fortran; a cascade over the rim.
+- **[@StevenBtw](https://github.com/StevenBtw)**: 9 years of Python and Rust; quiet summers swept it windswept.
+- **[@tj](https://github.com/tj)**: 19 years; long pauses slant it, and resting since 2021, bare for the winter.
+- **[@torvalds](https://github.com/torvalds)**: 16 years of C every week; a thick formal upright.
+- **[@steipete](https://github.com/steipete)**: 17 years; new languages on new strands, its crown starting to bend downwind.
 
-The four real trees are grown from their public GitHub activity with `gitbonsai collect <login>` and `gitbonsai render`. Look closely: a tree may hide a few small surprises of its own.
+The five real trees are grown from their public GitHub activity with `gitbonsai collect <login>` and `gitbonsai render`. Look closely: a tree may hide a few small surprises of its own.
 
 <details>
 <summary>What every part shows</summary>
@@ -52,6 +60,7 @@ The four real trees are grown from their public GitHub activity with `gitbonsai 
 | Falling leaves | You crossed a level this week |
 | Moss | Your current weekly streak |
 | The pot | Your longest streak |
+| The shape | Your last three years: steady, new languages, pauses, or a legacy language |
 
 </details>
 
@@ -60,7 +69,7 @@ The four real trees are grown from their public GitHub activity with `gitbonsai 
 Add the action to a weekly workflow in your profile repository (`<you>/<you>`); [examples/profile-workflow.yml](examples/profile-workflow.yml) is a complete one to copy to `.github/workflows/bonsai.yml`:
 
 ```yaml
-- uses: StevenBtw/gitbonsai@v0.3.2
+- uses: StevenBtw/gitbonsai@v0.4.0
   with:
     output-dir: assets   # bonsai-light.svg and bonsai-dark.svg
     legend: left         # optional: off (default), left or right

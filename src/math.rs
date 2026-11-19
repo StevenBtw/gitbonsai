@@ -22,18 +22,6 @@ pub fn ln(x: f64) -> f64 {
     libm::log(x)
 }
 
-/// The base-2 logarithm.
-#[inline]
-pub fn log2(x: f64) -> f64 {
-    libm::log2(x)
-}
-
-/// The base-10 logarithm.
-#[inline]
-pub fn log10(x: f64) -> f64 {
-    libm::log10(x)
-}
-
 /// `e` to the power `x`.
 #[inline]
 pub fn exp(x: f64) -> f64 {
@@ -95,7 +83,7 @@ pub fn wrap_degrees(degrees: f64) -> f64 {
 }
 
 /// The smallest distance between two angles in degrees, in `[0, 180]`.
-#[inline]
+#[cfg(test)]
 pub fn angle_between(a: f64, b: f64) -> f64 {
     let d = wrap_degrees(a - b);
     if d > 180.0 { 360.0 - d } else { d }

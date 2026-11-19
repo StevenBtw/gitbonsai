@@ -51,6 +51,7 @@ pub mod rng;
 pub mod row;
 pub mod scene;
 pub mod snapshot;
+pub mod sprout;
 pub mod style;
 pub mod timeline;
 
@@ -126,10 +127,15 @@ impl Bonsai {
             Some(date) => snapshot.truncated(date),
             None => snapshot.clone(),
         };
-        let leader = Leader::new(config.tree.style, snapshot.account_id, config.tree.wind);
+        let wind = config.tree.wind;
+        let side = crate::style::side(&snapshot.days);
+        let leader = match config.tree.style {
+            Some(style) => Leader::new(style, wind, side),
+            None => Leader::mixed(crate::style::Mix::of(&snapshot), wind, side),
+        };
         let timeline = Timeline::new(&snapshot);
         let periods = config.private_periods();
-        let (past, recent, leaves) = past_reach(&snapshot, &periods);
+        let (past, recent, leaves) = past_reach(&snapshot, &periods, config.tree.style);
         // The leaves follow the work half at once, half as the last two
         // months saw it.
         let (window, fullness) = settle_leaves(
@@ -228,27 +234,52 @@ impl Bonsai {
             0 => "just planted".to_string(),
             weeks => format!("grown over {}", legend::age(weeks)),
         };
+        let kind = if sprout::is_sprout(self) {
+            "sprout"
+        } else {
+            "bonsai"
+        };
         let mut text = format!(
-            "Japanese maple bonsai {grown}, level {}.",
+            "Japanese maple {kind} {grown}, level {}.",
             self.extras.level
         );
+        // The first contribution is a shoot still in its seed coat.
+        if sprout::count(self).round() < 2.0 {
+            text.push_str(" A shoot in its seed coat.");
+            return text;
+        }
         let mut ranked: Vec<(&String, &f64)> = self.window.by_language.iter().collect();
         ranked.sort_by(|a, c| c.1.total_cmp(a.1).then(a.0.cmp(c.0)));
-        let top: Vec<&str> = ranked.iter().take(3).map(|(l, _)| l.as_str()).collect();
-        if !top.is_empty() {
-            let _ = write!(text, " Leaves of {}.", top.join(", "));
+        let leaves = self.window.total.max(1e-9);
+        // After the first, a language under 15% of the leaves is "a bit of".
+        let (main, bit): (Vec<_>, Vec<_>) = ranked
+            .iter()
+            .take(3)
+            .enumerate()
+            .partition(|(i, (_, v))| *i == 0 || **v / leaves >= 0.15);
+        let main: Vec<&str> = main.iter().map(|(_, (l, _))| l.as_str()).collect();
+        let bit: Vec<&str> = bit.iter().map(|(_, (l, _))| l.as_str()).collect();
+        if !main.is_empty() {
+            let _ = write!(text, " Leaves of {}", main.join(", "));
+            if !bit.is_empty() {
+                let _ = write!(text, ", a bit of {}", and_list(&bit));
+            }
+            text.push('.');
         }
-        let jin = self
+        if self.window.unattributed > 0.5 * self.window.total {
+            text.push_str(" Mostly private work.");
+        }
+        // Only dead wood the tree shows, as in the legend.
+        let jin: Vec<&str> = self
             .states
-            .values()
-            .filter(|s| **s == LanguageState::Jin)
-            .count();
-        if jin > 0 {
-            let _ = write!(
-                text,
-                " {} turned to deadwood.",
-                plural(jin, "language has", "languages have")
-            );
+            .iter()
+            .filter(|(l, s)| {
+                **s == LanguageState::Jin && self.skeleton.deadwood.contains(l.as_str())
+            })
+            .map(|(l, _)| l.as_str())
+            .collect();
+        if !jin.is_empty() {
+            let _ = write!(text, " {} turned to deadwood.", and_list(&jin));
         }
         if self.dormant() {
             text.push_str(" Dormant, waiting for spring.");
@@ -257,17 +288,13 @@ impl Bonsai {
     }
 }
 
-fn count_word(n: usize) -> String {
-    const WORDS: [&str; 10] = [
-        "No", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine",
-    ];
-    WORDS
-        .get(n)
-        .map_or_else(|| n.to_string(), |w| (*w).to_string())
-}
-
-fn plural(n: usize, one: &str, many: &str) -> String {
-    format!("{} {}", count_word(n), if n == 1 { one } else { many })
+/// Joins `items` the way a sentence lists them: "A", "A and B", "A, B and C".
+fn and_list(items: &[&str]) -> String {
+    match items {
+        [] => String::new(),
+        [one] => (*one).to_string(),
+        [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
+    }
 }
 
 /// Half `window` and `fullness`, half the average of `past` months'.
@@ -330,6 +357,7 @@ fn mean_leaves(all: &[Leaves]) -> Option<Leaves> {
 fn past_reach(
     snapshot: &Snapshot,
     periods: &[(Date, Date, Vec<String>)],
+    style: Option<crate::config::Style>,
 ) -> (
     growth::dome::Reach,
     Option<growth::dome::Recent>,
@@ -340,7 +368,8 @@ fn past_reach(
     use std::sync::{Mutex, OnceLock};
     // shortcut: a process-wide memo that is cleared whole past 100 000
     // months; enough for a gallery or test run, revisit for a server.
-    type Month = (Option<(Reach, Recent)>, Leaves);
+    // The month's measures, leaves and how formal upright it stood.
+    type Month = (Option<(Reach, Recent)>, Leaves, f64);
     static SEEN: OnceLock<Mutex<HashMap<(u64, i32), Month>>> = OnceLock::new();
     let seen = SEEN.get_or_init(Mutex::default);
     let Some(first) = snapshot.first_active() else {
@@ -350,7 +379,7 @@ fn past_reach(
     let folded = snapshot.with_start();
     let mut hash = rng::siphash13(
         format!(
-            "{}/{}/{periods:?}/{:?}",
+            "{}/{}/{periods:?}/{:?}/{style:?}",
             snapshot.account_id, snapshot.schema, folded.start
         )
         .as_bytes(),
@@ -360,6 +389,9 @@ fn past_reach(
     let mut out = Reach::default();
     let mut months: Vec<Recent> = Vec::new();
     let mut leaves: Vec<Leaves> = Vec::new();
+    // The month before's style too: a trunk thickened over a month in one
+    // style keeps that girth as the next month starts in another.
+    let mut chokkan_before = 0.0_f64;
     for no in (y * 12 + m.cast_signed())..i32::MAX {
         let Some(day) = Date::from_ymd(no / 12, (no % 12 + 1).cast_unsigned(), 1) else {
             break;
@@ -374,12 +406,20 @@ fn past_reach(
         hash = rng::siphash13(&bytes);
         let known = seen.lock().ok().and_then(|m| m.get(&(hash, no)).cloned());
         let month: Month = known.unwrap_or_else(|| {
-            let then = Timeline::new(&folded.cut(day));
-            let tree = growth::life::Life::of(&then, periods)
-                .and_then(|life| growth::dome::measures(&life, snapshot.account_id));
+            let cut = folded.cut(day);
+            // How formal upright that month stood, as its style then.
+            let chokkan = style.map_or_else(
+                || crate::style::Mix::of(&cut).weight(crate::config::Style::Chokkan),
+                |s| f64::from(u8::from(s == crate::config::Style::Chokkan)),
+            );
+            let then = Timeline::new(&cut);
+            let tree = growth::life::Life::of(&then, periods).and_then(|life| {
+                growth::dome::measures(&life, snapshot.account_id, chokkan.max(chokkan_before))
+            });
             let month = (
                 tree,
                 (Window::of(&then), foliage::fullness_by_language(&then)),
+                chokkan,
             );
             if let Ok(mut m) = seen.lock() {
                 if m.len() > 100_000 {
@@ -389,7 +429,8 @@ fn past_reach(
             }
             month
         });
-        let (tree, leaf) = month;
+        let (tree, leaf, chokkan) = month;
+        chokkan_before = chokkan;
         if let Some((r, recent)) = tree {
             // As that month showed it: settled by its own three before.
             let before = Recent::mean(&months[months.len().saturating_sub(3)..]);

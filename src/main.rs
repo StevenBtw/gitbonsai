@@ -36,7 +36,7 @@ struct TreeArgs {
     #[arg(long)]
     config: Option<PathBuf>,
 
-    /// Override [tree] style: chokkan, moyogi, shakan, fukinagashi
+    /// Override [tree] style: chokkan, moyogi, shakan, fukinagashi, kengai
     #[arg(long)]
     style: Option<String>,
 
@@ -143,6 +143,10 @@ enum Command {
         /// Output folder
         #[arg(long, default_value = "bonsai")]
         output_dir: PathBuf,
+
+        /// Frame trees under a year old no wider than they are tall, so they take less room
+        #[arg(long)]
+        tight: bool,
     },
 
     /// Write a synthetic snapshot, or list them
@@ -297,6 +301,7 @@ fn run(cli: Cli) -> Result<()> {
             trees,
             config,
             output_dir,
+            tight,
         } => {
             let config = config_file(config.as_deref(), &mut |s| status(s))?;
             let mut grown = Vec::new();
@@ -312,7 +317,16 @@ fn run(cli: Cli) -> Result<()> {
             for theme in Theme::ALL {
                 let svgs: Vec<(String, String)> = grown
                     .iter()
-                    .map(|(name, b)| (name.clone(), render::svg(b, &config, theme)))
+                    .map(|(name, b)| {
+                        let svg = if tight && b.timeline.age_weeks() < 52 {
+                            let (x, y, w, h) = render::frame(b, &config);
+                            let [x, y, w, h] = gitbonsai::row::tight([x, y, w, h]);
+                            render::svg_in(b, &config, theme, Some((x, y, w, h)))
+                        } else {
+                            render::svg(b, &config, theme)
+                        };
+                        (name.clone(), svg)
+                    })
                     .collect();
                 output::write_atomic(
                     &output_dir.join(format!("row-{}.svg", theme.name())),
@@ -377,7 +391,7 @@ fn config_file(path: Option<&Path>, status: &mut dyn FnMut(&str)) -> Result<Conf
 fn load_config(args: &TreeArgs, snapshot: &Snapshot, status: &dyn Fn(&str)) -> Result<Config> {
     let mut config = config_file(args.config.as_deref(), &mut |s| status(s))?;
     if let Some(style) = &args.style {
-        config.tree.style = style.parse::<Style>()?;
+        config.tree.style = Some(style.parse::<Style>()?);
     }
     for warning in config.warnings(snapshot) {
         status(&format!("warning: {warning}"));
@@ -514,7 +528,7 @@ fn gallery(dir: &Path, snapshots: &[PathBuf], config: &Config) -> Result<()> {
         let mut styles = Vec::new();
         for style in Style::ALL {
             let mut config = config.clone();
-            config.tree.style = style;
+            config.tree.style = Some(style);
             let bonsai = Bonsai::grow(snapshot, &config, None);
             let base = format!("{slug}-{style}");
             write_pair(dir, &base, &bonsai, &config)?;
@@ -554,7 +568,11 @@ fn gallery(dir: &Path, snapshots: &[PathBuf], config: &Config) -> Result<()> {
         }
         let mut rows = vec![("Styles".to_string(), styles)];
         if stages.len() > 1 {
-            rows.push((format!("Growth, {}", config.tree.style), stages));
+            let style = config
+                .tree
+                .style
+                .map_or_else(|| "style from history".to_string(), |s| s.to_string());
+            rows.push((format!("Growth, {style}"), stages));
         }
         sections.push(html::Section {
             title: title.clone(),

@@ -157,9 +157,32 @@ pub fn spec(text: &str) -> Result<(String, String, Option<Date>), Error> {
     Ok((name.to_string(), source.to_string(), day))
 }
 
+/// Tightens a tree's frame `vb` for a row: a frame padded out to its
+/// minimum width shrinks to a square around its middle, so a small tree
+/// takes no more room than it fills. You get wider and taller frames back
+/// as they are.
+pub fn tight(vb: [f64; 4]) -> [f64; 4] {
+    const PADDED: f64 = 328.0;
+    if vb[2] > PADDED || vb[2] <= vb[3] {
+        return vb;
+    }
+    [vb[0] + (vb[2] - vb[3]) / 2.0, vb[1], vb[3], vb[3]]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_padded_frame_tightens_to_a_square_around_its_middle() {
+        assert_eq!(
+            tight([96.0, 272.0, 328.0, 184.0]),
+            [168.0, 272.0, 184.0, 184.0]
+        );
+        // A wide tree, or a tall one, keeps its frame.
+        assert_eq!(tight([24.0, 0.0, 416.0, 320.0]), [24.0, 0.0, 416.0, 320.0]);
+        assert_eq!(tight([0.0, 0.0, 320.0, 320.0]), [0.0, 0.0, 320.0, 320.0]);
+    }
     use crate::{Bonsai, Config, fixtures, render};
 
     fn tree(name: &str) -> String {

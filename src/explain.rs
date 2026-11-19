@@ -47,6 +47,21 @@ pub fn report(b: &Bonsai) -> String {
         if age == 1 { "week" } else { "weeks" },
         f64::from(age) / 52.18
     );
+    match b.leader.mix {
+        Some(m) => {
+            let _ = writeln!(
+                out,
+                "  style               {} from the last three years: pauses {}, past one language {}, legacy {}",
+                b.leader.style,
+                pct(m.irregular + 0.0),
+                pct(m.spread + 0.0),
+                pct(m.legacy + 0.0)
+            );
+        }
+        None => {
+            let _ = writeln!(out, "  style               {} (configured)", b.leader.style);
+        }
+    }
     let _ = writeln!(
         out,
         "  height              {:.1} units (age shows as girth and spread)",
@@ -57,6 +72,13 @@ pub fn report(b: &Bonsai) -> String {
         "  capped lifetime     {:.0}",
         b.timeline.capped_lifetime()
     );
+    if crate::sprout::is_sprout(b) {
+        let _ = writeln!(
+            out,
+            "  sprout              drawn leaf by leaf until {:.0} contributions",
+            crate::sprout::SPROUT_UNTIL
+        );
+    }
     let _ = writeln!(
         out,
         "  trunk base radius   {:.2} (Murray's law on {:.0} flowing through it)",

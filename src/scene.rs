@@ -212,10 +212,14 @@ impl Scene {
                 starts.extend_from_slice(&kids[1..]);
                 cur = kids[0];
             }
-            // Deadwood is marked in the skeleton; the trunk never is.
+            // Deadwood is marked in the skeleton; the trunk never is, except a
+            // cascade's legacy trunk, which turns to white deadwood.
             let last = chain[chain.len() - 1];
-            let jin = (chain[0] != 0 && sk.nodes[last].language.as_deref() == Some(JIN))
-                .then_some(sk.nodes[last].bleach);
+            let jin = if s0 == 0 {
+                (sk.legacy_jin > 0.0).then_some(sk.legacy_jin)
+            } else {
+                (sk.nodes[last].language.as_deref() == Some(JIN)).then_some(sk.nodes[last].bleach)
+            };
             let mut wood: Vec<(V3, f64)> = chain
                 .iter()
                 .map(|&i| {
@@ -360,8 +364,160 @@ impl Scene {
         if !sk.dormant {
             cloud_leaves(b, &mut scene);
         }
+        // Wood cut back can bare an end it hid: a few passes settle it.
+        for _ in 0..3 {
+            if !lead_on(&mut scene) {
+                break;
+            }
+        }
         scene
     }
+}
+
+/// Wood thicker than this (world units) is no twig: its end must not show.
+pub const TWIG: f64 = 1.5;
+
+/// The steepest a living end may taper outside the leaves: girth lost per
+/// unit of length.
+pub const LEAD_SLOPE: f64 = 0.15;
+
+/// How deep `e` lies in the leaves of `pads`: 0 at a pad's center, 1 on its
+/// rim, past 1 outside; a dome has no leaves below its flat bottom.
+pub fn leaf_depth(pads: &[(V3, f64, f64)], e: V3) -> f64 {
+    pads.iter()
+        .filter(|(c, ..)| e[1] >= c[1])
+        .map(|(c, rx, ry)| (math::sq((e[0] - c[0]) / rx) + math::sq((e[1] - c[1]) / ry)).sqrt())
+        .fold(f64::INFINITY, f64::min)
+}
+
+/// Whether a disc of radius `r` at `e` lies wholly within wood of `chains`
+/// other than chain `ci`, so wood ending there doesn't show.
+pub fn in_wood(chains: &[Chain], ci: usize, e: V3, r: f64) -> bool {
+    chains.iter().enumerate().any(|(k, (w, _))| {
+        k != ci
+            && w.iter()
+                .any(|(p, rp)| (math::sq(p[0] - e[0]) + math::sq(p[1] - e[1])).sqrt() + r <= *rp)
+    })
+}
+
+/// Finds where a leader from `s`, running along `t`, reaches into the
+/// leaves: half way into the leaves, above the bottom, of the pad that is
+/// near and lies along the wood's own line. `None` when no pad is in reach. Preferring the line makes two
+/// pads about as near rarely trade places from one month to the next; a
+/// leader ends inside one pad, so it can't share between them.
+fn leader_aim(s: V3, t: V3, pads: &[(V3, f64, f64)]) -> Option<V3> {
+    // How far it reaches for leaves, and how many units nearer a pad counts
+    // for lying straight ahead.
+    const REACH: f64 = 40.0;
+    const AHEAD: f64 = 10.0;
+    let gap =
+        |a: V3| (math::sq(a[0] - s[0]) + math::sq(a[1] - s[1]) + math::sq(a[2] - s[2])).sqrt();
+    pads.iter()
+        .map(|(c, rx, ry)| {
+            let (mut u, mut w) = ((s[0] - c[0]) / rx, ((s[1] - c[1]) / ry).max(0.25));
+            let l = (u * u + w * w).sqrt();
+            if l > 0.5 {
+                (u, w) = (u * 0.5 / l, w * 0.5 / l);
+            }
+            let a = [c[0] + u * rx, c[1] + w * ry, c[2]];
+            let d = gap(a);
+            let along = v_dot(v_norm([a[0] - s[0], a[1] - s[1], 0.0]), t);
+            (a, d, d - AHEAD * along)
+        })
+        .filter(|(_, d, _)| *d <= REACH)
+        .min_by(|a, b| a.2.total_cmp(&b.2))
+        .map(|(a, ..)| a)
+}
+
+/// No living wood ends blunt. Shaping moves wood and clouds apart, and a tip
+/// carrying little thins only as fast as wood may below a fork, so a thick
+/// limb, strand or trunk top could stop short of the leaves in a few units,
+/// like a sawn-off stump. Where wood thins faster than [`LEAD_SLOPE`] toward
+/// an end outside the leaves, it runs on instead from where it is thickest
+/// as a leader, tapering gently into the nearest leaves; on a bare tree, or
+/// with no leaves in reach, it tapers to a twig in the open. A twig that ran
+/// through the leaves and out the far side is cut back to them. Returns
+/// whether any wood changed.
+fn lead_on(scene: &mut Scene) -> bool {
+    // The tip a leader tapers to.
+    const TIP: f64 = 0.7;
+    // How far back from its end wood is judged: further down it may taper as
+    // it grew.
+    const BACK: f64 = 30.0;
+    let pads = &scene.pads;
+    let mut changed = false;
+    for ci in 0..scene.chains.len() {
+        let (wood, dead) = &scene.chains[ci];
+        let n = wood.len();
+        if dead.is_some() || n < 2 {
+            continue;
+        }
+        let (e, re) = wood[n - 1];
+        if leaf_depth(pads, e) <= 0.7 || in_wood(&scene.chains, ci, e, re) {
+            continue;
+        }
+        // Where the end's girth comes from: the point near it thickest less
+        // the gentle taper from there to the end.
+        let (mut arc, mut best) = (0.0, (f64::MIN, 0));
+        for j in (0..n).rev() {
+            if j + 1 < n {
+                let (a, b) = (wood[j].0, wood[j + 1].0);
+                arc += (math::sq(b[0] - a[0]) + math::sq(b[1] - a[1])).sqrt();
+            }
+            if arc > BACK {
+                break;
+            }
+            let shows = wood[j].1 - LEAD_SLOPE * arc;
+            if shows > best.0 {
+                best = (shows, j);
+            }
+        }
+        if best.0 <= TWIG {
+            // A twig that ran through leaves out into the open is cut back
+            // to where it leaves them.
+            if leaf_depth(pads, e) > 1.0
+                && let Some(k) = wood.iter().rposition(|(p, _)| leaf_depth(pads, *p) <= 0.9)
+                && k > 0
+            {
+                scene.chains[ci].0.truncate(k + 1);
+                changed = true;
+            }
+            continue;
+        }
+        let j = best.1;
+        let (s, r) = wood[j];
+        // Its line there, across the canvas.
+        let (a, b) = (wood[j.saturating_sub(1)].0, wood[(j + 1).min(n - 1)].0);
+        let t = v_norm([b[0] - a[0], b[1] - a[1], 0.0]);
+        // A little gentler than the steepest allowed, so it never reads blunt.
+        let slope = 0.8 * LEAD_SLOPE;
+        let gap =
+            |a: V3| (math::sq(a[0] - s[0]) + math::sq(a[1] - s[1]) + math::sq(a[2] - s[2])).sqrt();
+        // Near leaves it bends into them; else it tapers on along its line.
+        let to = leader_aim(s, t, pads).unwrap_or_else(|| v_add(s, v_scale(t, (r - TIP) / slope)));
+        let len = gap(to).max(1e-9);
+        // A curve that leaves along the wood's own line.
+        let ctrl = v_add(s, v_scale(t, 0.4 * len));
+        let steps = ((len / 2.5).ceil() as usize).clamp(2, 24);
+        let wood = &mut scene.chains[ci].0;
+        wood.truncate(j + 1);
+        let mut arc = 0.0;
+        for k in 1..=steps {
+            let f = k as f64 / steps as f64;
+            let p = v_add(
+                v_add(
+                    v_scale(s, math::sq(1.0 - f)),
+                    v_scale(ctrl, 2.0 * (1.0 - f) * f),
+                ),
+                v_scale(to, f * f),
+            );
+            let q = wood[wood.len() - 1].0;
+            arc += (math::sq(p[0] - q[0]) + math::sq(p[1] - q[1])).sqrt();
+            wood.push((p, (r - slope * arc).max(TIP)));
+        }
+        changed = true;
+    }
+    changed
 }
 
 /// A public language for a grey leaf: drawn with odds `odds` against
@@ -402,6 +558,8 @@ const PI_HALF: f64 = math::TAU / 4.0;
 fn cloud_leaves(b: &Bonsai, scene: &mut Scene) {
     let sk = &b.skeleton;
     let seed = b.account_id;
+    // A left tree's leaves lie as the right one's mirror image.
+    let side = b.leader.side;
     let seeds = samara_share(b.extras.level);
     let fresh_share = (b.last_week_total / (b.window.total.max(1.0) * 6.0)).min(0.15);
     let (s, c) = (math::sin(TILT), math::cos(TILT));
@@ -418,7 +576,7 @@ fn cloud_leaves(b: &Bonsai, scene: &mut Scene) {
             let f = j as f64 / (count - 1) as f64 * 2.0 - 1.0;
             let hj = hash01(seed ^ 0x10b, (ci * 10 + j) as i64);
             let mut l = cl.clone();
-            l.c.0 += f * (cl.rx - lrx);
+            l.c.0 += side * f * (cl.rx - lrx);
             l.c.1 += hash01(seed ^ 0x10c, (ci * 10 + j) as i64) * 4.0 - 2.0;
             l.z += (hj - 0.5) * cl.rz * 0.5;
             l.rx = lrx;
@@ -467,8 +625,11 @@ fn cloud_leaves(b: &Bonsai, scene: &mut Scene) {
                 dom.is_none(),
             ));
         }
-        scene.pads.push((c3, cl.rx, cl.ry));
-        if b.extras.drip && (li == 0 || lobes[li - 1].0 != *ci) {
+        if left > 0.02 {
+            scene.pads.push((c3, cl.rx, cl.ry));
+        }
+        // A lobe bare of leaves gets no tubing: it would end at nothing.
+        if left > 0.02 && b.extras.drip && (li == 0 || lobes[li - 1].0 != *ci) {
             // Tubing follows the wood from the cloud's nearest node down to
             // the soil, until it joins a line already laid.
             let d = |i: usize| {
@@ -508,7 +669,7 @@ fn cloud_leaves(b: &Bonsai, scene: &mut Scene) {
             }
             let r = (1.0 - y * y).sqrt();
             let th = math::rad(i as f64 * GOLDEN) + phase;
-            let u = [math::cos(th) * r, y.max(0.0), math::sin(th) * r];
+            let u = [side * math::cos(th) * r, y.max(0.0), math::sin(th) * r];
             if u[2] < -0.3 {
                 continue;
             }
@@ -563,4 +724,26 @@ fn cloud_leaves(b: &Bonsai, scene: &mut Scene) {
         }
     }
     scene.tufts = tufts;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Two pads about as near: the leader takes the one along its line, and
+    /// a small move of the wood keeps it there.
+    #[test]
+    fn a_leader_keeps_to_the_leaves_along_its_line() {
+        let pads = [
+            ([-19.0, 88.0, 0.0], 19.0, 8.8),
+            ([19.0, 88.0, 0.0], 19.0, 8.8),
+        ];
+        let up_right = v_norm([1.0, -1.0, 0.0]);
+        for x in [-3.0, -0.3, 0.0, 0.3, 3.0] {
+            let aim = leader_aim([x, 107.0, 0.0], up_right, &pads).unwrap();
+            assert!(aim[0] > 0.0, "at {x}: {aim:?}");
+        }
+        // Out of reach, it doesn't aim.
+        assert!(leader_aim([0.0, 188.0, 0.0], up_right, &pads).is_none());
+    }
 }

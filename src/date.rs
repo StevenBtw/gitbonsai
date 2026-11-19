@@ -55,11 +55,6 @@ impl Date {
         self.ymd().0
     }
 
-    /// Days since 1970-01-01.
-    pub fn days(self) -> i32 {
-        self.0
-    }
-
     /// The day `n` days later (earlier for negative `n`).
     #[must_use]
     pub fn add_days(self, n: i32) -> Self {
@@ -215,7 +210,7 @@ mod tests {
             let (y, m, dd) = date.ymd();
             assert_eq!(Date::from_ymd(y, m, dd), Some(date));
         }
-        assert_eq!(d("1970-01-01").days(), 0);
+        assert_eq!(d("1970-01-01"), Date(0));
         assert_eq!(d("2026-10-31").to_string(), "2026-10-31");
     }
 

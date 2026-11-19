@@ -21,6 +21,9 @@ function paint(): void {
   document.querySelectorAll<HTMLImageElement>("img[data-tree]").forEach((i) => {
     i.src = `${i.dataset.tree}-${theme()}.svg`;
   });
+  document.querySelectorAll<HTMLImageElement>("img[data-thumb]").forEach((i) => {
+    i.src = `${i.dataset.thumb}-${theme()}.png`;
+  });
   $("theme").setAttribute("aria-label", theme() === "dark" ? "Switch to light mode" : "Switch to dark mode");
   if (showing) showTree();
   if (cur) {
@@ -36,6 +39,145 @@ $("theme").addEventListener("click", () => {
   paint();
 });
 
+/* Hero gallery: the plate shows one tree, the row of thumbnails under it picks
+   which. The Showcase is in the page itself; plates.json adds the rest. */
+interface Plate {
+  id: string;
+  name: string;
+  /** The shape the SVG records: chokkan, moyogi, shakan, fukinagashi or kengai. */
+  style: string;
+  /** The ISO week the tree was observed. */
+  week: string;
+  /** The SVG's own description, for the alt text. */
+  alt: string;
+  /** The SVG's viewBox: x, y, width, height. */
+  box: [number, number, number, number];
+}
+const gallery = $("gallery");
+const heroImg = $<HTMLImageElement>("heroimg");
+const heroCanvas = $("herocanvas");
+let plates: Plate[] = [];
+const plateNo = (i: number): string => String(i + 1).padStart(2, "0");
+// Grow-in, once: the plates before the Showcase pass by, then it rests there.
+// Not with reduced motion, not when the page opens scrolled past the hero, and
+// never again once a visitor picks a plate.
+const growIn = !reduce && scrollY < 120;
+let touched = false;
+if (growIn) heroCanvas.classList.add("waiting");
+
+// Every tree sits on one canvas at one scale, the pot where the SVG puts it, so a
+// sprout is small next to a tree of eighteen years.
+function place(p: Plate, all: Plate[]): void {
+  const x0 = Math.min(...all.map((q) => q.box[0]));
+  const y0 = Math.min(...all.map((q) => q.box[1]));
+  const w = Math.max(...all.map((q) => q.box[0] + q.box[2])) - x0;
+  const h = Math.max(...all.map((q) => q.box[1] + q.box[3])) - y0;
+  heroCanvas.style.aspectRatio = `${w} / ${h}`;
+  heroImg.style.left = `${((p.box[0] - x0) / w) * 100}%`;
+  heroImg.style.top = `${((p.box[1] - y0) / h) * 100}%`;
+  heroImg.style.width = `${(p.box[2] / w) * 100}%`;
+}
+function showPlate(i: number): void {
+  const p = plates[i];
+  if (!p) return;
+  heroImg.dataset.tree = `hero/${p.id}`;
+  heroImg.src = `hero/${p.id}-${theme()}.svg`;
+  heroImg.alt = p.alt;
+  place(p, plates);
+  $("herono").textContent = plateNo(i);
+  $("herofor").textContent = p.name;
+  $("herostyle").textContent = p.style;
+  $("heroweek").textContent = p.week;
+  check(i);
+}
+/** Marks thumbnail `i` as the chosen radio, with the roving tab stop on it. */
+function check(i: number): void {
+  gallery.querySelectorAll<HTMLElement>(".thumb").forEach((b, j) => {
+    b.setAttribute("aria-checked", String(j === i));
+    b.tabIndex = j === i ? 0 : -1;
+  });
+}
+for (const ev of ["pointerdown", "keydown"]) {
+  gallery.addEventListener(ev, () => {
+    touched = true;
+    heroCanvas.classList.remove("waiting");
+  });
+}
+/** Shows the plates before `home` in turn, then `home`; stops as soon as a visitor picks one. */
+async function playGrowIn(home: number): Promise<void> {
+  const seq = [...plates.keys()].slice(0, home + 1);
+  const ready = seq.map((i) => {
+    const img = new Image();
+    img.src = `hero/${plates[i]?.id}-${theme()}.svg`;
+    return img.decode().catch(() => {});
+  });
+  // Each tree is fetched before it shows; a slow line just starts on the Showcase.
+  const loaded = await Promise.race([
+    Promise.all(ready).then(() => true),
+    new Promise<boolean>((r) => setTimeout(() => r(false), 2500)),
+  ]);
+  heroCanvas.classList.remove("waiting");
+  if (touched) return;
+  if (!loaded) return showPlate(home);
+  for (const i of seq) {
+    if (touched) return;
+    showPlate(i);
+    if (i < home) await new Promise((r) => setTimeout(r, 900));
+  }
+}
+gallery.addEventListener("keydown", (e) => {
+  const at = [...gallery.children].findIndex((b) => b.getAttribute("aria-checked") === "true");
+  const n = plates.length;
+  const to =
+    e.key === "ArrowRight" || e.key === "ArrowDown" ? (at + 1) % n
+    : e.key === "ArrowLeft" || e.key === "ArrowUp" ? (at + n - 1) % n
+    : e.key === "Home" ? 0
+    : e.key === "End" ? n - 1
+    : -1;
+  if (to < 0) return;
+  e.preventDefault();
+  showPlate(to);
+  (gallery.children[to] as HTMLElement | undefined)?.focus();
+});
+fetch("plates.json")
+  .then((r) => r.json() as Promise<Plate[]>)
+  .then(
+    (all) => {
+      plates = all;
+      plates.forEach((p, i) => {
+        const b = document.createElement("button");
+        b.className = "thumb";
+        b.type = "button";
+        b.setAttribute("role", "radio");
+        b.title = b.ariaLabel = `Plate ${plateNo(i)}: ${p.name}, ${p.style}`;
+        const img = document.createElement("img");
+        img.dataset.thumb = `hero/${p.id}-thumb`;
+        img.src = `${img.dataset.thumb}-${theme()}.png`;
+        img.alt = "";
+        const no = document.createElement("span");
+        no.className = "no";
+        no.textContent = plateNo(i);
+        b.append(img, no);
+        b.addEventListener("click", () => showPlate(i));
+        // Fetch the full tree as soon as a thumbnail is pointed at, so the plate swaps at once.
+        const warm = (): void => void (new Image().src = `hero/${p.id}-${theme()}.svg`);
+        b.addEventListener("pointerenter", warm, { once: true });
+        b.addEventListener("focus", warm, { once: true });
+        gallery.appendChild(b);
+      });
+      heroCanvas.classList.add("scaled");
+      $("yourno").textContent = plateNo(plates.length);
+      const home = Math.max(0, plates.findIndex((p) => p.id === "showcase"));
+      // A checked plate and one tab stop before the row is shown, also during the grow-in.
+      check(home);
+      gallery.hidden = false;
+      if (growIn) void playGrowIn(home);
+      else showPlate(home);
+    },
+    // Without plates.json the hero keeps the Showcase from the page.
+    () => heroCanvas.classList.remove("waiting"),
+  );
+
 /* Timelapse player: one MP4 per tree and theme, frames on a shared canvas */
 interface Frame {
   /** ISO week, as the SVG records it. */
@@ -50,14 +192,14 @@ interface Timelapse {
   frames: Frame[];
 }
 type Example = [id: string, name: string, kind: "simulated" | "real", blurb: string];
-// By size, smallest first; Showcase still opens first (see the frames fetch).
+// The Showcase on top, opened on load (see the frames fetch); the real
+// profiles under it by total contributions.
 const EX: Example[] = [
-  ["newcomer", "Newcomer", "simulated", "A few months in, two languages: a thin sprout in its first pot."],
-  ["stevenbtw", "@StevenBtw", "real", "Around 9 years; mainly Python and Rust, Rust coming away from the trunk on its own strand."],
   ["showcase", "Showcase", "simulated", "Fourteen years; C# swapped for Java, early private work, then Python, Rust and TypeScript."],
-  ["tj", "@tj", "real", "Around 19 years; JavaScript, later Go; resting since 2021, so bare for the winter."],
-  ["torvalds", "@torvalds", "real", "Around 16 years of C, every single week; one steady trunk."],
-  ["steipete", "@steipete", "real", "Around 17 years; a recent burst of work, its newer languages on their own strands."],
+  ["stevenbtw", "@StevenBtw", "real", "Around 9 years; Python and Rust on two trunks. Quiet summers without commits swept it to one side: windswept."],
+  ["tj", "@tj", "real", "Around 19 years; JavaScript, later Go. Long pauses slant it; resting since 2021, so bare for the winter."],
+  ["torvalds", "@torvalds", "real", "Around 16 years of C, every single week: a thick, symmetric formal upright."],
+  ["steipete", "@steipete", "real", "Around 17 years; TypeScript is the trunk, with Swift on its own strand. Quiet spells between bursts of work start to bend its crown downwind, an upright turning windswept."],
 ];
 const PLAY = "M8 5.5v13l10.5-6.5z";
 const PAUSE = "M7 5h3.5v14H7zM13.5 5H17v14h-3.5z";
@@ -178,9 +320,6 @@ fetch("frames.json")
   .then(
     (f) => {
       FRAMES = f;
-      const s = f.showcase?.frames;
-      const week = s?.[s.length - 1]?.wk;
-      if (week) $("heroweek").textContent = week;
       select("showcase");
     },
     () => {

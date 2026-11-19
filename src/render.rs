@@ -200,11 +200,6 @@ impl PathData {
         self
     }
 
-    /// Whether nothing was drawn.
-    pub fn is_empty(&self) -> bool {
-        self.d.is_empty()
-    }
-
     /// The `d` attribute's value.
     pub fn as_str(&self) -> &str {
         &self.d
@@ -223,7 +218,9 @@ const ANIMATION_CSS: &str = concat!(
     ".fs{transform-box:fill-box;transform-origin:50% 0;animation:fs 2.4s ease-in-out infinite alternate}@keyframes fs{from{transform:rotate(-10deg)}to{transform:rotate(10deg)}}",
     ".fw{transform-box:fill-box;transform-origin:50% 0;animation:fw 5.2s ease-in-out infinite alternate}@keyframes fw{from{transform:rotate(-6deg)}to{transform:rotate(6deg)}}",
     ".ff{animation:ff 9s ease-in-out infinite}@keyframes ff{0%,100%{transform:translate(0,0)}25%{transform:translate(7px,-4px)}50%{transform:translate(2px,-10px)}75%{transform:translate(-6px,-3px)}}",
-    "@media (prefers-reduced-motion:reduce){.mf{animation:none;opacity:0}.tw,.dp,.gl,.fs,.fw,.ff{animation:none}}",
+    // A sprout's leaves flutter about their stalks, at two tempos.
+    ".lf{animation:lf 3.4s ease-in-out infinite alternate}.lg{animation:lf 4.6s ease-in-out infinite alternate-reverse}@keyframes lf{from{transform:rotate(-5deg)}to{transform:rotate(5deg)}}",
+    "@media (prefers-reduced-motion:reduce){.mf{animation:none;opacity:0}.tw,.dp,.gl,.fs,.fw,.ff,.lf,.lg{animation:none}}",
     "</style>",
 );
 
@@ -243,6 +240,8 @@ const SYMBOLS: &str = concat!(
     r##"<g id="yinyang"><g transform="translate(0 -1.6) scale(1 .55)"><path d="M0-4.4A4.4 4.4 0 0 1 0 4.4A2.2 2.2 0 0 1 0 0A2.2 2.2 0 0 0 0-4.4Z" fill="#f1eee6" stroke="#5a4632" stroke-width=".45"/><path d="M0-4.4A4.4 4.4 0 0 0 0 4.4A2.2 2.2 0 0 0 0 0A2.2 2.2 0 0 1 0-4.4Z" fill="#26272a" stroke="#5a4632" stroke-width=".45"/></g><path d="M-3.6-2.6Q-2.4-3.6-.8-3.4" fill="none" stroke="#fff" stroke-width=".4" opacity=".5"/><path d="M1.2-3.2Q2.6-3.2 3.4-2.2" fill="none" stroke="#fff" stroke-width=".4" opacity=".7"/></g>"##,
     r##"<g id="cranes"><g><path d="M-4.6 0v3.6M-3.4 0v3.6" stroke="#2a2a2a" stroke-width=".35"/><ellipse cx="-4" cy="-1.8" rx="3.2" ry="2" fill="#f7f5ee"/><path d="M-7.2-1.6L-8.6-.4L-6.6-.8Z" fill="#1d1d1d"/><path d="M-2.2-2.8Q-1.2-6-1.4-9" stroke="#1d1d1d" stroke-width=".9" fill="none"/><circle cx="-1.4" cy="-9.2" r=".95" fill="#f7f5ee"/><circle cx="-1.3" cy="-9.9" r=".45" fill="#d6332a"/><path d="M-.6-9.3L1.6-8.9L-.6-8.8Z" fill="#9a8a5a"/></g><g><path d="M4.6 0v3.6M3.4 0v3.6" stroke="#2a2a2a" stroke-width=".35"/><ellipse cx="4" cy="-1.8" rx="3.2" ry="2" fill="#f7f5ee"/><path d="M7.2-1.6L8.6-.4L6.6-.8Z" fill="#1d1d1d"/><path d="M2.2-2.8Q1.2-5.6 1.6-8.4" stroke="#1d1d1d" stroke-width=".9" fill="none"/><circle cx="1.6" cy="-8.6" r=".95" fill="#f7f5ee"/><circle cx="1.5" cy="-9.3" r=".45" fill="#d6332a"/><path d="M.8-8.7L-1.4-8.3L.8-8.2Z" fill="#9a8a5a"/></g></g>"##,
     r##"<g id="taketombo"><path d="M0 0V8" stroke="#b08a52" stroke-width=".9" stroke-linecap="round"/><path d="M-7.5-.9Q0-2.2 7.5-.9Q7.8.1 7.5.5Q0-.6-7.5.5Q-7.8.1-7.5-.9Z" fill="#c9a66b"/><circle r=".9" fill="#8a6a3a"/></g>"##,
+    r##"<g id="kabuto"><path d="M-6.4 0H6.4L5.8-2H-5.8Z"/><path d="M-5.8-2L-4.4-3.6L0-8.8L4.4-3.6L5.8-2Z"/><path d="M-4.4-3.6L-7.9-8.6L-6.1-3.5ZM4.4-3.6L7.9-8.6L6.1-3.5Z"/><path d="M0-8.8L4.4-3.6L5.8-2H0ZM4.4-3.6L7.9-8.6L6.1-3.5ZM0 0H6.4L5.8-2H0Z" fill="#000" opacity=".16"/><path d="M-6.4 0H6.4L5.8-2H-5.8Z" fill="#fff" opacity=".14"/><path d="M-2.3-2H2.3L0-5.9Z" fill="#fff" opacity=".24"/><path d="M0-8.8V-5.9M-4.4-3.6L-2.3-2M4.4-3.6L2.3-2M-5.8-2H5.8" fill="none" stroke="#000" stroke-opacity=".28" stroke-width=".28"/></g>"##,
+    r##"<path id="kuwagata" d="M0-5.6C-1.3-7.1-2.8-8.7-2.3-10.9C-1.7-9.2-.9-7.8 0-6.8C.9-7.8 1.7-9.2 2.3-10.9C2.8-8.7 1.3-7.1 0-5.6Z" fill="#d6ad3e" stroke="#9c7a2a" stroke-width=".3"/>"##,
     r##"<g id="goen"><g transform="scale(1 .5)"><circle r="4.4" fill="#c9a243"/><circle r="3.9" fill="none" stroke="#a9832e" stroke-width=".35"/><circle r="1.25" fill="#4a3826"/><path d="M-3.2 1.2Q-2 2.6-.4 3.4M3.2 1.2Q2 2.6.4 3.4" fill="none" stroke="#9c7a2a" stroke-width=".35"/><path d="M-2.6-2.2l.8.5M-2.1-2.9l.6.7M2.6-2.2l-.8.5M2.1-2.9l-.6.7" stroke="#9c7a2a" stroke-width=".3"/></g><path d="M-2.8-1.2Q-1.4-2.2.4-2" fill="none" stroke="#fff3c4" stroke-width=".45" opacity=".8"/></g>"##,
 );
 
@@ -311,7 +310,7 @@ pub fn svg_in(bonsai: &Bonsai, config: &Config, theme: Theme, camera: Option<Fra
 }
 
 /// The most an SVG may weigh, so a README image stays light. Typical trees
-/// weigh under 190 KB; only the heaviest crowns reach this.
+/// weigh under 215 KB; only the heaviest crowns reach this.
 pub const SVG_BUDGET: usize = 230 * 1024;
 
 /// The SVG within `budget` bytes: a crown too heavy for it keeps fewer,

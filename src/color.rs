@@ -93,14 +93,6 @@ impl Rgb {
         lch.to_rgb()
     }
 
-    /// The hue turned by `degrees`.
-    #[must_use]
-    pub fn rotate_hue(self, degrees: f64) -> Self {
-        let mut lch = self.to_oklch();
-        lch.h = math::wrap_degrees(lch.h + degrees);
-        lch.to_rgb()
-    }
-
     /// `t` of the way from `self` to `other`, in OKLab.
     #[must_use]
     pub fn mix(self, other: Self, t: f64) -> Self {
@@ -198,20 +190,6 @@ fn from_oklab(lab: [f64; 3]) -> Rgb {
     }
 }
 
-/// A linguist color tinted toward foliage: lightness clamped to
-/// `[0.48, 0.74]`, chroma `clamp(C * 0.8, 0.05, 0.15)`, hue moved 25% of the
-/// way toward leaf green (135°) along the shorter arc.
-pub fn tint_leaf(color: Rgb) -> Rgb {
-    let lch = color.to_oklch();
-    let toward = math::wrap_degrees(135.0 - lch.h + 180.0) - 180.0;
-    Oklch {
-        l: lch.l.clamp(0.48, 0.74),
-        c: (lch.c * 0.8).clamp(0.05, 0.15),
-        h: math::wrap_degrees(lch.h + 0.25 * toward),
-    }
-    .to_rgb()
-}
-
 /// The fallback tone for a language GitHub has no color for, picked by a
 /// stable hash of its name.
 pub fn fallback(language: &str) -> Rgb {
@@ -279,19 +257,6 @@ mod tests {
         }
         let white = Rgb::hex(0xffffff).to_oklch();
         assert!((white.l - 1.0).abs() < 1e-4 && white.c < 1e-4);
-    }
-
-    #[test]
-    fn the_tint_stays_in_its_bounds_and_moves_toward_green() {
-        // JavaScript's neon yellow and C's gray.
-        for value in [0xf1e05a, 0x555555, 0xff00ff, 0x00add8] {
-            let tinted = tint_leaf(Rgb::hex(value)).to_oklch();
-            assert!((0.47..=0.75).contains(&tinted.l), "{value:06x}: {tinted:?}");
-            assert!(tinted.c <= 0.151, "{value:06x}: {tinted:?}");
-        }
-        let magenta = Rgb::hex(0xff00ff).to_oklch().h;
-        let tinted = tint_leaf(Rgb::hex(0xff00ff)).to_oklch().h;
-        assert!(math::angle_between(tinted, 135.0) < math::angle_between(magenta, 135.0));
     }
 
     #[test]

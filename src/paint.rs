@@ -500,11 +500,18 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
     let mut out = Painted::default();
     let mut items: Vec<(f64, String)> = Vec::new();
     let mut extent = (f64::MAX, f64::MIN, SOIL_Y);
+    // The lowest point drawn: a cascade hangs below the pot.
+    let mut low = SOIL_Y;
 
     // ---- wood, in pieces so leaves can pass in front of and behind it ----
     let mut twigs = [String::new(), String::new()];
     // Each chain's line as drawn, by index.
     let mut lines: Vec<Vec<(f64, f64)>> = Vec::with_capacity(scene.chains.len());
+    // A cascade's wood is slender.
+    let slim = {
+        let w = b.leader.cascade.abs();
+        1.0 - 0.4 * w * w * (3.0 - 2.0 * w)
+    };
     for (ci, (chain, dead)) in scene.chains.iter().enumerate() {
         // Dead wood greys from bark to bleached; past half way it is drawn
         // the way jin is, inked and weathered.
@@ -514,7 +521,7 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
             .iter()
             .map(|(p, r)| {
                 let (x, y, z) = project(*p);
-                (x, y, *r * WORLD, z)
+                (x, y, *r * WORLD * slim, z)
             })
             .collect();
         // Relax the growth zigzag, then subdivide; thin twigs need less. The
@@ -581,6 +588,7 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                 extent.1.max(p.0 + p.2),
                 extent.2.min(p.1 - p.2),
             );
+            low = low.max(p.1 + p.2);
         }
         let strand = scene.strands.contains(&ci);
         // Thin twigs all share one path per color, drawn behind the leaves.
@@ -627,7 +635,24 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                 fine[start..=end].iter().map(|p| p.3).sum::<f64>() / (end - start + 1) as f64,
                 |j| j.1,
             );
-            let base = haze(paints.bark.mix(paints.jin, bleach), depth);
+            // Living wood under the crown lies in its shadow, so limbs that
+            // cross there read apart from each other and from the lit trunk.
+            let shade = if dead.is_some() {
+                0.0
+            } else {
+                let at = |k: usize| chain[k * (chain.len() - 1) / (fine.len() - 1).max(1)].0;
+                (start..=end)
+                    .map(|k| crown_shadow(&scene.pads, at(k)))
+                    .sum::<f64>()
+                    / (end - start + 1) as f64
+            };
+            let base = haze(
+                paints
+                    .bark
+                    .mix(paints.jin, bleach)
+                    .shift(-0.13 * shade, 0.0),
+                depth,
+            );
             let splinter = snapped && last && bleach < 0.8;
             let d = tube_from(
                 &seg,
@@ -690,7 +715,8 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                 };
                 let _ = write!(s, r#"<path d="{}" fill="{base}"{ink}/>"#, d.as_str());
             }
-            if seg.iter().any(|p| p.2 > 6.5) {
+            let thick = seg.iter().any(|p| p.2 > 6.5);
+            if thick || seg.iter().any(|p| p.2 > 1.2) {
                 // The shadow falls on whichever side faces away from the light.
                 let m = seg.len();
                 let away = |i: usize| {
@@ -737,39 +763,60 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                 } else {
                     (base.shift(-0.09, 0.0), base.shift(0.07, 0.0))
                 };
-                let _ = write!(
-                    s,
-                    r#"<path d="{}" fill="{shade}"/>"#,
-                    strip(0.05, 0.98).as_str(),
-                );
-                let _ = write!(
-                    s,
-                    r#"<path d="{}" fill="{lit}"/>"#,
-                    strip(-0.35, -0.72).as_str(),
-                );
+                if thick {
+                    let _ = write!(
+                        s,
+                        r#"<path d="{}" fill="{shade}"/>"#,
+                        strip(0.05, 0.98).as_str(),
+                    );
+                    let _ = write!(
+                        s,
+                        r#"<path d="{}" fill="{lit}"/>"#,
+                        strip(-0.35, -0.72).as_str(),
+                    );
+                }
+                if !*jin {
+                    // Every branch has a dark underside, so branches crossing
+                    // in one bark color still read one by one.
+                    let _ = write!(
+                        s,
+                        r#"<path d="{}" fill="{}"/>"#,
+                        strip(0.62, 0.98).as_str(),
+                        base.shift(-0.17, 0.0)
+                    );
+                }
                 if let Some(g) = scene.shari.filter(|_| ci == 0) {
                     // A shari: the founding language's dead wood, a strip up
                     // the living trunk that narrows to a point as it climbs and
                     // reaches higher as it bleaches.
                     let top = 0.2 + 0.25 * g;
-                    let (y0, y1) = (fine[0].1, fine[fine.len() - 1].1);
-                    let height = |y: f64| (y0 - y) / (y0 - y1).max(1e-9);
+                    // How far along the trunk, 0 at the foot to 1 at the
+                    // tip: by length, so a trunk that cascades below its
+                    // foot measures the same way.
+                    let lens: Vec<f64> = (0..m.saturating_sub(1))
+                        .map(|i| {
+                            (math::sq(seg[i + 1].0 - seg[i].0) + math::sq(seg[i + 1].1 - seg[i].1))
+                                .sqrt()
+                        })
+                        .collect();
+                    let total = lens.iter().sum::<f64>().max(1e-9);
                     // The outline is simplified to few points: the strip takes
                     // its own, every few units along the wood.
                     let mut at: Vec<(f64, f64, f64, (f64, f64), f64)> = Vec::new();
+                    let mut walked = 0.0;
                     for i in 0..m.saturating_sub(1) {
                         let (p, q) = (seg[i], seg[i + 1]);
-                        let len = (math::sq(q.0 - p.0) + math::sq(q.1 - p.1)).sqrt();
+                        let len = lens[i];
                         let n = (len / 3.0).ceil().max(1.0) as usize;
                         for j in 0..n {
                             let u = j as f64 / n as f64;
-                            let y = p.1 + (q.1 - p.1) * u;
-                            let t = height(y);
+                            let t = (walked + len * u) / total;
                             if t <= top {
-                                let x = p.0 + (q.0 - p.0) * u;
+                                let (x, y) = (p.0 + (q.0 - p.0) * u, p.1 + (q.1 - p.1) * u);
                                 at.push((x, y, p.2 + (q.2 - p.2) * u, away(i), t));
                             }
                         }
+                        walked += len;
                     }
                     if at.len() > 2 {
                         // It wanders with the grain, and its edges are torn.
@@ -879,7 +926,12 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                     paints.jin_ink
                 )
             } else {
-                format!(r#"<path d="{d}" fill="{color}"/>"#)
+                // A fine darker outline on each twig: in one shared fill,
+                // crossing twigs would merge into one flat shape.
+                format!(
+                    r#"<path d="{d}" fill="{color}" stroke="{}" stroke-width="0.5" stroke-linejoin="round"/>"#,
+                    color.shift(-0.16, 0.0)
+                )
             };
             items.push((f64::MIN, s));
         }
@@ -923,7 +975,9 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
         let c = lighting(base);
         let h = hash01(seed, j as i64 + 7);
         let (sx, sy, _) = project(v_add(t.p, t.n));
-        let angle = math::deg(math::atan2(sy - y, sx - x)) + 90.0 + (h - 0.5) * 50.0;
+        // Turned the mirror way on a left tree.
+        let angle =
+            math::deg(math::atan2(sy - y, sx - x)) + 90.0 + b.leader.side * (h - 0.5) * 50.0;
         let symbol = if h < 0.5 { "t" } else { "u" };
         let scale = WORLD
             * t.size
@@ -936,6 +990,7 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
             extent.1.max(x + reach),
             extent.2.min(y - reach),
         );
+        low = low.max(y + reach);
         let mut s = format!(
             r##"<use href="#{symbol}" transform="translate({} {})rotate({})scale({})" fill="{c}"/>"##,
             Num::coarse(x),
@@ -1017,6 +1072,7 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
             extent.1.max(cx + hw),
             extent.2.min(cy - up),
         );
+        low = low.max(cy + up);
         items.push((
             depth - 0.3 * rz * c - 0.5,
             format!(r#"<path d="{}" fill="{fill}"/>"#, d.as_str()),
@@ -1068,6 +1124,15 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
         }
     }
     items.sort_by(|a, c| a.0.total_cmp(&c.0));
+    // A sprout is drawn leaf by leaf in place of the seedling, which still
+    // sizes the pot and frame, so the hand-over doesn't move them, and fades
+    // in over the sprout's last contributions.
+    let sprout = crate::sprout::draw(b, &scene, &paints, &items, animate);
+    if let Some((s, moving)) = &sprout {
+        items = vec![(0.0, s.clone())];
+        fallen.clear();
+        out.animated += moving;
+    }
 
     // ---- the pot, sized to the tree, seen from a little above ----
     let size = ((SOIL_Y - extent.2).max(extent.1 - extent.0) * 0.62).clamp(80.0, 400.0);
@@ -1079,14 +1144,44 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
             .and_then(|c| c.0.first())
             .map_or(1.0, |p| p.1);
     let depth = (base_r * 1.6).clamp(20.0, 56.0);
+    // A semi-cascade stands in a deeper, narrower pot, its rim inside the
+    // point where the trunk spills over it.
+    let k = {
+        let w = b.leader.cascade.abs();
+        w * w * (3.0 - 2.0 * w)
+    };
+    let (hw, depth) = if k > 0.0 {
+        let spill = scene.chains.first().and_then(|c| {
+            c.0.iter()
+                .map(|p| project(p.0))
+                .find(|p| p.1 > SOIL_Y + 2.0 && (p.0 - CENTER_X).abs() > base_r)
+                .map(|p| (p.0 - CENTER_X).abs() - base_r - 4.0)
+        });
+        let narrow = hw * (1.0 - 0.35 * k);
+        let hw = spill.map_or(narrow, |s| narrow.min(s.max(base_r * 2.0)));
+        (hw, depth + k * (hw * 1.2 - depth).max(0.0))
+    } else {
+        (hw, depth)
+    };
     let pot = Pot {
         hw,
         ry: hw * math::sin(TILT) * 0.55,
         depth,
-        bw: hw * 0.88,
+        // Straight-sided for a cascade.
+        bw: hw * (0.88 + 0.09 * k),
         glaze: pot_glaze(b.extras.pot_tier, config, &paints),
     };
     out.frame = frame(extent, &pot);
+    // Room below the pot for what hangs there, kept no taller than wide.
+    let bottom = ((low + 10.0) / 8.0).ceil() * 8.0;
+    if bottom > out.frame.1 + out.frame.3 {
+        out.frame.3 = bottom - out.frame.1;
+        if out.frame.2 < out.frame.3 {
+            let pad = ((out.frame.3 - out.frame.2) / 16.0).ceil() * 8.0;
+            out.frame.0 -= pad;
+            out.frame.2 += 2.0 * pad;
+        }
+    }
     let egg = eggs::eggs(
         b,
         &scene,
@@ -1097,6 +1192,20 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
     );
 
     let body = &mut out.body;
+    // The pot's own shadow on the table, soft-edged, the light from the upper
+    // left: the pot sits down instead of floating.
+    let foot = SOIL_Y + pot.depth;
+    let shade = if paints.dark { "#000" } else { "#3b3226" };
+    let _ = write!(
+        body,
+        r#"<ellipse cx="{}" cy="{}" rx="{}" ry="4" fill="{shade}" opacity=".16"/><ellipse cx="{}" cy="{}" rx="{}" ry="2.4" fill="{shade}" opacity=".26"/>"#,
+        Num(CENTER_X + 5.0),
+        Num(foot + 1.2),
+        Num(pot.bw * 1.18),
+        Num(CENTER_X + 3.5),
+        Num(foot + 0.8),
+        Num(pot.bw * 1.02),
+    );
     body.push_str(&egg.behind);
     let _ = write!(
         body,
@@ -1111,12 +1220,17 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
     );
     // The canopy's soft shadow on the soil.
     let canopy_x = f64::midpoint(extent.0, extent.1) + 10.0;
+    let cx = canopy_x.clamp(CENTER_X - hw * 0.5, CENTER_X + hw * 0.5);
+    // On the soil only: never past the rim.
+    let rx = ((hw - 8.0) * 0.75)
+        .min(hw - 6.0 - (cx - CENTER_X).abs())
+        .max(4.0);
     let _ = write!(
         body,
         r#"<ellipse cx="{}" cy="{}" rx="{}" ry="{}" fill="{}" opacity=".35"/>"#,
-        Num(canopy_x.clamp(CENTER_X - hw * 0.5, CENTER_X + hw * 0.5)),
+        Num(cx),
         Num(SOIL_Y + 0.6),
-        Num((hw - 8.0) * 0.75),
+        Num(rx),
         Num((pot.ry - 3.0).max(1.0) * 0.7),
         paints.soil.shift(-0.12, 0.0)
     );
@@ -1208,7 +1322,8 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
     );
     body.push_str(&egg.top);
     let signs = crate::legend::Signs {
-        fresh: scene.tufts.iter().any(|t| t.fresh),
+        fresh: (sprout.is_none() || crate::sprout::handover(crate::sprout::count(b)) > 0.5)
+            && scene.tufts.iter().any(|t| t.fresh),
         falling: !fallen.is_empty(),
         glaze: Some(pot.glaze),
     };
@@ -1238,12 +1353,40 @@ fn pot_glaze(tier: u8, config: &Config, paints: &Paints) -> Rgb {
 
 /// How far a surface root at azimuth `az` reaches: longer with a stout
 /// trunk and old nebari, shorter toward the viewer, and always inside the pot
-/// rim (half-width `hw`). `u` in `[0, 1)` varies it.
-fn root_reach(base_r: f64, nebari: f64, hw: f64, az: f64, u: f64) -> f64 {
+/// rim (half-width `hw`) from a foot `off` sideways of the pot's center.
+/// `u` in `[0, 1)` varies it; `brace` (0 to 1) lengthens a root that holds
+/// the tree against the wind.
+fn root_reach(base_r: f64, nebari: f64, hw: f64, az: f64, u: f64, brace: f64, off: f64) -> f64 {
     // At least 1.6 trunk radii, so a root shows past the trunk's foot,
     // unless the pot rim needs it shorter.
-    let reach = (base_r * (1.35 + u * (0.25 + 0.5 * nebari.clamp(0.0, 1.0)))).max(base_r * 1.6);
-    reach.min(hw * 0.78 * (0.45 + 0.55 * math::cos(az).abs()))
+    let reach = (base_r * (1.35 + u * (0.25 + 0.5 * nebari.clamp(0.0, 1.0)))).max(base_r * 1.6)
+        * (1.0 + 0.45 * brace);
+    // From the foot to the rim along the root, on the soil.
+    let (c, s, rim) = (math::cos(az), math::sin(az), hw * 0.78);
+    let to_rim = (-off * c + (math::sq(rim) - math::sq(off * s)).max(0.0).sqrt()).max(0.0);
+    reach.min(to_rim * (0.45 + 0.55 * c.abs()))
+}
+
+/// Measures how deep wood at `e` lies in the crown's shadow, 0 in the open to
+/// 1 right under a cloud's middle: under a pad of `pads` and at most three of
+/// its half-heights below its center. The deepest pad counts.
+fn crown_shadow(pads: &[(V3, f64, f64)], e: V3) -> f64 {
+    pads.iter()
+        .map(|(c, rx, ry)| {
+            let across = 1.0 - math::sq((e[0] - c[0]) / rx);
+            let below = (c[1] - e[1]) / ry;
+            if across <= 0.0 || !(0.0..3.0).contains(&below) {
+                return 0.0;
+            }
+            across * (1.0 - below / 3.0)
+        })
+        .fold(0.0, f64::max)
+}
+
+/// A root's azimuth `az` on a tree on `side`: a left tree's roots lie as the
+/// right one's mirror image.
+fn mirror_az(az: f64, side: f64) -> f64 {
+    if side < 0.0 { math::TAU / 2.0 - az } else { az }
 }
 
 /// Convex hull of points, counter-clockwise (monotone chain).
@@ -1296,14 +1439,32 @@ fn nebari(
     let mut roots: Vec<(f64, String)> = Vec::new();
     for i in 0..n {
         let mut r = Rng::keyed(b.account_id, &format!("root/{i}"));
-        let az = 0.9 + f64::from(i) * 2.399_963 + r.range(-0.2, 0.2);
-        let reach = root_reach(base_r, b.extras.nebari, pot.hw, az, r.unit());
-        let bend = r.range(-0.3, 0.3);
+        let az = mirror_az(
+            0.9 + f64::from(i) * 2.399_963 + r.range(-0.2, 0.2),
+            b.leader.side,
+        );
+        // Roots facing into the wind brace the tree: longer and thicker.
+        // And those on the uphill side of a leaning trunk.
+        let uphill = -b.leader.tilt.signum() * (b.leader.tilt.abs() / 0.55).min(1.0);
+        let brace = (-b.leader.sweep * math::cos(az))
+            .max(uphill * math::cos(az))
+            .max(0.0);
+        let reach = root_reach(
+            base_r,
+            b.extras.nebari,
+            pot.hw,
+            az,
+            r.unit(),
+            brace,
+            x0 - CENTER_X,
+        );
+        let bend = b.leader.side * r.range(-0.3, 0.3);
         // Front roots are seen across their width: slimmer, so each stays
         // its own root.
         let front_k = 1.0 - 0.3 * math::sin(az).max(0.0);
-        let w0 = base_r * (0.26 + 0.14 * age) * r.range(0.85, 1.15) * front_k;
-        let h0 = base_r * (0.3 + 0.2 * age) * r.range(0.85, 1.15);
+        let w0 =
+            base_r * (0.26 + 0.14 * age) * r.range(0.85, 1.15) * front_k * (1.0 + 0.35 * brace);
+        let h0 = base_r * (0.3 + 0.2 * age) * r.range(0.85, 1.15) * (1.0 + 0.3 * brace);
         let from = base_r * 0.55;
         // Ground point, ground direction and screen offset of a ground vector.
         let ground = |a: f64, d: f64| (x0 + math::cos(a) * d, y0 + math::sin(a) * d * tilt);
@@ -1662,6 +1823,23 @@ fn drip_ends(scene: &Scene, paints: &Paints, pot: &Pot, animate: bool) -> String
 mod tests {
     use super::*;
 
+    /// Wood just under a cloud is in its shadow; wood beside it, above it
+    /// or far below it is in the light.
+    #[test]
+    fn wood_under_the_crown_lies_in_its_shadow() {
+        let pads = [([0.0, 88.0, 0.0], 19.0, 8.8)];
+        let under = crown_shadow(&pads, [0.0, 80.0, 0.0]);
+        assert!(under > 0.6, "{under}");
+        for (at, why) in [
+            ([30.0, 80.0, 0.0], "beside"),
+            ([0.0, 99.0, 0.0], "above"),
+            ([0.0, 30.0, 0.0], "far below"),
+        ] {
+            let shade = crown_shadow(&pads, at);
+            assert!(shade < 0.05, "{why}: {shade}");
+        }
+    }
+
     #[test]
     fn follow_moves_the_start_and_keeps_the_tip_even_on_a_tiny_twig() {
         let mut twig = [(100.0, 100.0, 0.5, 0.0), (100.01, 100.0, 0.5, 0.0)];
@@ -1712,12 +1890,26 @@ mod tests {
                 for hw in [60.0, 100.0, 140.0] {
                     for i in 0..16 {
                         let az = f64::from(i) / 16.0 * math::TAU;
-                        for u in [0.0, 0.5, 0.999] {
-                            let reach = root_reach(base_r, nebari, hw, az, u);
-                            assert!(
-                                reach * math::cos(az).abs() <= hw * 0.78 + 1e-9,
-                                "{base_r} {nebari} {hw} {az}: {reach}"
-                            );
+                        for (u, brace) in [(0.0, 0.0), (0.5, 0.5), (0.999, 1.0)] {
+                            // A trunk off center, as a cascade's is, too.
+                            // On either side: a left cascade's foot is the mirror image.
+                            for off in [0.0, -0.3 * hw, 0.2 * hw, 0.3 * hw, -0.2 * hw] {
+                                let reach = root_reach(base_r, nebari, hw, az, u, brace, off);
+                                assert!(
+                                    (off + reach * math::cos(az)).abs() <= hw * 0.78 + 1e-9,
+                                    "{base_r} {nebari} {hw} {az} {off}: {reach}"
+                                );
+                                let mirrored = root_reach(
+                                    base_r,
+                                    nebari,
+                                    hw,
+                                    mirror_az(az, -1.0),
+                                    u,
+                                    brace,
+                                    -off,
+                                );
+                                assert!((mirrored - reach).abs() < 1e-9, "{az} {off}");
+                            }
                         }
                     }
                 }

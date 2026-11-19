@@ -229,11 +229,6 @@ impl Snapshot {
     pub fn first_active(&self) -> Option<Date> {
         self.days.iter().find(|d| d.total > 0).map(|d| d.date)
     }
-
-    /// The last day with a contribution.
-    pub fn last_active(&self) -> Option<Date> {
-        self.days.iter().rev().find(|d| d.total > 0).map(|d| d.date)
-    }
 }
 
 #[cfg(test)]
