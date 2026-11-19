@@ -1242,7 +1242,9 @@ fn grow_eras(sk: &mut Skeleton, c: &Ctx, wood: &Wood) {
             .flat_map(|&i| life.years[i].dead.values())
             .map(|d| d.0)
             .sum();
-        let era_dead = named > 0.0 && gone_v / named >= 0.8;
+        // Its public work speaks for the era only when there is enough of it:
+        // one dropped contribution among years of private work kills nothing.
+        let era_dead = named >= 0.25 * era_total && named > 0.0 && gone_v / named >= 0.8;
         // A limb dies with the last drop that made it dead: it starts
         // bark-brown and bleaches from then, never already white.
         let died = era
@@ -1325,11 +1327,38 @@ fn grow_eras(sk: &mut Skeleton, c: &Ctx, wood: &Wood) {
                 continue;
             }
             let tw_len = (6.0 + 8.0 * (y.days as f64 / 250.0).sqrt().min(1.2)) * yw(i);
+            // The era's two biggest dropped languages show in their biggest
+            // year, even when they were a small part of it.
+            let extra: Vec<&String> = {
+                let mut dropped: BTreeMap<&String, f64> = BTreeMap::new();
+                for &k in era {
+                    for (l, d) in &life.years[k].dead {
+                        *dropped.entry(l).or_default() += d.0;
+                    }
+                }
+                let mut top: Vec<(&String, f64)> =
+                    dropped.into_iter().filter(|d| d.1 > 0.0).collect();
+                top.sort_by(|a, b| b.1.total_cmp(&a.1));
+                let v = |l: &String, k: usize| life.years[k].langs.get(l).copied().unwrap_or(0.0);
+                top.into_iter()
+                    .take(2)
+                    .map(|(l, _)| l)
+                    .filter(|l| {
+                        era.iter()
+                            .copied()
+                            .max_by(|a, b| v(l, *a).total_cmp(&v(l, *b)))
+                            == Some(i)
+                    })
+                    .collect()
+            };
             let mut yr = Rng::keyed(seed, &format!("bdome/old/{}", y.y));
             for (slot, (l, v)) in shares
                 .iter()
                 .filter(|s| s.1 / ys >= 0.12)
                 .take(3)
+                .chain(shares.iter().filter(|s| {
+                    s.1 / ys < 0.12 && s.0.as_ref().is_some_and(|l| extra.contains(&l))
+                }))
                 .enumerate()
             {
                 let f = match slot {
@@ -1351,9 +1380,9 @@ fn grow_eras(sk: &mut Skeleton, c: &Ctx, wood: &Wood) {
                     (full >= 0.5).then(|| g / full)
                 };
                 let twig_n0 = sk.nodes.len();
-                // A dead twig breaks back as it weathers.
+                // A dead twig breaks back as it weathers, but never to a stub.
                 let to = dead.map_or(to, |b| {
-                    let k = 1.0 - 0.5 * b;
+                    let k = 1.0 - 0.3 * b;
                     (ap.0 + (to.0 - ap.0) * k, ap.1 + (to.1 - ap.1) * k)
                 });
                 let twig = limb_to(
@@ -1374,7 +1403,9 @@ fn grow_eras(sk: &mut Skeleton, c: &Ctx, wood: &Wood) {
                 if let Some(b) = dead {
                     let fan_rng = &mut Rng::keyed(seed, &format!("bdome/fan/old/{}/{slot}", y.y));
                     let at = (to.0, to.1 - rx * 0.3);
-                    winter_fan(sk, fan_rng, &under, at, rx * 0.8, tz, side, &jin, 1.0 - b);
+                    // Its fan thins as it weathers, and keeps a few bare twigs.
+                    let keep = (1.0 - b).max(0.35);
+                    winter_fan(sk, fan_rng, &under, at, rx * 0.8, tz, side, &jin, keep);
                     bleach_from(sk, twig_n0, b);
                     continue;
                 }
@@ -2115,8 +2146,63 @@ fn girth(sk: &mut Skeleton, c: &Ctx, wood: &Wood) {
         n.own *= k;
     }
     flare(sk, &chains[0].clone());
+    limbs_within_trunk(sk, wood);
     for n in &mut sk.nodes {
         n.own *= f;
+    }
+}
+
+/// No limb is more than a third of the trunk's radius where it leaves, as
+/// on a bonsai: an era far busier than the crown above it would otherwise
+/// leave a thin trunk rising out of a lump of limbs. What a limb gives up
+/// thickens the lower trunk, so the tree weighs the same.
+fn limbs_within_trunk(sk: &mut Skeleton, wood: &Wood) {
+    let trunk = &wood.chains[0];
+    let on: std::collections::BTreeSet<usize> = wood.chains.iter().flatten().copied().collect();
+    let mut kids: Vec<Vec<usize>> = vec![Vec::new(); sk.nodes.len()];
+    for (i, n) in sk.nodes.iter().enumerate() {
+        if let Some(p) = n.parent {
+            kids[p].push(i);
+        }
+    }
+    let mut removed = 0.0;
+    // Every trunk chain, each from the top down so each cap sees the trunk
+    // above already settled; the foot they share is capped once.
+    let mut seen = std::collections::BTreeSet::new();
+    let order: Vec<usize> = wood
+        .chains
+        .iter()
+        .flat_map(|c| c.iter().rev().copied())
+        .filter(|&t| seen.insert(t))
+        .collect();
+    for t in order {
+        let flow = sk.flows();
+        let limbs: Vec<usize> = kids[t]
+            .iter()
+            .copied()
+            .filter(|c| !on.contains(c))
+            .collect();
+        // Radius follows the cube root of flow, so a third of it is 1/27 of
+        // the flow; measured on the trunk without its limbs, since cutting a
+        // limb thins the trunk it leaves.
+        let bare = flow[t] - limbs.iter().map(|&c| flow[c]).sum::<f64>();
+        let cap = bare / 26.0;
+        for limb in limbs {
+            if flow[limb] <= cap {
+                continue;
+            }
+            let s = cap / flow[limb];
+            let mut stack = vec![limb];
+            while let Some(n) = stack.pop() {
+                removed += sk.nodes[n].own * (1.0 - s);
+                sk.nodes[n].own *= s;
+                stack.extend_from_slice(&kids[n]);
+            }
+        }
+    }
+    let low = &trunk[..(trunk.len() / 2).max(1)];
+    for &n in low {
+        sk.nodes[n].own += removed / low.len() as f64;
     }
 }
 
@@ -2218,6 +2304,119 @@ mod tests {
             // Every crown arm belongs to a crown language.
             assert!(arms.iter().all(|a| c.sector_of(&a.lang) > 0.0), "{name}");
         }
+    }
+
+    /// Years of private work with one public contribution, in a language
+    /// later dropped, keep a living limb: private work is never dropped.
+    #[test]
+    fn a_private_era_with_one_dropped_contribution_stays_alive() {
+        use crate::date::Date;
+        let d = |s: &str| -> Date { s.parse().unwrap() };
+        let mut days: Vec<(Date, u32, &[(&str, u32)])> = Vec::new();
+        let mut day = d("2018-04-14");
+        while day < d("2024-01-01") {
+            // Private only, but for one Python contribution in 2021.
+            let langs: &[(&str, u32)] = if day == d("2021-03-02") {
+                &[("Python", 1)]
+            } else {
+                &[]
+            };
+            days.push((day, 4, langs));
+            day = day.add_days(3);
+        }
+        while day < d("2026-11-17") {
+            days.push((day, 9, &[("Rust", 6)]));
+            day = day.add_days(1);
+        }
+        let snapshot = crate::growth::testkit::snap(&days, d("2026-11-17"));
+        let timeline = Timeline::new(&snapshot);
+        let life = Life::of(&timeline, &[]).unwrap();
+        let mut sk = root_only();
+        let leader = Leader::new(crate::config::Style::Moyogi, 1, None);
+        tree(&mut sk, &life, 1, &leader, Reach::default(), None);
+        let flow = sk.flows();
+        let dead = (0..sk.nodes.len())
+            .filter(|&i| sk.nodes[i].language.as_deref() == Some(crate::growth::JIN))
+            .map(|i| flow[i])
+            .fold(0.0, f64::max);
+        assert!(dead < 50.0, "a private era died: dead wood carries {dead}");
+    }
+
+    /// No limb is more than a third of the trunk where it leaves, as on a
+    /// bonsai, however much heavier its era was than the crown above.
+    #[test]
+    fn no_limb_outgrows_the_trunk_it_leaves() {
+        for (name, life, seed) in dome_lives() {
+            let mut sk = root_only();
+            let leader = Leader::new(crate::config::Style::Moyogi, 1, None);
+            let chains = tree(&mut sk, &life, seed, &leader, Reach::default(), None);
+            let flow = sk.flows();
+            let on: std::collections::BTreeSet<usize> = chains.iter().flatten().copied().collect();
+            for &t in &on {
+                for (i, n) in sk.nodes.iter().enumerate() {
+                    if n.parent == Some(t) && !on.contains(&i) {
+                        assert!(
+                            flow[i] <= flow[t] / 27.0 + 1e-6,
+                            "{name}: a limb carries {:.0} where the trunk carries {:.0}",
+                            flow[i],
+                            flow[t]
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    /// A language dropped long ago, a small part of its busy years, still
+    /// leaves a bleached twig on its era's limb, fan and all.
+    #[test]
+    fn a_small_language_dropped_long_ago_leaves_a_dead_twig() {
+        use crate::date::Date;
+        let d = |s: &str| -> Date { s.parse().unwrap() };
+        let mut days: Vec<(Date, u32, &[(&str, u32)])> = Vec::new();
+        let mut day = d("2010-01-04");
+        while day < d("2014-01-01") {
+            days.push((day, 12, &[("JavaScript", 11), ("C", 1)]));
+            day = day.add_days(1);
+        }
+        while day < d("2026-11-17") {
+            days.push((day, 8, &[("JavaScript", 4), ("Go", 4)]));
+            day = day.add_days(1);
+        }
+        let snapshot = crate::growth::testkit::snap(&days, d("2026-11-17"));
+        let life = Life::of(&Timeline::new(&snapshot), &[]).unwrap();
+        let mut sk = root_only();
+        let leader = Leader::new(crate::config::Style::Moyogi, 1, None);
+        let chains = tree(&mut sk, &life, 1, &leader, Reach::default(), None);
+        let on: std::collections::BTreeSet<usize> = chains.iter().flatten().copied().collect();
+        let jin = |i: usize| sk.nodes[i].language.as_deref() == Some(crate::growth::JIN);
+        // A dead twig: dead wood growing from a living limb, not the trunk.
+        let twigs: Vec<usize> = (0..sk.nodes.len())
+            .filter(|&i| {
+                jin(i)
+                    && sk.nodes[i]
+                        .parent
+                        .is_some_and(|p| !jin(p) && !on.contains(&p))
+            })
+            .collect();
+        let fan = |t: usize| {
+            (0..sk.nodes.len())
+                .filter(|&i| {
+                    let mut n = i;
+                    while let Some(p) = sk.nodes[n].parent {
+                        if p == t {
+                            return true;
+                        }
+                        n = p;
+                    }
+                    false
+                })
+                .count()
+        };
+        assert!(
+            twigs.iter().any(|&t| fan(t) >= 4),
+            "no dead twig with a fan: {twigs:?}"
+        );
     }
 
     /// A whole era in a dropped language is an unmistakable dead limb, not a

@@ -317,10 +317,10 @@ pub fn all() -> Vec<Fixture> {
             "newbie",
             "The README's newcomer: four months of Python and some TypeScript, no achievements.",
             Builder::new("newbie", 100_021)
-                .observed("2022-03-06")
+                .observed("2026-11-30")
                 .spell(
-                    "2021-11-03",
-                    "2022-03-06",
+                    "2026-07-30",
+                    "2026-11-30",
                     26.0,
                     &[("Python", 3.0), ("TypeScript", 1.0)],
                     0.03,

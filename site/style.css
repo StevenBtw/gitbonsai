@@ -1,6 +1,9 @@
 /* gitbonsai.dev: a field-notes page in the grond.st identity (tokens.css).
    Hairline rules and a grid carry it; the tree is the one moving element in each view. */
 
+/* gitbonsai's accent is ink, not grond.st's blue: the tree stays the only colour on the page */
+:root, :root[data-theme="light"] { --primary: var(--foreground); --primary-foreground: var(--background); --ring: var(--foreground); }
+
 * { box-sizing: border-box; }
 body { background: var(--background); color: var(--foreground); font: 400 16px/1.6 var(--font-ui); }
 .wrap { max-width: 1120px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }

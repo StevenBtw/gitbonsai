@@ -562,14 +562,14 @@ fn easter_eggs_follow_the_achievements() {
         "#goen",
         "#taketombo",
         "class=\"fs\"",
-        "clip-path",
+        "url(#pc)",
     ] {
         assert!(veteran.contains(egg), "veteran lacks {egg}");
     }
     let sprout = render("sprout");
     assert!(sprout.contains("#fish1\""));
     assert!(
-        !sprout.contains("clip-path"),
+        !sprout.contains("url(#pc)"),
         "no archived repos, no kintsugi"
     );
 }

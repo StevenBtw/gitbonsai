@@ -312,7 +312,7 @@ pub fn svg_in(bonsai: &Bonsai, config: &Config, theme: Theme, camera: Option<Fra
 
 /// The most an SVG may weigh, so a README image stays light. Typical trees
 /// weigh under 190 KB; only the heaviest crowns reach this.
-pub const SVG_BUDGET: usize = 220 * 1024;
+pub const SVG_BUDGET: usize = 230 * 1024;
 
 /// The SVG within `budget` bytes: a crown too heavy for it keeps fewer,
 /// larger leaves. Its size is close to linear in the share of leaves kept,

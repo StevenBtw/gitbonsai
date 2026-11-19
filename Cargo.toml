@@ -1,6 +1,6 @@
 [package]
 name = "gitbonsai"
-version = "0.3.0"
+version = "0.3.1"
 edition = "2024"
 rust-version = "1.88"
 license = "MIT OR Apache-2.0"
@@ -30,7 +30,7 @@ clap = { version = "4.6.8", features = ["derive"] }
 # Pure-Rust math, so coordinates round the same on every platform
 libm = "0.2.16"
 # No text, fonts or embedded images: the SVG has none
-resvg = { version = "0.49.0", default-features = false, optional = true }
+resvg = { version = "0.50.0", default-features = false, optional = true }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 thiserror = "2.0.21"

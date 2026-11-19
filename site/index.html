@@ -11,7 +11,7 @@
 <link rel="stylesheet" href="fonts.css">
 <link rel="stylesheet" href="tokens.css">
 <link rel="stylesheet" href="style.css">
-<script src="app.js" defer></script>
+<script src="app.js" type="module"></script>
 </head>
 <body>
 <header class="top">
@@ -116,11 +116,11 @@
       <div class="sec-head">
         <p class="eyebrow">Your tree</p>
         <h2>See your own tree first</h2>
-        <p class="lede">Type a GitHub login to grow a tree from its public activity.</p>
+        <p class="lede">Type a GitHub username to grow a tree from its public activity.</p>
         <form class="form" id="form">
-          <label for="login">GitHub login</label>
+          <label for="login">GitHub username</label>
           <div class="field">
-            <div class="at"><span>@</span><input id="login" name="login" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="your-login" required maxlength="39" pattern="[A-Za-z0-9](-?[A-Za-z0-9])*"></div>
+            <div class="at"><span>@</span><input id="login" name="login" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="your-username" required maxlength="39" pattern="[A-Za-z0-9](-?[A-Za-z0-9])*"></div>
             <button class="btn btn-primary" type="submit" id="grow">Grow</button>
           </div>
           <label class="check"><input type="checkbox" id="legend"> Show the legend</label>

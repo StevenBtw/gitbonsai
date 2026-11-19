@@ -418,15 +418,9 @@ pub fn eggs(
                 3 => ("#2f4f93", ".82", "#22396b", "#cfe3f5"),
                 _ => ("#e0b34a", "1", "#a97f2a", "#c0392b"),
             };
-            let _ = write!(
-                g,
-                r##"<path d="M0 0V3.2" stroke="#8a7a5a" stroke-width=".35"/><path d="M-4.2 9.4Q-4.4 3.4 0 3.2Q4.4 3.4 4.2 9.4Z" fill="{glass}" fill-opacity="{opacity}" stroke="{edge}" stroke-width=".4"/><path d="M-4.4 9.4h8.8" stroke="{edge}" stroke-width=".45"/><path d="M-2.4 4.8Q-3.2 6.4-3 8.2" fill="none" stroke="#fff" stroke-width=".45" opacity=".7"/>"##
-            );
-            if t == 3 {
-                // Stars painted on the blue glass.
-                g.push_str(r##"<g fill="#fff3c4"><use href="#star5" transform="translate(1.4 6) scale(.32)"/><use href="#star5" transform="translate(-.6 7.8) scale(.24)"/><use href="#star5" transform="translate(2.6 8.2) scale(.2)"/><circle cx="-1.6" cy="5.6" r=".22"/><circle cx="3" cy="5.2" r=".18"/></g>"##);
-            }
-            // The clapper and the paper strip that catches the wind.
+            // The clapper hangs inside the bell at its lip, where it strikes
+            // the rim: drawn first, so the glass or metal covers its upper
+            // half. The paper strip that catches the wind hangs below.
             // The painted chimes dance in the wind: the blue one slowly,
             // the golden one faster.
             let sway = match t {
@@ -437,8 +431,16 @@ pub fn eggs(
             e.animated += usize::from(t >= 3);
             let _ = write!(
                 g,
-                r##"<g{sway}><path d="M0 4.2V12" stroke="#8a7a5a" stroke-width=".3"/><circle cy="8.6" r=".7" fill="{edge}"/><rect x="-1.2" y="12" width="2.4" height="7.4" fill="{strip}" stroke="#00000022" stroke-width=".2"/></g>"##
+                r##"<g{sway}><path d="M0 4.2V12" stroke="#8a7a5a" stroke-width=".3"/><circle cy="9.5" r=".75" fill="{edge}"/><rect x="-1.2" y="12" width="2.4" height="7.4" fill="{strip}" stroke="#00000022" stroke-width=".2"/></g>"##
             );
+            let _ = write!(
+                g,
+                r##"<path d="M0 0V3.2" stroke="#8a7a5a" stroke-width=".35"/><path d="M-4.2 9.4Q-4.4 3.4 0 3.2Q4.4 3.4 4.2 9.4Z" fill="{glass}" fill-opacity="{opacity}" stroke="{edge}" stroke-width=".4"/><path d="M-4.4 9.4h8.8" stroke="{edge}" stroke-width=".45"/><path d="M-2.4 4.8Q-3.2 6.4-3 8.2" fill="none" stroke="#fff" stroke-width=".45" opacity=".7"/>"##
+            );
+            if t == 3 {
+                // Stars painted on the blue glass.
+                g.push_str(r##"<g fill="#fff3c4"><use href="#star5" transform="translate(1.4 6) scale(.32)"/><use href="#star5" transform="translate(-.6 7.8) scale(.24)"/><use href="#star5" transform="translate(2.6 8.2) scale(.2)"/><circle cx="-1.6" cy="5.6" r=".22"/><circle cx="3" cy="5.2" r=".18"/></g>"##);
+            }
         }
         g.push_str("</g>");
         e.front.push_str(&g);

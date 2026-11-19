@@ -43,7 +43,8 @@ pub fn report(b: &Bonsai) -> String {
     }
     let _ = writeln!(
         out,
-        "  age                 {age} weeks ({:.1} years)",
+        "  age                 {age} {} ({:.1} years)",
+        if age == 1 { "week" } else { "weeks" },
         f64::from(age) / 52.18
     );
     let _ = writeln!(
@@ -168,8 +169,14 @@ pub fn report(b: &Bonsai) -> String {
     let _ = writeln!(out, "Extras");
     let _ = writeln!(
         out,
-        "  streak              {} weeks now, {} longest",
-        e.current_streak, e.longest_streak
+        "  streak              {} {} now, {} longest",
+        e.current_streak,
+        if e.current_streak == 1 {
+            "week"
+        } else {
+            "weeks"
+        },
+        e.longest_streak
     );
     let _ = writeln!(out, "  moss                {}", pct(e.moss));
     let _ = writeln!(out, "  pot tier            {}", e.pot_tier);
