@@ -9,7 +9,7 @@ use gitbonsai::{Bonsai, Config, Style, Theme, fixtures, render};
 
 fn config(style: Style) -> Config {
     let mut config = Config::default();
-    config.tree.style = style;
+    config.tree.style = Some(style);
     config
 }
 
@@ -136,8 +136,17 @@ fn growth_is_continuous_month_to_month() {
             if gb < ga * 0.999 {
                 jumps.push(format!("{name} {day}: girth {ga:.0} -> {gb:.0}"));
             }
+            // The style bends in a little each month as the last three years
+            // change: never more than a few units a month, on top of
+            // growth's own drift. The crown sits above the trunk top, so it
+            // swings up to twice as far as its apex.
+            let rise = gitbonsai::style::SOIL_Y - b.skeleton.apex.1;
+            let lean = (b.leader.tilt - a.leader.tilt).abs() * rise;
+            if lean > 6.0 {
+                jumps.push(format!("{name} {day}: style leaned {lean:.1}"));
+            }
             let drift = crown_drift(a, b);
-            if drift > 8.0 {
+            if drift > 8.0 + 2.0 * lean {
                 jumps.push(format!("{name} {day}: crown moved {drift:.1}"));
             }
             // Dead wood dies in place and bleaches over a year: it whitens a

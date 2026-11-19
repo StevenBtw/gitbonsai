@@ -18,7 +18,6 @@
 
 use std::collections::BTreeMap;
 
-use crate::config::Style;
 use crate::date::Date;
 use crate::growth::clouds::{cloud, merge_clouds, pad};
 use crate::growth::life::{
@@ -843,6 +842,12 @@ struct Wood {
     dead_b: bool,
     /// How far that dead strand has died back, 0 to 1.
     dead_g: f64,
+    /// How far the wind sweeps the tree, signed ([`Leader::sweep`]).
+    sweep: f64,
+    /// How far the second trunk has come away, 0 without one.
+    peel_b: f64,
+    /// How far the main trunk cascades over the rim, signed ([`Leader::cascade`]).
+    cascade: f64,
 }
 
 impl Wood {
@@ -943,6 +948,10 @@ struct Dome {
     w_mean: f64,
     /// (angle, reach, weight) of every placed arm.
     env: Vec<(f64, f64, f64)>,
+    /// How far the wind sweeps the crown, signed (fukinagashi).
+    sweep: f64,
+    /// How far the crown parts in two over two trunks, 0 to 1.
+    split: f64,
 }
 
 impl Dome {
@@ -959,11 +968,29 @@ impl Dome {
         (num / den, (den / self.w_mean).min(3.0))
     }
 
-    /// The point at angle `th` and radius `r` on the dome's face.
+    /// The point at angle `th` and radius `r` on the dome's face. In the
+    /// wind the dome streams downwind, its top furthest, its windward side
+    /// pulled in, and it lies lower.
     fn pt(&self, th: f64, r: f64) -> P {
+        let (s, d) = (self.sweep.abs(), self.sweep.signum());
+        let (cx, sy) = (math::cos(th), math::sin(th));
+        let windward = if cx * d < 0.0 { 1.0 - 0.6 * s } else { 1.0 };
+        // Downwind, the crown hangs lower the further out it streams.
+        let droop = 0.4 * s * r * (cx * d).max(0.0);
+        let x = self.center + r * cx * windward + d * s * r * (0.35 + 0.45 * sy);
+        let y = self.y_b - self.vv * r * sy * (1.0 - 0.3 * s) + droop;
+        if self.split <= 0.0 {
+            return (x, y);
+        }
+        // Over two trunks the crown parts in two, steeply but smoothly: the
+        // windward one higher, the downwind one lower, space between.
+        let z = (x - self.center) / (0.08 * self.r_mean.max(1.0));
+        let t = 1.0 - 2.0 / (math::exp(2.0 * z.clamp(-20.0, 20.0)) + 1.0);
+        let down = t * d;
+        let rise = if down > 0.0 { 0.35 } else { 0.15 };
         (
-            self.center + r * math::cos(th),
-            self.y_b - self.vv * r * math::sin(th),
+            x + 0.45 * self.r_mean * self.split * t,
+            y + rise * self.r_mean * self.split * down,
         )
     }
 }
@@ -996,11 +1023,16 @@ pub fn tree(
     let mut rng = Rng::keyed(seed, "bdome");
     sk.dormant = c.dormant;
     let wood = grow_trunks(sk, &c, leader, &mut rng);
+    let eras_from = sk.nodes.len();
     grow_eras(sk, &c, &wood);
+    let eras = eras_from..sk.nodes.len();
     let frozen = frozen_dead(&c, &wood);
     let (arms, lower) = crown_arms(&c, &frozen);
     let sectors = Sectors::of(&c, &arms);
-    let (mut placed, dome) = place_arms(&c, &wood, &arms, &sectors);
+    let (mut placed, mut dome) = place_arms(&c, &wood, &arms, &sectors);
+    // The wind's sweep, and a cascade's flow to the right.
+    dome.sweep = leader.sweep + 0.8 * leader.cascade;
+    dome.split = leader.sweep.abs() * wood.peel_b;
     // Dead arms of years gone from the crown stay where they stood.
     placed.retain(|p| !frozen.contains_key(&(arms[p.0].year, arms[p.0].lang.clone())));
     for (i, a) in arms.iter().enumerate() {
@@ -1026,9 +1058,192 @@ pub fn tree(
         (&by_lang, &dead_by_lang, &dead_w),
         arms.len(),
     );
+    wind_shape(sk, &wood, &eras);
+    cascade_shape(sk, &wood);
     girth(sk, &c, &wood);
     crate::growth::wood::hug(sk);
     wood.chains
+}
+
+// The windswept shape of two trunks, dragged into place by hand: how far each
+// point along a trunk moves, as a share of the downwind trunk's height,
+// for x downwind and y down, from the foot (0) to the top (10).
+const WIND_DOWN: [(f64, f64); 11] = [
+    (0.000, 0.000),
+    (0.000, 0.000),
+    (0.000, 0.000),
+    (0.000, 0.000),
+    (0.000, 0.001),
+    (0.049, 0.071),
+    (0.161, 0.234),
+    (0.161, 0.234),
+    (0.161, 0.234),
+    (0.161, 0.234),
+    (0.161, 0.234),
+];
+const WIND_UP: [(f64, f64); 11] = [
+    (0.000, 0.000),
+    (0.000, -0.000),
+    (0.000, -0.000),
+    (0.000, -0.000),
+    (0.000, -0.000),
+    (0.006, -0.003),
+    (0.062, -0.036),
+    (0.183, -0.107),
+    (0.197, -0.116),
+    (0.197, -0.116),
+    (0.197, -0.116),
+];
+
+// The cascade's main trunk, from the foot (0) to the tip (10): sideways
+// toward the spill and up, as shares of the trunk's height. A semi-cascade
+// (han-kengai): it rises, arches over the rim and ends just outside it,
+// about level with the rim, never below the pot.
+const CASCADE: [(f64, f64); 11] = [
+    (0.0, 0.0),
+    (0.06, 0.2),
+    (0.16, 0.35),
+    (0.28, 0.45),
+    (0.42, 0.48),
+    (0.56, 0.43),
+    (0.7, 0.32),
+    (0.84, 0.18),
+    (0.96, 0.06),
+    (1.06, -0.03),
+    (1.14, -0.08),
+];
+
+/// Bends the main trunk into a cascade over the rim; everything grown from
+/// it follows the point it grew from, and each cloud its branch.
+fn cascade_shape(sk: &mut Skeleton, wood: &Wood) {
+    let w = wood.cascade.abs();
+    let k = w * w * (3.0 - 2.0 * w);
+    let Some(main) = wood.chains.first().filter(|_| k > 0.0) else {
+        return;
+    };
+    let d = wood.cascade.signum();
+    let foot = sk.nodes[main[0]].p;
+    let tip = sk.nodes[*main.last().unwrap_or(&0)].p;
+    let h = (foot.1 - tip.1).max(1.0);
+    let at = |u: f64| {
+        let x = u.clamp(0.0, 1.0) * 10.0;
+        let i = (x as usize).min(9);
+        let f = x - i as f64;
+        let (p, q) = (CASCADE[i], CASCADE[i + 1]);
+        (
+            foot.0 + d * h * (p.0 + (q.0 - p.0) * f),
+            foot.1 - h * (p.1 + (q.1 - p.1) * f),
+        )
+    };
+    let hangs: Vec<usize> = sk
+        .clouds
+        .iter()
+        .map(|cl| {
+            (1..sk.nodes.len())
+                .min_by(|&x, &y| dist(sk.nodes[x].p, cl.c).total_cmp(&dist(sk.nodes[y].p, cl.c)))
+                .unwrap_or(0)
+        })
+        .collect();
+    let mut delta: Vec<Option<P>> = vec![None; sk.nodes.len()];
+    let n = main.len().max(2) - 1;
+    for (i, &node) in main.iter().enumerate() {
+        let (p, t) = (sk.nodes[node].p, at(i as f64 / n as f64));
+        delta[node] = Some((k * (t.0 - p.0), k * (t.1 - p.1)));
+    }
+    for i in 0..sk.nodes.len() {
+        if delta[i].is_none() {
+            delta[i] = sk.nodes[i].parent.and_then(|p| delta[p]);
+        }
+        if let Some((dx, dy)) = delta[i] {
+            sk.nodes[i].p.0 += dx;
+            sk.nodes[i].p.1 += dy;
+        }
+    }
+    // Its foliage lies in flat, level pads along the branches.
+    let flat = 1.0 - 0.55 * k;
+    for (cloud, &n) in sk.clouds.iter_mut().zip(&hangs) {
+        let (dx, dy) = delta[n].unwrap_or((0.0, 0.0));
+        let cy = cloud.c.1;
+        cloud.c.0 += dx;
+        cloud.c.1 += dy;
+        cloud.ry *= flat;
+        for patch in &mut cloud.patches {
+            patch.0.0 += dx;
+            patch.0.1 = cy + (patch.0.1 - cy) * flat + dy;
+        }
+    }
+}
+
+/// Bends two trunks into their windswept shape: the downwind trunk over and
+/// down, the windward one up. Everything grown from a trunk follows the
+/// point it grew from, and each crown follows its trunk's top.
+fn wind_shape(sk: &mut Skeleton, wood: &Wood, eras: &std::ops::Range<usize>) {
+    // It eases in: hardly at first, then fully as the tree turns windswept.
+    let w = wood.sweep.abs() * wood.peel_b;
+    let k = w * w * (3.0 - 2.0 * w);
+    if wood.chains.len() < 2 || k <= 0.0 {
+        return;
+    }
+    let (down_t, up_t) = (&WIND_DOWN, &WIND_UP);
+    let d = wood.sweep.signum();
+    let foot = sk.nodes[wood.chains[0][0]].p;
+    let top = |ch: &Vec<usize>| sk.nodes[*ch.last().unwrap_or(&0)].p;
+    let (a, b) = (&wood.chains[0], &wood.chains[1]);
+    let a_down = (top(a).0 - foot.0) * d >= (top(b).0 - foot.0) * d;
+    let (down, up) = if a_down { (a, b) } else { (b, a) };
+    let h = (foot.1 - top(down).1).max(1.0);
+    let at = |t: &[(f64, f64); 11], u: f64| {
+        let x = u.clamp(0.0, 1.0) * 10.0;
+        let i = (x as usize).min(9);
+        let f = x - i as f64;
+        let (p, q) = (t[i], t[i + 1]);
+        (
+            k * h * d * (p.0 + (q.0 - p.0) * f),
+            k * h * (p.1 + (q.1 - p.1) * f),
+        )
+    };
+    let mut delta: Vec<Option<P>> = vec![None; sk.nodes.len()];
+    for (ch, t) in [(down, down_t), (up, up_t)] {
+        let n = ch.len().max(2) - 1;
+        for (i, &node) in ch.iter().enumerate() {
+            delta[node].get_or_insert(at(t, i as f64 / n as f64));
+        }
+    }
+    // Each cloud follows the branch it hangs from: the nearest wood.
+    let hangs: Vec<usize> = sk
+        .clouds
+        .iter()
+        .map(|cl| {
+            (1..sk.nodes.len())
+                .min_by(|&x, &y| dist(sk.nodes[x].p, cl.c).total_cmp(&dist(sk.nodes[y].p, cl.c)))
+                .unwrap_or(0)
+        })
+        .collect();
+    // Parents come before children: each node follows the one it grew from.
+    for i in 0..sk.nodes.len() {
+        if delta[i].is_none() {
+            // A low limb moves with the trunk where it leaves it and keeps
+            // its own place further out; a crown arm goes with its trunk.
+            let keep = if eras.contains(&i) { 0.8 } else { 1.0 };
+            delta[i] = sk.nodes[i]
+                .parent
+                .and_then(|p| delta[p])
+                .map(|(dx, dy)| (dx * keep, dy * keep));
+        }
+        if let Some((dx, dy)) = delta[i] {
+            sk.nodes[i].p.0 += dx;
+            sk.nodes[i].p.1 += dy;
+        }
+    }
+    for (cloud, &n) in sk.clouds.iter_mut().zip(&hangs) {
+        let (dx, dy) = delta[n].unwrap_or((0.0, 0.0));
+        cloud.c.0 += dx;
+        cloud.c.1 += dy;
+        for patch in &mut cloud.patches {
+            patch.0.0 += dx;
+            patch.0.1 += dy;
+        }
+    }
 }
 
 /// Trunks: one nebari, a V of two; dropped trunk languages as snags,
@@ -1037,13 +1252,30 @@ fn grow_trunks(sk: &mut Skeleton, c: &Ctx, leader: &Leader, rng: &mut Rng) -> Wo
     let (life, s_a) = (c.life, c.s_a);
     let Frame { big_s, vv, .. } = c.frame;
     let h_vis = c.frame.h_vis;
-    let downwind = if leader.x_at(150.0) < 0.0 { -1.0 } else { 1.0 };
-    let (amp_k, lean) = match leader.style {
-        Style::Chokkan => (0.4, 0.0),
-        Style::Moyogi => (1.0, 0.0),
-        Style::Shakan => (1.0, 0.25 * downwind),
-        Style::Fukinagashi => (1.0, 0.35 * downwind),
-    };
+    let (founder, mut claimed) = crate::growth::trunks::strands(life);
+    if let Some(r) = &c.recent {
+        for st in &mut claimed {
+            let was = r.strands.get(&st.lang).copied().unwrap_or_default();
+            st.peel = 0.5 * st.peel + 0.5 * was[0];
+            st.sag = 0.5 * st.sag + 0.5 * was[1];
+            st.share = 0.5 * st.share + 0.5 * was[2];
+        }
+    }
+    // A cascade has one trunk: its languages' strands stay along it, and
+    // show as branches instead.
+    let kc = leader.cascade.abs();
+    for st in &mut claimed {
+        st.peel *= 1.0 - kc * kc * (3.0 - 2.0 * kc);
+    }
+    // In the wind, of two trunks the downwind one leans and the windward
+    // one stands: a strand downwind leaves the trunk upright, as far as it
+    // has come away.
+    let (ws, wd) = (leader.sweep.abs(), leader.sweep.signum());
+    let strand_downwind = claimed
+        .first()
+        .filter(|_| -s_a * wd > 0.0)
+        .map_or(0.0, |st| ws * st.peel.clamp(0.0, 1.0));
+    let (amp_k, lean) = (leader.bend, leader.tilt * (1.0 - 0.7 * strand_downwind));
     // The trunk bends as far as the work's irregularity ever took it.
     let c_irr = c.reach.irr;
     let amp = (0.012 + 0.025 * c_irr) * (0.6 + 0.06 * c.age) * amp_k;
@@ -1080,20 +1312,13 @@ fn grow_trunks(sk: &mut Skeleton, c: &Ctx, leader: &Leader, rng: &mut Rng) -> Wo
             ph,
             0.0,
             &None,
+            // The leaning trunk of a windswept tree bends over low.
+            ws * (1.0 - strand_downwind),
         )
         .into_iter()
         .skip(1),
     );
     let main_top = sk.nodes[*a.last().unwrap_or(&0)].p;
-    let (founder, mut claimed) = crate::growth::trunks::strands(life);
-    if let Some(r) = &c.recent {
-        for st in &mut claimed {
-            let was = r.strands.get(&st.lang).copied().unwrap_or_default();
-            st.peel = 0.5 * st.peel + 0.5 * was[0];
-            st.sag = 0.5 * st.sag + 0.5 * was[1];
-            st.share = 0.5 * st.share + 0.5 * was[2];
-        }
-    }
     // The trunk outlives the language that founded it: dropped, it leaves a
     // shari, dead wood up the living trunk.
     let dropped_founder = founder.filter(|l| life.dropped(l));
@@ -1109,16 +1334,23 @@ fn grow_trunks(sk: &mut Skeleton, c: &Ctx, leader: &Leader, rng: &mut Rng) -> Wo
             Some(st) => (Some(st.lang.clone()), st.peel, st.sag, st.share),
             None => (None, 0.0, 0.0, 0.0),
         };
+        // In the wind a strand on the downwind side bends further out and
+        // lower than the trunk; one on the windward side stands up beside
+        // the leaning trunk, its top higher.
+        let downwind = if side * wd > 0.0 { ws } else { 0.0 };
+        let windward = if side * wd < 0.0 { ws } else { 0.0 };
         let top = (
-            main_top.0 + side * d * (0.3 + 0.5 * share) * peel,
-            main_top.1 + (h_a * 0.1 + sag * 18.0) * peel,
+            main_top.0 + side * d * (0.3 + 0.5 * share) * peel * (1.0 + 1.5 * downwind)
+                - (main_top.0 - CENTER_X) * 0.7 * windward * peel,
+            main_top.1 + (h_a * 0.1 + sag * 18.0) * peel + 0.3 * h_a * downwind * peel
+                - 0.12 * h_a * windward * peel,
         );
         let wind = crate::growth::wood::Wind {
             turns: 0.3,
             radius: 0.085 * h_a,
             // A thin strand is light: it parts near the crown and hardly
             // sags; a heavy one parts low and leans out.
-            part_at: (0.8 - 1.5 * share).clamp(0.2, 0.72),
+            part_at: (0.8 - 1.5 * share).clamp(0.2, 0.72) * (1.0 - 0.55 * downwind),
             sag: sag * (share / 0.3).min(1.0),
             offset: f64::from(slot) / 3.0,
         };
@@ -1199,6 +1431,11 @@ fn grow_trunks(sk: &mut Skeleton, c: &Ctx, leader: &Leader, rng: &mut Rng) -> Wo
     let center = tops.iter().map(|p| p.0).sum::<f64>() / tops.len() as f64;
     sk.apex = (center, c.y_b - vv * big_s);
     sk.height = h_vis + vv * big_s;
+    let peel_b = if chains.len() > 1 {
+        claimed.first().map_or(0.0, |st| st.peel.clamp(0.0, 1.0))
+    } else {
+        0.0
+    };
     Wood {
         chains,
         sides,
@@ -1207,6 +1444,9 @@ fn grow_trunks(sk: &mut Skeleton, c: &Ctx, leader: &Leader, rng: &mut Rng) -> Wo
         center,
         dead_b: dead_strand.is_some(),
         dead_g: dead_strand.unwrap_or(0.0),
+        sweep: leader.sweep,
+        peel_b,
+        cascade: leader.cascade,
     }
 }
 
@@ -1280,6 +1520,15 @@ fn grow_eras(sk: &mut Skeleton, c: &Ctx, wood: &Wood) {
         } else {
             len
         };
+        // In the wind, limbs on the windward side stay short and those
+        // downwind reach further.
+        let (ws, wd) = (wood.sweep.abs(), wood.sweep.signum());
+        let len = len
+            * if side * wd < 0.0 {
+                1.0 - 0.55 * ws
+            } else {
+                1.0 + 0.25 * ws
+            };
         // Limbs leave the trunk to the side or behind it, never toward the
         // viewer: the trunk hides where they join, as on a bonsai.
         let ez = er.range(-10.0, -3.0);
@@ -1682,6 +1931,8 @@ fn place_arms(c: &Ctx, wood: &Wood, arms: &[Arm], sectors: &Sectors) -> (Vec<Pla
         r_mean,
         w_mean,
         env,
+        sweep: 0.0,
+        split: 0.0,
     };
     (placed, dome)
 }

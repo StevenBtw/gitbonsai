@@ -423,6 +423,26 @@ pub fn all() -> Vec<Fixture> {
                 .build(),
         ),
         fixture(
+            "legacy",
+            "Sixteen steady years of COBOL with a little Assembly and Java: legacy work cascades over the rim.",
+            Builder::new("legacy", 100_022)
+                .spell(
+                    "2010-11-01",
+                    "2016-10-30",
+                    8.0,
+                    &[("COBOL", 8.0), ("Assembly", 1.0), ("Java", 0.5)],
+                    0.3,
+                )
+                .spell(
+                    "2016-10-31",
+                    "2026-10-31",
+                    10.0,
+                    &[("COBOL", 8.0), ("Java", 1.0)],
+                    0.3,
+                )
+                .build(),
+        ),
+        fixture(
             "steady",
             "25 per week for five years.",
             Builder::new("steady", 100_002)

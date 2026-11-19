@@ -85,8 +85,8 @@ pub struct Config {
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, default)]
 pub struct TreeConfig {
-    /// The bonsai style.
-    pub style: Style,
+    /// The bonsai style; unset, the last three years pick it ([`crate::style::Mix`]).
+    pub style: Option<Style>,
     /// Wind direction for fukinagashi; from the seed when unset.
     pub wind: Option<Wind>,
 }
@@ -193,7 +193,7 @@ impl std::str::FromStr for Legend {
     }
 }
 
-/// A bonsai style. Kengai (cascade) comes later.
+/// A bonsai style.
 #[derive(
     Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
@@ -208,11 +208,19 @@ pub enum Style {
     Shakan,
     /// Windswept: everything streams downwind.
     Fukinagashi,
+    /// Cascade: the trunk spills over the rim and hangs below the pot.
+    Kengai,
 }
 
 impl Style {
     /// Every style, in the order the gallery shows them.
-    pub const ALL: [Self; 4] = [Self::Moyogi, Self::Chokkan, Self::Shakan, Self::Fukinagashi];
+    pub const ALL: [Self; 5] = [
+        Self::Moyogi,
+        Self::Chokkan,
+        Self::Shakan,
+        Self::Fukinagashi,
+        Self::Kengai,
+    ];
 
     /// The name used in config and on the command line.
     pub fn name(self) -> &'static str {
@@ -221,6 +229,7 @@ impl Style {
             Self::Moyogi => "moyogi",
             Self::Shakan => "shakan",
             Self::Fukinagashi => "fukinagashi",
+            Self::Kengai => "kengai",
         }
     }
 }
@@ -240,7 +249,7 @@ impl FromStr for Style {
             .find(|style| style.name() == s)
             .ok_or_else(|| {
                 Error::Config(format!(
-                    "unknown style `{s}`; use one of chokkan, moyogi, shakan, fukinagashi"
+                    "unknown style `{s}`; use one of chokkan, moyogi, shakan, fukinagashi, kengai"
                 ))
             })
     }
@@ -429,7 +438,7 @@ mod tests {
     fn an_empty_file_is_all_defaults() {
         let config = Config::from_toml("").unwrap();
         assert_eq!(config, Config::default());
-        assert_eq!(config.tree.style, Style::Moyogi);
+        assert_eq!(config.tree.style, None);
         assert!(config.render.animate);
     }
 
@@ -461,7 +470,7 @@ mod tests {
             "##,
         )
         .unwrap();
-        assert_eq!(config.tree.style, Style::Fukinagashi);
+        assert_eq!(config.tree.style, Some(Style::Fukinagashi));
         assert_eq!(config.tree.wind, Some(Wind::Left));
         assert_eq!(config.leaves.colors["C++"], Rgb::hex(0x4F7FA8));
         assert!(!config.render.animate);
@@ -473,7 +482,7 @@ mod tests {
             "[leaves]\npins = [\"a\", \"b\", \"c\", \"d\", \"e\", \"f\"]",
             "[leaves]\npins = [\"Rust\", \"Rust\"]",
             "[blossoms]\ncolor = \"pink\"",
-            "[tree]\nstyle = \"kengai\"",
+            "[tree]\nstyle = \"bunjingi\"",
             "[tree]\nwind = \"up\"",
             "[tree]\nstlye = \"moyogi\"",
         ];

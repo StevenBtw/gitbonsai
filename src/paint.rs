@@ -500,6 +500,8 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
     let mut out = Painted::default();
     let mut items: Vec<(f64, String)> = Vec::new();
     let mut extent = (f64::MAX, f64::MIN, SOIL_Y);
+    // The lowest point drawn: a cascade hangs below the pot.
+    let mut low = SOIL_Y;
 
     // ---- wood, in pieces so leaves can pass in front of and behind it ----
     let mut twigs = [String::new(), String::new()];
@@ -581,6 +583,7 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                 extent.1.max(p.0 + p.2),
                 extent.2.min(p.1 - p.2),
             );
+            low = low.max(p.1 + p.2);
         }
         let strand = scene.strands.contains(&ci);
         // Thin twigs all share one path per color, drawn behind the leaves.
@@ -752,24 +755,33 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                     // the living trunk that narrows to a point as it climbs and
                     // reaches higher as it bleaches.
                     let top = 0.2 + 0.25 * g;
-                    let (y0, y1) = (fine[0].1, fine[fine.len() - 1].1);
-                    let height = |y: f64| (y0 - y) / (y0 - y1).max(1e-9);
+                    // How far along the trunk, 0 at the foot to 1 at the
+                    // tip: by length, so a trunk that cascades below its
+                    // foot measures the same way.
+                    let lens: Vec<f64> = (0..m.saturating_sub(1))
+                        .map(|i| {
+                            (math::sq(seg[i + 1].0 - seg[i].0) + math::sq(seg[i + 1].1 - seg[i].1))
+                                .sqrt()
+                        })
+                        .collect();
+                    let total = lens.iter().sum::<f64>().max(1e-9);
                     // The outline is simplified to few points: the strip takes
                     // its own, every few units along the wood.
                     let mut at: Vec<(f64, f64, f64, (f64, f64), f64)> = Vec::new();
+                    let mut walked = 0.0;
                     for i in 0..m.saturating_sub(1) {
                         let (p, q) = (seg[i], seg[i + 1]);
-                        let len = (math::sq(q.0 - p.0) + math::sq(q.1 - p.1)).sqrt();
+                        let len = lens[i];
                         let n = (len / 3.0).ceil().max(1.0) as usize;
                         for j in 0..n {
                             let u = j as f64 / n as f64;
-                            let y = p.1 + (q.1 - p.1) * u;
-                            let t = height(y);
+                            let t = (walked + len * u) / total;
                             if t <= top {
-                                let x = p.0 + (q.0 - p.0) * u;
+                                let (x, y) = (p.0 + (q.0 - p.0) * u, p.1 + (q.1 - p.1) * u);
                                 at.push((x, y, p.2 + (q.2 - p.2) * u, away(i), t));
                             }
                         }
+                        walked += len;
                     }
                     if at.len() > 2 {
                         // It wanders with the grain, and its edges are torn.
@@ -936,6 +948,7 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
             extent.1.max(x + reach),
             extent.2.min(y - reach),
         );
+        low = low.max(y + reach);
         let mut s = format!(
             r##"<use href="#{symbol}" transform="translate({} {})rotate({})scale({})" fill="{c}"/>"##,
             Num::coarse(x),
@@ -1017,6 +1030,7 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
             extent.1.max(cx + hw),
             extent.2.min(cy - up),
         );
+        low = low.max(cy + up);
         items.push((
             depth - 0.3 * rz * c - 0.5,
             format!(r#"<path d="{}" fill="{fill}"/>"#, d.as_str()),
@@ -1079,6 +1093,27 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
             .and_then(|c| c.0.first())
             .map_or(1.0, |p| p.1);
     let depth = (base_r * 1.6).clamp(20.0, 56.0);
+    // A semi-cascade stands in a deeper, narrower pot, its rim inside the
+    // point where the trunk spills over it.
+    let k = {
+        let w = b.leader.cascade.abs();
+        w * w * (3.0 - 2.0 * w)
+    };
+    let (hw, depth) = if k > 0.0 {
+        let spill = scene.chains.first().and_then(|c| {
+            c.0.iter()
+                .map(|p| project(p.0))
+                .find(|p| p.1 > SOIL_Y + 2.0 && (p.0 - CENTER_X).abs() > base_r)
+                .map(|p| (p.0 - CENTER_X).abs() - base_r - 4.0)
+        });
+        let narrow = hw * (1.0 - 0.35 * k);
+        (
+            spill.map_or(narrow, |s| narrow.min(s.max(base_r * 2.0))),
+            depth * (1.0 + 1.1 * k),
+        )
+    } else {
+        (hw, depth)
+    };
     let pot = Pot {
         hw,
         ry: hw * math::sin(TILT) * 0.55,
@@ -1087,6 +1122,16 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
         glaze: pot_glaze(b.extras.pot_tier, config, &paints),
     };
     out.frame = frame(extent, &pot);
+    // Room below the pot for what hangs there, kept no taller than wide.
+    let bottom = ((low + 10.0) / 8.0).ceil() * 8.0;
+    if bottom > out.frame.1 + out.frame.3 {
+        out.frame.3 = bottom - out.frame.1;
+        if out.frame.2 < out.frame.3 {
+            let pad = ((out.frame.3 - out.frame.2) / 16.0).ceil() * 8.0;
+            out.frame.0 -= pad;
+            out.frame.2 += 2.0 * pad;
+        }
+    }
     let egg = eggs::eggs(
         b,
         &scene,
@@ -1238,11 +1283,13 @@ fn pot_glaze(tier: u8, config: &Config, paints: &Paints) -> Rgb {
 
 /// How far a surface root at azimuth `az` reaches: longer with a stout
 /// trunk and old nebari, shorter toward the viewer, and always inside the pot
-/// rim (half-width `hw`). `u` in `[0, 1)` varies it.
-fn root_reach(base_r: f64, nebari: f64, hw: f64, az: f64, u: f64) -> f64 {
+/// rim (half-width `hw`). `u` in `[0, 1)` varies it; `brace` (0 to 1)
+/// lengthens a root that holds the tree against the wind.
+fn root_reach(base_r: f64, nebari: f64, hw: f64, az: f64, u: f64, brace: f64) -> f64 {
     // At least 1.6 trunk radii, so a root shows past the trunk's foot,
     // unless the pot rim needs it shorter.
-    let reach = (base_r * (1.35 + u * (0.25 + 0.5 * nebari.clamp(0.0, 1.0)))).max(base_r * 1.6);
+    let reach = (base_r * (1.35 + u * (0.25 + 0.5 * nebari.clamp(0.0, 1.0)))).max(base_r * 1.6)
+        * (1.0 + 0.45 * brace);
     reach.min(hw * 0.78 * (0.45 + 0.55 * math::cos(az).abs()))
 }
 
@@ -1297,13 +1344,16 @@ fn nebari(
     for i in 0..n {
         let mut r = Rng::keyed(b.account_id, &format!("root/{i}"));
         let az = 0.9 + f64::from(i) * 2.399_963 + r.range(-0.2, 0.2);
-        let reach = root_reach(base_r, b.extras.nebari, pot.hw, az, r.unit());
+        // Roots facing into the wind brace the tree: longer and thicker.
+        let brace = (-b.leader.sweep * math::cos(az)).max(0.0);
+        let reach = root_reach(base_r, b.extras.nebari, pot.hw, az, r.unit(), brace);
         let bend = r.range(-0.3, 0.3);
         // Front roots are seen across their width: slimmer, so each stays
         // its own root.
         let front_k = 1.0 - 0.3 * math::sin(az).max(0.0);
-        let w0 = base_r * (0.26 + 0.14 * age) * r.range(0.85, 1.15) * front_k;
-        let h0 = base_r * (0.3 + 0.2 * age) * r.range(0.85, 1.15);
+        let w0 =
+            base_r * (0.26 + 0.14 * age) * r.range(0.85, 1.15) * front_k * (1.0 + 0.35 * brace);
+        let h0 = base_r * (0.3 + 0.2 * age) * r.range(0.85, 1.15) * (1.0 + 0.3 * brace);
         let from = base_r * 0.55;
         // Ground point, ground direction and screen offset of a ground vector.
         let ground = |a: f64, d: f64| (x0 + math::cos(a) * d, y0 + math::sin(a) * d * tilt);
@@ -1712,8 +1762,8 @@ mod tests {
                 for hw in [60.0, 100.0, 140.0] {
                     for i in 0..16 {
                         let az = f64::from(i) / 16.0 * math::TAU;
-                        for u in [0.0, 0.5, 0.999] {
-                            let reach = root_reach(base_r, nebari, hw, az, u);
+                        for (u, brace) in [(0.0, 0.0), (0.5, 0.5), (0.999, 1.0)] {
+                            let reach = root_reach(base_r, nebari, hw, az, u, brace);
                             assert!(
                                 reach * math::cos(az).abs() <= hw * 0.78 + 1e-9,
                                 "{base_r} {nebari} {hw} {az}: {reach}"

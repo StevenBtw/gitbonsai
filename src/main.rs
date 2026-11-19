@@ -377,7 +377,7 @@ fn config_file(path: Option<&Path>, status: &mut dyn FnMut(&str)) -> Result<Conf
 fn load_config(args: &TreeArgs, snapshot: &Snapshot, status: &dyn Fn(&str)) -> Result<Config> {
     let mut config = config_file(args.config.as_deref(), &mut |s| status(s))?;
     if let Some(style) = &args.style {
-        config.tree.style = style.parse::<Style>()?;
+        config.tree.style = Some(style.parse::<Style>()?);
     }
     for warning in config.warnings(snapshot) {
         status(&format!("warning: {warning}"));
@@ -514,7 +514,7 @@ fn gallery(dir: &Path, snapshots: &[PathBuf], config: &Config) -> Result<()> {
         let mut styles = Vec::new();
         for style in Style::ALL {
             let mut config = config.clone();
-            config.tree.style = style;
+            config.tree.style = Some(style);
             let bonsai = Bonsai::grow(snapshot, &config, None);
             let base = format!("{slug}-{style}");
             write_pair(dir, &base, &bonsai, &config)?;
@@ -554,7 +554,11 @@ fn gallery(dir: &Path, snapshots: &[PathBuf], config: &Config) -> Result<()> {
         }
         let mut rows = vec![("Styles".to_string(), styles)];
         if stages.len() > 1 {
-            rows.push((format!("Growth, {}", config.tree.style), stages));
+            let style = config
+                .tree
+                .style
+                .map_or_else(|| "style from history".to_string(), |s| s.to_string());
+            rows.push((format!("Growth, {style}"), stages));
         }
         sections.push(html::Section {
             title: title.clone(),

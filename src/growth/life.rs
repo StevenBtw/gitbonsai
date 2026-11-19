@@ -392,7 +392,7 @@ pub fn dropped(last_use: Date, observed: Date, active_days: &[Date]) -> bool {
 }
 
 /// Coefficient of variation of `xs`; 0 for fewer than two or no activity.
-fn cv(xs: &[f64]) -> f64 {
+pub(crate) fn cv(xs: &[f64]) -> f64 {
     if xs.len() < 2 {
         return 0.0;
     }

@@ -47,6 +47,21 @@ pub fn report(b: &Bonsai) -> String {
         if age == 1 { "week" } else { "weeks" },
         f64::from(age) / 52.18
     );
+    match b.leader.mix {
+        Some(m) => {
+            let _ = writeln!(
+                out,
+                "  style               {} from the last three years: pauses {}, past one language {}, legacy {}",
+                b.leader.style,
+                pct(m.irregular + 0.0),
+                pct(m.spread + 0.0),
+                pct(m.legacy + 0.0)
+            );
+        }
+        None => {
+            let _ = writeln!(out, "  style               {} (configured)", b.leader.style);
+        }
+    }
     let _ = writeln!(
         out,
         "  height              {:.1} units (age shows as girth and spread)",

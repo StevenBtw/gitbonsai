@@ -378,6 +378,7 @@ pub fn trunk3(
     phase: f64,
     zd: f64,
     lang: &Lang,
+    early: f64,
 ) -> Vec<usize> {
     let (x0, y0) = sk.nodes[from].p;
     let z0 = zof(sk, from);
@@ -386,8 +387,12 @@ pub fn trunk3(
     let mut out = vec![from];
     for i in 1..=n {
         let u = i as f64 / n as f64;
+        // `early` moves the lean down toward the foot: a trunk bent over low
+        // rather than near its top, reaching the same place.
+        let shape =
+            (1.0 - early) * u * (1.0 - 0.42 * u) + early * 0.58 * (1.0 - math::pow(1.0 - u, 3.0));
         let x = x0
-            + h * math::sin(lean) * u * (1.0 - 0.42 * u)
+            + h * math::sin(lean) * shape
             + amp
                 * h
                 * (math::sin(phase + freq * math::TAU * u) - math::sin(phase))
