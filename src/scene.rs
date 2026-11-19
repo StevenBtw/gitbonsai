@@ -628,7 +628,8 @@ fn cloud_leaves(b: &Bonsai, scene: &mut Scene) {
         if left > 0.02 {
             scene.pads.push((c3, cl.rx, cl.ry));
         }
-        if b.extras.drip && (li == 0 || lobes[li - 1].0 != *ci) {
+        // A lobe bare of leaves gets no tubing: it would end at nothing.
+        if left > 0.02 && b.extras.drip && (li == 0 || lobes[li - 1].0 != *ci) {
             // Tubing follows the wood from the cloud's nearest node down to
             // the soil, until it joins a line already laid.
             let d = |i: usize| {

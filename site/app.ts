@@ -88,6 +88,10 @@ function showPlate(i: number): void {
   $("herofor").textContent = p.name;
   $("herostyle").textContent = p.style;
   $("heroweek").textContent = p.week;
+  check(i);
+}
+/** Marks thumbnail `i` as the chosen radio, with the roving tab stop on it. */
+function check(i: number): void {
   gallery.querySelectorAll<HTMLElement>(".thumb").forEach((b, j) => {
     b.setAttribute("aria-checked", String(j === i));
     b.tabIndex = j === i ? 0 : -1;
@@ -162,9 +166,11 @@ fetch("plates.json")
         gallery.appendChild(b);
       });
       heroCanvas.classList.add("scaled");
-      gallery.hidden = false;
       $("yourno").textContent = plateNo(plates.length);
       const home = Math.max(0, plates.findIndex((p) => p.id === "showcase"));
+      // A checked plate and one tab stop before the row is shown, also during the grow-in.
+      check(home);
+      gallery.hidden = false;
       if (growIn) void playGrowIn(home);
       else showPlate(home);
     },

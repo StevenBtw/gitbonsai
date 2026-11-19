@@ -169,11 +169,6 @@ pub fn tight(vb: [f64; 4]) -> [f64; 4] {
     [vb[0] + (vb[2] - vb[3]) / 2.0, vb[1], vb[3], vb[3]]
 }
 
-/// Reads the `viewBox` of an SVG document: all zeros when it has none.
-pub fn view_box(svg: &str) -> [f64; 4] {
-    inner(svg, "").0
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

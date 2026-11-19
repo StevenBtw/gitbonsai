@@ -318,13 +318,12 @@ fn run(cli: Cli) -> Result<()> {
                 let svgs: Vec<(String, String)> = grown
                     .iter()
                     .map(|(name, b)| {
-                        let svg = render::svg(b, &config, theme);
                         let svg = if tight && b.timeline.age_weeks() < 52 {
-                            let [x, y, w, h] =
-                                gitbonsai::row::tight(gitbonsai::row::view_box(&svg));
+                            let (x, y, w, h) = render::frame(b, &config);
+                            let [x, y, w, h] = gitbonsai::row::tight([x, y, w, h]);
                             render::svg_in(b, &config, theme, Some((x, y, w, h)))
                         } else {
-                            svg
+                            render::svg(b, &config, theme)
                         };
                         (name.clone(), svg)
                     })

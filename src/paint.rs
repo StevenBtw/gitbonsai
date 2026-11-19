@@ -635,7 +635,24 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                 fine[start..=end].iter().map(|p| p.3).sum::<f64>() / (end - start + 1) as f64,
                 |j| j.1,
             );
-            let base = haze(paints.bark.mix(paints.jin, bleach), depth);
+            // Living wood under the crown lies in its shadow, so limbs that
+            // cross there read apart from each other and from the lit trunk.
+            let shade = if dead.is_some() {
+                0.0
+            } else {
+                let at = |k: usize| chain[k * (chain.len() - 1) / (fine.len() - 1).max(1)].0;
+                (start..=end)
+                    .map(|k| crown_shadow(&scene.pads, at(k)))
+                    .sum::<f64>()
+                    / (end - start + 1) as f64
+            };
+            let base = haze(
+                paints
+                    .bark
+                    .mix(paints.jin, bleach)
+                    .shift(-0.13 * shade, 0.0),
+                depth,
+            );
             let splinter = snapped && last && bleach < 0.8;
             let d = tube_from(
                 &seg,
@@ -698,7 +715,8 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                 };
                 let _ = write!(s, r#"<path d="{}" fill="{base}"{ink}/>"#, d.as_str());
             }
-            if seg.iter().any(|p| p.2 > 6.5) {
+            let thick = seg.iter().any(|p| p.2 > 6.5);
+            if thick || seg.iter().any(|p| p.2 > 1.2) {
                 // The shadow falls on whichever side faces away from the light.
                 let m = seg.len();
                 let away = |i: usize| {
@@ -745,16 +763,28 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                 } else {
                     (base.shift(-0.09, 0.0), base.shift(0.07, 0.0))
                 };
-                let _ = write!(
-                    s,
-                    r#"<path d="{}" fill="{shade}"/>"#,
-                    strip(0.05, 0.98).as_str(),
-                );
-                let _ = write!(
-                    s,
-                    r#"<path d="{}" fill="{lit}"/>"#,
-                    strip(-0.35, -0.72).as_str(),
-                );
+                if thick {
+                    let _ = write!(
+                        s,
+                        r#"<path d="{}" fill="{shade}"/>"#,
+                        strip(0.05, 0.98).as_str(),
+                    );
+                    let _ = write!(
+                        s,
+                        r#"<path d="{}" fill="{lit}"/>"#,
+                        strip(-0.35, -0.72).as_str(),
+                    );
+                }
+                if !*jin {
+                    // Every branch has a dark underside, so branches crossing
+                    // in one bark color still read one by one.
+                    let _ = write!(
+                        s,
+                        r#"<path d="{}" fill="{}"/>"#,
+                        strip(0.62, 0.98).as_str(),
+                        base.shift(-0.17, 0.0)
+                    );
+                }
                 if let Some(g) = scene.shari.filter(|_| ci == 0) {
                     // A shari: the founding language's dead wood, a strip up
                     // the living trunk that narrows to a point as it climbs and
@@ -896,7 +926,12 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                     paints.jin_ink
                 )
             } else {
-                format!(r#"<path d="{d}" fill="{color}"/>"#)
+                // A fine darker outline on each twig: in one shared fill,
+                // crossing twigs would merge into one flat shape.
+                format!(
+                    r#"<path d="{d}" fill="{color}" stroke="{}" stroke-width="0.5" stroke-linejoin="round"/>"#,
+                    color.shift(-0.16, 0.0)
+                )
             };
             items.push((f64::MIN, s));
         }
@@ -1330,6 +1365,22 @@ fn root_reach(base_r: f64, nebari: f64, hw: f64, az: f64, u: f64, brace: f64, of
     let (c, s, rim) = (math::cos(az), math::sin(az), hw * 0.78);
     let to_rim = (-off * c + (math::sq(rim) - math::sq(off * s)).max(0.0).sqrt()).max(0.0);
     reach.min(to_rim * (0.45 + 0.55 * c.abs()))
+}
+
+/// Measures how deep wood at `e` lies in the crown's shadow, 0 in the open to
+/// 1 right under a cloud's middle: under a pad of `pads` and at most three of
+/// its half-heights below its center. The deepest pad counts.
+fn crown_shadow(pads: &[(V3, f64, f64)], e: V3) -> f64 {
+    pads.iter()
+        .map(|(c, rx, ry)| {
+            let across = 1.0 - math::sq((e[0] - c[0]) / rx);
+            let below = (c[1] - e[1]) / ry;
+            if across <= 0.0 || !(0.0..3.0).contains(&below) {
+                return 0.0;
+            }
+            across * (1.0 - below / 3.0)
+        })
+        .fold(0.0, f64::max)
 }
 
 /// A root's azimuth `az` on a tree on `side`: a left tree's roots lie as the
@@ -1771,6 +1822,23 @@ fn drip_ends(scene: &Scene, paints: &Paints, pot: &Pot, animate: bool) -> String
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Wood just under a cloud is in its shadow; wood beside it, above it
+    /// or far below it is in the light.
+    #[test]
+    fn wood_under_the_crown_lies_in_its_shadow() {
+        let pads = [([0.0, 88.0, 0.0], 19.0, 8.8)];
+        let under = crown_shadow(&pads, [0.0, 80.0, 0.0]);
+        assert!(under > 0.6, "{under}");
+        for (at, why) in [
+            ([30.0, 80.0, 0.0], "beside"),
+            ([0.0, 99.0, 0.0], "above"),
+            ([0.0, 30.0, 0.0], "far below"),
+        ] {
+            let shade = crown_shadow(&pads, at);
+            assert!(shade < 0.05, "{why}: {shade}");
+        }
+    }
 
     #[test]
     fn follow_moves_the_start_and_keeps_the_tip_even_on_a_tiny_twig() {

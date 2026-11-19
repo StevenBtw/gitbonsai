@@ -35,7 +35,7 @@ def frame(job):
 
 
 def encode(frames, out):
-    if os.environ.get('MKVIDEO_NVENC'):
+    if os.environ.get('MKVIDEO_NVENC') == '1':
         codec = ['-c:v', 'h264_nvenc', '-preset', 'p6', '-rc', 'vbr', '-cq', '20', '-b:v', '0']
     else:
         codec = ['-c:v', 'libx264', '-preset', 'slow', '-crf', '20']
