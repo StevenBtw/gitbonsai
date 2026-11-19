@@ -20,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: StevenBtw/gitbonsai@v0.3.1
+      - uses: StevenBtw/gitbonsai@v0.3.2
         id: bonsai
         with:
           output-dir: assets
