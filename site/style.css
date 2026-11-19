@@ -123,6 +123,7 @@ input[type="range"] { width: 100%; accent-color: var(--primary); }
 .path em { color: var(--primary); font-style: normal; }
 pre.code { margin: 0; font: 400 12.5px/1.65 var(--font-mono); color: var(--foreground); white-space: pre; overflow-x: auto; }
 pre.code .c { color: var(--muted-foreground); }
+pre.code.long { max-height: 22em; overflow: auto; }
 .type .ln { display: block; opacity: 0; }
 .scene.on.type .ln { animation: ln .01s forwards; animation-delay: calc(var(--i) * 140ms); }
 @keyframes ln { to { opacity: 1; } }

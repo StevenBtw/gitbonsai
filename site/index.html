@@ -124,7 +124,7 @@
             <button class="btn btn-primary" type="submit" id="grow">Grow</button>
           </div>
           <label class="check"><input type="checkbox" id="legend"> Show the legend</label>
-          <p class="hint">Public activity only; private work shows as silver leaves once the Action runs on your own profile. Trees grown here are kept to help improve gitbonsai; to have yours removed, <a href="https://github.com/StevenBtw/gitbonsai/issues">open an issue</a>.</p>
+          <p class="hint">Public activity only; private work shows as silver leaves once the Action runs on your own profile. Trees grown here, with the public activity they were grown from, are kept to help improve gitbonsai until removal is asked; to have one removed, email <a href="mailto:privacy@gitbonsai.dev">privacy@gitbonsai.dev</a>.</p>
         </form>
       </div>
       <figure class="plate result" aria-live="polite">
@@ -151,12 +151,13 @@
           <div class="bar"><i></i><i></i><i></i><span id="scenepath">you/you</span></div>
           <div class="scene type" data-scene="0">
             <p class="path">you/you / <em>.github/workflows/bonsai.yml</em></p>
-<pre class="code"><span class="ln">name: bonsai</span><span class="ln">on:</span><span class="ln">  schedule:</span><span class="ln">    - cron: "17 6 * * 1"</span><span class="ln">  workflow_dispatch:</span><span class="ln">permissions:</span><span class="ln">  contents: write</span><span class="ln">jobs:</span><span class="ln">  bonsai:</span><span class="ln">    runs-on: ubuntu-latest</span><span class="ln">    steps:</span><span class="ln">      - uses: actions/checkout@v7</span><span class="ln">      - uses: StevenBtw/gitbonsai@v@VERSION@</span><span class="ln">        with:</span><span class="ln">          output-dir: assets</span><span class="ln"><span class="c">      # then commit the SVGs and bonsai.snapshot.json</span></span></pre>
+<pre class="code"><span class="ln">name: bonsai</span><span class="ln">on:</span><span class="ln">  schedule:</span><span class="ln">    - cron: "17 6 * * 1"</span><span class="ln">  workflow_dispatch:</span><span class="ln">permissions:</span><span class="ln">  contents: write</span><span class="ln">jobs:</span><span class="ln">  bonsai:</span><span class="ln">    runs-on: ubuntu-latest</span><span class="ln">    steps:</span><span class="ln">      - uses: actions/checkout@v7</span><span class="ln">      - uses: StevenBtw/gitbonsai@v@VERSION@</span><span class="ln">        with:</span><span class="ln">          output-dir: assets</span><span class="ln">      - name: Commit if it changed</span><span class="ln">        run: git add assets &amp;&amp; git commit -m "Grow bonsai" &amp;&amp; git push</span></pre>
           </div>
           <div class="scene" data-scene="1">
             <p class="path">you/you / <em>Actions</em></p>
             <div class="runs"><div class="run"><span class="dot"></span><span>bonsai · run workflow</span></div></div>
             <div class="files">
+              <div>Grow bonsai · github-actions[bot]</div>
               <div>+ assets/bonsai-light.svg</div>
               <div>+ assets/bonsai-dark.svg</div>
               <div>+ assets/bonsai.snapshot.json</div>
@@ -170,10 +171,8 @@
         </div>
         <div class="steps" id="steps">
           <div class="step"><button class="h" type="button">Add the workflow</button>
-            <span class="d">Copy <a href="https://github.com/StevenBtw/gitbonsai/blob/main/examples/profile-workflow.yml">the example workflow</a> to <code>.github/workflows/bonsai.yml</code> in your profile repository. Its core:</span>
-            <span class="snip"><button class="copy" type="button" data-copy="wf">Copy</button><pre class="code" id="snip-wf">- uses: StevenBtw/gitbonsai@v@VERSION@
-  with:
-    output-dir: assets</pre></span>
+            <span class="d">Save this as <code>.github/workflows/bonsai.yml</code> in your profile repository. Its last step commits the tree; without it a run is green but changes nothing.</span>
+            <span class="snip"><button class="copy" type="button" data-copy="wf">Copy</button><pre class="code long" id="snip-wf">@WORKFLOW@</pre></span>
           </div>
           <div class="step"><button class="h" type="button">Run it once</button>
             <span class="d">In the Actions tab, run <code>bonsai</code> by hand. After that it runs every Monday.</span>

@@ -21,6 +21,15 @@ cp "$work/js/app.js" "$site/index.html" "$site/style.css" "$site/tokens.css" "$s
 for f in index.html app.js style.css tokens.css fonts.css CNAME; do
   sed "s/@VERSION@/$version/g" "$work/$f" > "$out/$f"
 done
+# The whole example workflow, so what people copy is what the README links.
+python3 - "$out/index.html" "$site/../examples/profile-workflow.yml" <<'EOF'
+import html, sys
+page, workflow = sys.argv[1], sys.argv[2]
+text = open(page, encoding="utf-8").read()
+assert text.count("@WORKFLOW@") == 1, "index.html needs one @WORKFLOW@"
+wf = open(workflow, encoding="utf-8").read().rstrip("\n")
+open(page, "w", encoding="utf-8", newline="\n").write(text.replace("@WORKFLOW@", html.escape(wf, quote=False)))
+EOF
 
 "$bin" render fixture:showcase --output-dir "$work/showcase" -q
 "$bin" render "$site/snapshots/stevenbtw.snapshot.json" --output-dir "$work/tree" -q
