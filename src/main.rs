@@ -143,6 +143,10 @@ enum Command {
         /// Output folder
         #[arg(long, default_value = "bonsai")]
         output_dir: PathBuf,
+
+        /// Frame trees under a year old no wider than they are tall, so they take less room
+        #[arg(long)]
+        tight: bool,
     },
 
     /// Write a synthetic snapshot, or list them
@@ -297,6 +301,7 @@ fn run(cli: Cli) -> Result<()> {
             trees,
             config,
             output_dir,
+            tight,
         } => {
             let config = config_file(config.as_deref(), &mut |s| status(s))?;
             let mut grown = Vec::new();
@@ -312,7 +317,17 @@ fn run(cli: Cli) -> Result<()> {
             for theme in Theme::ALL {
                 let svgs: Vec<(String, String)> = grown
                     .iter()
-                    .map(|(name, b)| (name.clone(), render::svg(b, &config, theme)))
+                    .map(|(name, b)| {
+                        let svg = render::svg(b, &config, theme);
+                        let svg = if tight && b.timeline.age_weeks() < 52 {
+                            let [x, y, w, h] =
+                                gitbonsai::row::tight(gitbonsai::row::view_box(&svg));
+                            render::svg_in(b, &config, theme, Some((x, y, w, h)))
+                        } else {
+                            svg
+                        };
+                        (name.clone(), svg)
+                    })
                     .collect();
                 output::write_atomic(
                     &output_dir.join(format!("row-{}.svg", theme.name())),

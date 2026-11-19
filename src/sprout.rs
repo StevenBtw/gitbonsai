@@ -157,15 +157,17 @@ fn stem(scene: &Scene, n: f64) -> Option<(Vec<(f64, f64, f64)>, f64)> {
     Some((stem, top / height(SPROUT_UNTIL)))
 }
 
-/// The sprout of `b`, along the seedling stem of `scene`, whose painted
-/// pieces (`seedling`) fade in as the juvenile leaves fade out: `None`
-/// unless `b` is a sprout.
+/// Draws the sprout of `b` along the seedling stem of `scene`: the
+/// seedling's painted pieces (`seedling`) fade in as the juvenile leaves
+/// drop. You also get how many leaves flutter (none unless `animate`), and
+/// `None` unless `b` is a sprout.
 pub fn draw(
     b: &Bonsai,
     scene: &Scene,
     paints: &Paints,
     seedling: &[(f64, String)],
-) -> Option<String> {
+    animate: bool,
+) -> Option<(String, usize)> {
     if !is_sprout(b) {
         return None;
     }
@@ -205,6 +207,15 @@ pub fn draw(
         None => private_tone(b.maple.private(), paints.dark),
     };
     let mut out = String::new();
+    // Each leaf flutters about its stalk, alternating tempos.
+    let mut moving = 0usize;
+    let mut sway = || {
+        if !animate {
+            return "";
+        }
+        moving += 1;
+        if moving % 2 == 1 { "lf" } else { "lg" }
+    };
     let _ = write!(
         out,
         r#"<g transform="translate({} {})scale({})">"#,
@@ -219,7 +230,7 @@ pub fn draw(
             r#"<path d="M0 0C0-3.5 2.5-5 2.8-2.8" fill="none" stroke="{green}" stroke-width=".9" stroke-linecap="round"/><ellipse cx="3" cy="-2.2" rx="1.5" ry="1.05" fill="{}"/></g>"#,
             Rgb::hex(0x7a5a3a).shift(shift, 0.0)
         );
-        return Some(out);
+        return Some((out, 0));
     }
     out.push_str("</g>");
     // The stem, green until it turns woody.
@@ -244,19 +255,20 @@ pub fn draw(
     for (opens, gone, ang) in [(2.0, 42.0, -62.0), (3.0, 33.0, 62.0)] {
         if n >= opens && n < gone {
             let c = color(&nth(&runs, opens)).mix(old, yellow);
-            cot(&mut out, (cx, cy), ang, cs, c);
+            cot(&mut out, (cx, cy), ang, cs, c, sway());
         }
     }
     if (33.0..45.0).contains(&n) {
-        cot(&mut out, (9.0, 1.0), 96.0, 0.9, old);
+        cot(&mut out, (9.0, 1.0), 96.0, 0.9, old, "");
     }
     out.push_str("</g>");
-    // The seedling's own drawing, scaled to the sprout's height.
+    // The seedling's own drawing, scaled to the sprout's height: whole by
+    // 46, so it never shows faint behind the juvenile leaves.
     if w > 0.0 {
         let _ = write!(
             out,
             r#"<g opacity="{}" transform="translate({} {})scale({})">"#,
-            Num(w),
+            Num(ease(40.0, 46.0, n)),
             Num(fx * (1.0 - k)),
             Num(fy * (1.0 - k)),
             Num(k)
@@ -361,44 +373,56 @@ pub fn draw(
             // The light comes from the left: the right leaf a shade darker.
             let c = lang.map_or(MAPLE_GREEN.shift(shift, 0.0), color);
             let c = if side > 0.0 { c.shift(-0.03, 0.0) } else { c };
-            blade(&mut out, (x, y), side * spread, s, c, green);
+            blade(&mut out, (x, y), side * spread, s, c, green, sway());
         }
     }
     out.push_str("</g>");
-    Some(out)
+    Some((out, moving))
 }
 
-/// A seed leaf at `p`, turned `ang` degrees, `s` long: narrow and unlobed.
-fn cot(out: &mut String, p: (f64, f64), ang: f64, s: f64, fill: Rgb) {
+/// Draws a seed leaf at `p`, turned `ang` degrees, `s` long: narrow and
+/// unlobed. A `class` sets it fluttering about its base.
+fn cot(out: &mut String, p: (f64, f64), ang: f64, s: f64, fill: Rgb, class: &str) {
     let _ = write!(
         out,
-        r#"<path d="M0 0C-1.3-{} -1.2-{} 0-{}C1.2-{} 1.3-{} 0 0Z" transform="translate({} {})rotate({})" fill="{fill}"/>"#,
+        r#"<g transform="translate({} {})"><g{}><path d="M0 0C-1.3-{} -1.2-{} 0-{}C1.2-{} 1.3-{} 0 0Z" transform="rotate({})" fill="{fill}"/></g></g>"#,
+        Num(p.0),
+        Num(p.1),
+        class_attr(class),
         Num(2.0 * s),
         Num(4.6 * s),
         Num(6.0 * s),
         Num(4.6 * s),
         Num(2.0 * s),
-        Num(p.0),
-        Num(p.1),
         Num(ang)
     );
 }
 
-/// A juvenile leaf on a short stalk from `p`, turned `ang` degrees, at size `s`.
-fn blade(out: &mut String, p: (f64, f64), ang: f64, s: f64, fill: Rgb, stalk: Rgb) {
+/// Writes ` class="…"`, or nothing for an empty class.
+fn class_attr(class: &str) -> String {
+    if class.is_empty() {
+        String::new()
+    } else {
+        format!(r#" class="{class}""#)
+    }
+}
+
+/// Draws a juvenile leaf on a short stalk from `p`, turned `ang` degrees,
+/// at size `s`. A `class` sets it fluttering where its stalk leaves the stem.
+#[allow(clippy::too_many_arguments, reason = "a leaf's drawing settings")]
+fn blade(out: &mut String, p: (f64, f64), ang: f64, s: f64, fill: Rgb, stalk: Rgb, class: &str) {
     let a = crate::math::rad(ang);
     let len = 1.6 + 1.2 * s;
-    let e = (
-        p.0 + crate::math::sin(a) * len,
-        p.1 - crate::math::cos(a) * len,
-    );
+    // Drawn about the stalk's base, so a flutter turns it there.
+    let e = (crate::math::sin(a) * len, -crate::math::cos(a) * len);
     let _ = write!(
         out,
-        r##"<path d="M{} {}Q{} {} {} {}" fill="none" stroke="{stalk}" stroke-width=".3"/><g transform="translate({} {})rotate({})scale({})"><path d="{JUV}" fill="{fill}"/><path d="M0-.2V-4.6" stroke="#fff" stroke-opacity=".25" stroke-width=".25"/></g>"##,
+        r##"<g transform="translate({} {})"><g{}><path d="M0 0Q{} {} {} {}" fill="none" stroke="{stalk}" stroke-width=".3"/><g transform="translate({} {})rotate({})scale({})"><path d="{JUV}" fill="{fill}"/><path d="M0-.2V-4.6" stroke="#fff" stroke-opacity=".25" stroke-width=".25"/></g></g></g>"##,
         Num(p.0),
         Num(p.1),
-        Num(f64::midpoint(p.0, e.0)),
-        Num(p.1.min(e.1) - 0.5),
+        class_attr(class),
+        Num(e.0 / 2.0),
+        Num(e.1.min(0.0) - 0.5),
         Num(e.0),
         Num(e.1),
         Num(e.0),

@@ -145,6 +145,16 @@ impl Builder {
         self
     }
 
+    /// Rests a week after every `run` weeks of work, from the first week
+    /// on: the longest weekly streak is `run`.
+    fn rest_every(mut self, run: i32) -> Self {
+        if let Some(first) = self.days.keys().next().map(|d| d.week()) {
+            self.days
+                .retain(|d, _| (d.week() - first).rem_euclid(run + 1) != run);
+        }
+        self
+    }
+
     fn build(self) -> Snapshot {
         // What a spell leaves without a language is its private work.
         let days: Vec<Day> = self
@@ -329,7 +339,7 @@ pub fn all() -> Vec<Fixture> {
         ),
         fixture(
             "showcase",
-            "The README's example: 14 years; C# swapped for Java (a dead C# trunk), early private work, then Python, Rust and TypeScript; a 40-week streak.",
+            "The README's example: 14 years; C# swapped for Java (a dead C# trunk), early private work, then Python, Rust and TypeScript; a week off every half year.",
             Builder::new("showcase", 42)
                 .spell(
                     "2012-09-03",
@@ -386,6 +396,7 @@ pub fn all() -> Vec<Fixture> {
                     ],
                     0.06,
                 )
+                .rest_every(26)
                 .build(),
         ),
         fixture(
@@ -604,6 +615,17 @@ pub fn names() -> Vec<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The Showcase rests a week after every half year of work: its longest
+    /// streak is 26 weeks, a glazed pot's tier, not its whole life.
+    #[test]
+    fn the_showcase_rests_twice_a_year() {
+        let s = by_name("showcase").unwrap().snapshot;
+        let t = crate::timeline::Timeline::new(&s);
+        let e = crate::extras::Extras::new(&t, t.age_weeks());
+        assert_eq!(e.longest_streak, 26);
+        assert_eq!(e.pot_tier, 3);
+    }
 
     #[test]
     fn a_past_view_of_a_fixture_keeps_what_it_had_earned() {

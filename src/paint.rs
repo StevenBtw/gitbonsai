@@ -698,7 +698,10 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                 };
                 let _ = write!(s, r#"<path d="{}" fill="{base}"{ink}/>"#, d.as_str());
             }
-            if seg.iter().any(|p| p.2 > 6.5) {
+            // Thick wood gets a shadow side and a lit side; a limb past a few
+            // units the shadow side only, so overlapping limbs read apart.
+            let thick = seg.iter().any(|p| p.2 > 6.5);
+            if thick || seg.iter().any(|p| p.2 > 3.0) {
                 // The shadow falls on whichever side faces away from the light.
                 let m = seg.len();
                 let away = |i: usize| {
@@ -750,11 +753,13 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                     r#"<path d="{}" fill="{shade}"/>"#,
                     strip(0.05, 0.98).as_str(),
                 );
-                let _ = write!(
-                    s,
-                    r#"<path d="{}" fill="{lit}"/>"#,
-                    strip(-0.35, -0.72).as_str(),
-                );
+                if thick {
+                    let _ = write!(
+                        s,
+                        r#"<path d="{}" fill="{lit}"/>"#,
+                        strip(-0.35, -0.72).as_str(),
+                    );
+                }
                 if let Some(g) = scene.shari.filter(|_| ci == 0) {
                     // A shari: the founding language's dead wood, a strip up
                     // the living trunk that narrows to a point as it climbs and
@@ -1092,10 +1097,11 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
     // A sprout is drawn leaf by leaf in place of the seedling, which still
     // sizes the pot and frame, so the hand-over doesn't move them, and fades
     // in over the sprout's last contributions.
-    let sprout = crate::sprout::draw(b, &scene, &paints, &items);
-    if let Some(s) = &sprout {
+    let sprout = crate::sprout::draw(b, &scene, &paints, &items, animate);
+    if let Some((s, moving)) = &sprout {
         items = vec![(0.0, s.clone())];
         fallen.clear();
+        out.animated += moving;
     }
 
     // ---- the pot, sized to the tree, seen from a little above ----

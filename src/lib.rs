@@ -288,7 +288,7 @@ impl Bonsai {
     }
 }
 
-/// "A", "A and B", "A, B and C".
+/// Joins `items` the way a sentence lists them: "A", "A and B", "A, B and C".
 fn and_list(items: &[&str]) -> String {
     match items {
         [] => String::new(),

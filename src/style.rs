@@ -66,12 +66,12 @@ pub const CENTER_X: f64 = 256.0;
 /// The contributions that make the sprout: their rhythm picks the side.
 pub const SPROUT: u32 = 60;
 
-/// The side a tree leans and streams to, `+1` right or `-1` left, from its
-/// sprout's rhythm: the first [`SPROUT`] contributions of `days` (in date
-/// order). More than 2/7 of them on a Saturday or Sunday (UTC) is
-/// weekend-heavy and keeps the right; otherwise it is the left. Settled at
-/// the 60th contribution, so it never changes after; nothing yet is the
-/// right.
+/// Picks the side a tree leans and streams to from its sprout's rhythm:
+/// `+1` right or `-1` left. The first [`SPROUT`] contributions of `days`
+/// (in date order) decide: more than 2/7 of them on a Saturday or Sunday
+/// (UTC) is weekend-heavy and keeps the right; weekday-heavy gets the left.
+/// It settles at the 60th contribution and never changes after; with
+/// nothing yet, it's the right.
 pub fn side(days: &[Day]) -> f64 {
     let (mut seen, mut weekend) = (0, 0);
     for d in days {
@@ -157,9 +157,9 @@ impl Leader {
         }
     }
 
-    /// This leader as grown: on the right. A left tree grows as the right
-    /// one and is mirrored after ([`crate::growth::grow`]), so the left is a
-    /// true mirror image of the right.
+    /// Gives this leader as it grows: on the right. A left tree grows as the
+    /// right one and is mirrored after ([`crate::growth::grow`]), so the left
+    /// is a true mirror image of the right.
     #[must_use]
     pub fn canonical(&self) -> Self {
         let s = self.side;

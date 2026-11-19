@@ -97,7 +97,7 @@ pub struct Cloud {
 }
 
 impl Skeleton {
-    /// The skeleton's mirror image about the pot's center line.
+    /// Mirrors the skeleton about the pot's center line: wood, apex and clouds.
     pub fn mirror(&mut self) {
         let m = |x: &mut f64| *x = crate::style::CENTER_X - (*x - crate::style::CENTER_X);
         for n in &mut self.nodes {

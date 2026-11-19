@@ -79,9 +79,9 @@ impl Extras {
     }
 }
 
-/// How far the window's work falls on the weekend: 0, 1 (3/7) or 2 (4/7).
-// shortcut: weekends by UTC date, as the snapshot keeps them; local time
-// would need the account's time zone.
+/// Measures how much of the window's work falls on the weekend: 0 below
+/// 3/7, 1 from 3/7 and 2 from 4/7. Under 10 contributions you get 0.
+// Weekends by UTC date, the only date the snapshot keeps.
 fn weekend(timeline: &Timeline) -> u8 {
     let (mut all, mut end) = (0.0, 0.0);
     for day in timeline.window_days() {

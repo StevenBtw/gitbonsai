@@ -400,18 +400,9 @@ pub fn in_wood(chains: &[Chain], ci: usize, e: V3, r: f64) -> bool {
     })
 }
 
-/// No living wood ends blunt. Shaping moves wood and clouds apart, and a tip
-/// carrying little thins only as fast as wood may below a fork, so a thick
-/// limb, strand or trunk top could stop short of the leaves in a few units,
-/// like a sawn-off stump. Where wood thins faster than [`LEAD_SLOPE`] toward
-/// an end outside the leaves, it runs on instead from where it is thickest
-/// as a leader, tapering gently into the nearest leaves; on a bare tree, or
-/// with no leaves in reach, it tapers to a twig in the open. A twig that ran
-/// through the leaves and out the far side is cut back to them. Returns
-/// whether any wood changed.
-/// Where a leader from `s`, running along `t`, reaches into the leaves: the
-/// point half way into a pad's leaves, above its bottom, of the pad that is
-/// near and lies along the wood's own line. Preferring the line makes two
+/// Finds where a leader from `s`, running along `t`, reaches into the
+/// leaves: half way into the leaves, above the bottom, of the pad that is
+/// near and lies along the wood's own line. `None` when no pad is in reach. Preferring the line makes two
 /// pads about as near rarely trade places from one month to the next; a
 /// leader ends inside one pad, so it can't share between them.
 fn leader_aim(s: V3, t: V3, pads: &[(V3, f64, f64)]) -> Option<V3> {
@@ -438,6 +429,15 @@ fn leader_aim(s: V3, t: V3, pads: &[(V3, f64, f64)]) -> Option<V3> {
         .map(|(a, ..)| a)
 }
 
+/// No living wood ends blunt. Shaping moves wood and clouds apart, and a tip
+/// carrying little thins only as fast as wood may below a fork, so a thick
+/// limb, strand or trunk top could stop short of the leaves in a few units,
+/// like a sawn-off stump. Where wood thins faster than [`LEAD_SLOPE`] toward
+/// an end outside the leaves, it runs on instead from where it is thickest
+/// as a leader, tapering gently into the nearest leaves; on a bare tree, or
+/// with no leaves in reach, it tapers to a twig in the open. A twig that ran
+/// through the leaves and out the far side is cut back to them. Returns
+/// whether any wood changed.
 fn lead_on(scene: &mut Scene) -> bool {
     // The tip a leader tapers to.
     const TIP: f64 = 0.7;
@@ -732,15 +732,15 @@ mod tests {
     #[test]
     fn a_leader_keeps_to_the_leaves_along_its_line() {
         let pads = [
-            ([-20.0, 100.0, 0.0], 12.0, 8.0),
-            ([20.0, 100.0, 0.0], 12.0, 8.0),
+            ([-19.0, 88.0, 0.0], 19.0, 8.8),
+            ([19.0, 88.0, 0.0], 19.0, 8.8),
         ];
         let up_right = v_norm([1.0, -1.0, 0.0]);
-        for x in [-2.0, -0.2, 0.0, 0.2, 2.0] {
-            let aim = leader_aim([x, 110.0, 0.0], up_right, &pads).unwrap();
+        for x in [-3.0, -0.3, 0.0, 0.3, 3.0] {
+            let aim = leader_aim([x, 107.0, 0.0], up_right, &pads).unwrap();
             assert!(aim[0] > 0.0, "at {x}: {aim:?}");
         }
         // Out of reach, it doesn't aim.
-        assert!(leader_aim([0.0, 200.0, 0.0], up_right, &pads).is_none());
+        assert!(leader_aim([0.0, 188.0, 0.0], up_right, &pads).is_none());
     }
 }
