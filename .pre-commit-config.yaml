@@ -48,10 +48,11 @@ repos:
         files: ^(Cargo\.(toml|lock)|deny\.toml)$
         pass_filenames: false
 
-      # The invariant tests take a couple of seconds; run them before a push
+      # In release mode: the invariant tests take minutes unoptimized, long
+      # enough for an HTTPS push to time out while they run.
       - id: cargo-test
         name: cargo test
-        entry: cargo test --all-features
+        entry: cargo test --release --all-features
         language: system
         files: '(\.rs|Cargo\.(toml|lock))$'
         pass_filenames: false
