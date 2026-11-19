@@ -2,7 +2,15 @@
 
 All notable changes to gitbonsai, a Japanese maple bonsai grown from GitHub activity. Any change to how a tree grows or looks is at least a minor version, because people notice their tree changing.
 
-## [0.3.1] - 2026-11-19
+## [0.3.2] - 2026-11-19
+
+Release fix: 0.3.2 is 0.3.1 with its binaries. The v0.3.1 release on GitHub has none, so the action at `@v0.3.1` fails; use `@v0.3.2`.
+
+### Fixed
+
+- **Releases carry their binaries**: the release workflow uploads the binaries to a draft release and then publishes it, as immutable releases require. v0.3.1 was published before its binaries were attached and cannot get them.
+
+## [0.3.1] - Unreleased (ships in 0.3.2)
 
 Wood release: limbs stay in proportion to their trunk, dropped languages keep visible dead wood, and the roots grip the soil like a real maple's. Every tree looks different from 0.3.0; stay on 0.3.0 to keep the old look. It ships as a patch, although trees change, because it finishes the wood and roots of 0.3.0's redesign.
 
