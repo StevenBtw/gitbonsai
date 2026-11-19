@@ -238,10 +238,13 @@ impl Bonsai {
         if !top.is_empty() {
             let _ = write!(text, " Leaves of {}.", top.join(", "));
         }
+        // Only dead wood the tree shows, as in the legend.
         let jin = self
             .states
-            .values()
-            .filter(|s| **s == LanguageState::Jin)
+            .iter()
+            .filter(|(l, s)| {
+                **s == LanguageState::Jin && self.skeleton.deadwood.contains(l.as_str())
+            })
             .count();
         if jin > 0 {
             let _ = write!(

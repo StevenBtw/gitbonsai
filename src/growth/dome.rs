@@ -1096,9 +1096,9 @@ fn grow_trunks(sk: &mut Skeleton, c: &Ctx, leader: &Leader, rng: &mut Rng) -> Wo
     }
     // The trunk outlives the language that founded it: dropped, it leaves a
     // shari, dead wood up the living trunk.
-    sk.shari = founder
-        .filter(|l| life.dropped(l))
-        .map(|l| life.drop_progress(&l));
+    let dropped_founder = founder.filter(|l| life.dropped(l));
+    sk.shari = dropped_founder.as_deref().map(|l| life.drop_progress(l));
+    sk.deadwood.extend(dropped_founder);
     let jin = Some(JIN.to_string());
     let mut first: Option<(Vec<usize>, f64)> = None;
     let mut dead_strand: Option<f64> = None;
@@ -1132,6 +1132,7 @@ fn grow_trunks(sk: &mut Skeleton, c: &Ctx, leader: &Leader, rng: &mut Rng) -> Wo
         let (mut nodes, free) =
             crate::growth::wood::strand(sk, &a, foot_a.len() - 1, wind, peel, side, top, wood_lang);
         if let Some(g) = died {
+            sk.deadwood.extend(lang.clone());
             let n_free = nodes.len().saturating_sub(free);
             let keep = free + ((n_free as f64 * (1.0 - 0.6 * g)).ceil() as usize).max(1);
             if keep < nodes.len() {
@@ -1188,6 +1189,7 @@ fn grow_trunks(sk: &mut Skeleton, c: &Ctx, leader: &Leader, rng: &mut Rng) -> Wo
         let n0 = sk.nodes.len();
         jin_limb(sk, rng, w, 9.0 + 14.0 * (v / life.total).sqrt(), v * 0.06);
         bleach_from(sk, n0, grown);
+        sk.deadwood.insert((*l).clone());
     }
     // The crown sits over the trunks.
     let tops: Vec<P> = chains
@@ -1307,6 +1309,15 @@ fn grow_eras(sk: &mut Skeleton, c: &Ctx, wood: &Wood) {
                 .filter_map(|&i| c.plan.lingering.iter().find(|x| x.0 == i).map(|x| x.1))
                 .fold(1.0, f64::min);
             bleach_from(sk, limb_n0, died.min(0.35 + 0.65 * standing));
+            for &i in era {
+                sk.deadwood.extend(
+                    life.years[i]
+                        .dead
+                        .iter()
+                        .filter(|d| d.1.0 > 0.0)
+                        .map(|d| d.0.clone()),
+                );
+            }
         }
         // Old wood keeps thickening: the limb carries its years.
         if let Some(&mid) = limb.get(limb.len() * 6 / 10) {
@@ -1407,6 +1418,7 @@ fn grow_eras(sk: &mut Skeleton, c: &Ctx, wood: &Wood) {
                     let keep = (1.0 - b).max(0.35);
                     winter_fan(sk, fan_rng, &under, at, rx * 0.8, tz, side, &jin, keep);
                     bleach_from(sk, twig_n0, b);
+                    sk.deadwood.extend(l.clone());
                     continue;
                 }
                 // Twigs show as the leaves fall; a dropped language's leaves
@@ -1717,6 +1729,7 @@ fn grow_arms(
         let mut yr = Rng::keyed(c.seed, &format!("bdome/arm/{}/{}", a.year, key(&a.lang)));
         let n0 = sk.nodes.len();
         let wood_lang = if a.dead.is_some() {
+            sk.deadwood.extend(a.lang.clone());
             Some(JIN.to_string())
         } else {
             a.lang.clone()
@@ -1839,6 +1852,9 @@ fn grow_skirt(sk: &mut Skeleton, c: &Ctx, wood: &Wood, dome: &Dome, lower: &[Arm
         // Dropped work dies in place: a dead limb with dead twigs, no leaves.
         let jin = Some(JIN.to_string());
         let wood_lang = if a.dead.is_some() { &jin } else { &a.lang };
+        if a.dead.is_some() {
+            sk.deadwood.extend(a.lang.clone());
+        }
         let n0 = sk.nodes.len();
         let mut under = limb_to(
             sk,

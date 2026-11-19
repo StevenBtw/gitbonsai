@@ -914,6 +914,27 @@ fn declared_recent_work_keeps_a_language_alive() {
     assert!(!report.contains("C# (dead)"), "{report}");
 }
 
+/// The legend names a dropped language's deadwood only when the tree draws
+/// it: a few contributions long ago can be dropped without any wood to show.
+#[test]
+fn the_legend_names_only_deadwood_the_tree_shows() {
+    let snapshot = fixtures::by_name("showcase").unwrap().snapshot;
+    let mut config = Config::default();
+    config.render.legend = Legend::Left;
+    let mut b = Bonsai::grow(&snapshot, &config, None);
+    assert_eq!(b.state(Some("C#")), LanguageState::Jin);
+    assert!(
+        b.skeleton.deadwood.contains("C#"),
+        "the dead C# trunk shows"
+    );
+    let svg = render::svg(&b, &config, Theme::Light);
+    assert!(svg.contains("deadwood: C#"));
+    // The same dropped language, with no dead wood drawn.
+    b.skeleton.deadwood.clear();
+    let svg = render::svg(&b, &config, Theme::Light);
+    assert!(!svg.contains("deadwood"), "nothing dead to point at");
+}
+
 /// The legend says winter exactly when the canopy is bare, and names no
 /// silver leaves on a bare tree.
 #[test]
