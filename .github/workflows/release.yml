@@ -46,15 +46,21 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
           REF_TYPE: ${{ github.ref_type }}
           REF_NAME: ${{ github.ref_name }}
         run: |
+          # The button would otherwise publish whatever branch it was pressed on.
+          if [ "$EVENT" = workflow_dispatch ] && [ "$REF" != refs/heads/main ]; then
+            echo "::error::run the release from main, not $REF"
+            exit 1
+          fi
           if [ "$REF_TYPE" = tag ]; then
             tag=$REF_NAME
           else
             tag=v$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
           fi
-          state=$(gh api "repos/$REPO/releases?per_page=100" \
+          state=$(gh api --paginate "repos/$REPO/releases?per_page=100" \
             --jq ".[] | select(.tag_name == \"$tag\") | if .draft then \"draft\" else \"published\" end")
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           if [ "$state" = draft ]; then
