@@ -278,14 +278,14 @@ pub struct Mix {
     pub irregular: f64,
     /// How far the work spread past one language, 0 (one) to 1.
     pub spread: f64,
-    /// How much of the work is in legacy languages ([`LEGACY`]), 0 to 1:
+    /// How much of the work is in legacy languages (`LEGACY`), 0 to 1:
     /// a whole kengai from half the work.
     pub legacy: f64,
 }
 
 impl Mix {
     /// The mix of `snapshot`'s complete months, the recent ones counting
-    /// most: a month's weight halves every [`HALF_LIFE_MONTHS`], so the last
+    /// most: a month's weight halves every `HALF_LIFE_MONTHS`, so the last
     /// three years hold almost all of it. A resting account keeps its mix of
     /// languages, while its rest reads as uneven work.
     pub fn of(snapshot: &Snapshot) -> Self {
