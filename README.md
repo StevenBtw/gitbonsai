@@ -13,7 +13,7 @@ Grow a Japanese maple bonsai from your GitHub activity: an animated SVG for your
 
 A newcomer is a thin sprout; years of work make it short, thick and wide, the way a prize bonsai is. Your first language is the trunk; another that reaches a tenth of your work claims a strand of it, and the languages of your recent years share the crown, each in its color. Nothing is erased: the tree changes a little each month, and its trunk only grows.
 
-Your last three years pick the shape: steady work in one language grows a formal upright (chokkan), new languages an informal upright (moyogi), pauses a slanting tree (shakan), pauses with several languages a windswept one (fukinagashi), and steady work in a legacy language such as COBOL or Fortran a cascade (kengai).
+Unless you set a style, your last three years pick the shape: steady work in one language grows a formal upright (chokkan), new languages an informal upright (moyogi), pauses a slanting tree (shakan), pauses with several languages a windswept one (fukinagashi), and steady work in a legacy language such as COBOL or Fortran a cascade (kengai).
 
 <p align="center">
   <picture>
