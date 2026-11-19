@@ -271,7 +271,7 @@ fn eggs_for(name: &str) -> (&'static [(&'static str, u8)], usize) {
             ],
             0,
         ),
-        "showcase" => (&[("starstruck", 2), ("pull-shark", 2)], 0),
+        "showcase" => (&[("starstruck", 1), ("pull-shark", 2)], 0),
         _ => (&[], 0),
     }
 }

@@ -19,11 +19,13 @@ Styles release: a tree's last three years now pick its style, and each of the fi
 - **Steady years grow a formal upright**: a chokkan tree is a symmetric triangle in soft layers on a straight trunk, and every year with at least 120 active days thickens its lower trunk and root flare.
 - **Informal uprights bend deeper and slanting trees lean further**: moyogi trunks make deep S-bends, and shakan trunks lean about 25 degrees with roots braced on the uphill side.
 - **Windswept trees stream downwind**: the windward trunk curls in a C and carries its crown on the top arm, the downwind crown hangs lower with air above it, and low branches run level downwind.
+- **The pot sits on its table**: a soft shadow under the pot, the light from the upper left.
 - **The description names what the tree shows**: the SVG's description (and alt text) names the languages turned to deadwood ("C# turned to deadwood."), lists a small share of the leaves as "a bit of", and says "Mostly private work." when most recent work is private.
 - **The legend's leaf is a Japanese maple's**: five broad, pointed lobes joined halfway, the lowest pair held out sideways and the middle one shorter. The crown's leaves are unchanged.
 
 ### Fixed
 
+- **The crown's shadow stays on the soil**: on a tree whose crown leans to one side it no longer reaches past the rim as a grey disc beside the pot.
 - **No branch ends blunt**: a thick branch end outside the leaves tapers on into the nearest foliage, and twigs no longer poke out through the far side of a cloud.
 - **Deadwood is named only where it shows**: the legend and the SVG's description name a dropped language only when the tree draws its dead wood, so a language dropped after a handful of contributions is no longer listed.
 

@@ -1154,6 +1154,20 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
     );
 
     let body = &mut out.body;
+    // The pot's own shadow on the table, soft-edged, the light from the upper
+    // left: the pot sits down instead of floating.
+    let foot = SOIL_Y + pot.depth;
+    let shade = if paints.dark { "#000" } else { "#3b3226" };
+    let _ = write!(
+        body,
+        r#"<ellipse cx="{}" cy="{}" rx="{}" ry="4" fill="{shade}" opacity=".16"/><ellipse cx="{}" cy="{}" rx="{}" ry="2.4" fill="{shade}" opacity=".26"/>"#,
+        Num(CENTER_X + 5.0),
+        Num(foot + 1.2),
+        Num(pot.bw * 1.18),
+        Num(CENTER_X + 3.5),
+        Num(foot + 0.8),
+        Num(pot.bw * 1.02),
+    );
     body.push_str(&egg.behind);
     let _ = write!(
         body,
@@ -1168,12 +1182,17 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
     );
     // The canopy's soft shadow on the soil.
     let canopy_x = f64::midpoint(extent.0, extent.1) + 10.0;
+    let cx = canopy_x.clamp(CENTER_X - hw * 0.5, CENTER_X + hw * 0.5);
+    // On the soil only: never past the rim.
+    let rx = ((hw - 8.0) * 0.75)
+        .min(hw - 6.0 - (cx - CENTER_X).abs())
+        .max(4.0);
     let _ = write!(
         body,
         r#"<ellipse cx="{}" cy="{}" rx="{}" ry="{}" fill="{}" opacity=".35"/>"#,
-        Num(canopy_x.clamp(CENTER_X - hw * 0.5, CENTER_X + hw * 0.5)),
+        Num(cx),
         Num(SOIL_Y + 0.6),
-        Num((hw - 8.0) * 0.75),
+        Num(rx),
         Num((pot.ry - 3.0).max(1.0) * 0.7),
         paints.soil.shift(-0.12, 0.0)
     );
