@@ -354,8 +354,9 @@ fn rendering_is_deterministic() {
     }
 }
 
-/// The budget: at most 190 KB, 2,500 elements and 80 animated elements.
-/// 0.3.0 raised it from 150 KB for crowns with 1.5 times the leaves.
+/// The budget: at most 215 KB, 2,500 elements and 80 animated elements.
+/// 0.3.0 raised it from 150 KB for crowns with 1.5 times the leaves; 0.4.0
+/// from 190 KB for the windswept and formal upright crowns.
 #[test]
 fn every_output_stays_within_budget() {
     for fixture in fixtures::all() {
@@ -378,7 +379,7 @@ fn every_output_stays_within_budget() {
                 .iter()
                 .map(|c| svg.matches(c).count())
                 .sum::<usize>();
-                assert!(svg.len() <= 190 * 1024, "{label}: {} bytes", svg.len());
+                assert!(svg.len() <= 215 * 1024, "{label}: {} bytes", svg.len());
                 assert!(elements <= 2500, "{label}: {elements} elements");
                 assert!(animated <= 80, "{label}: {animated} animated");
             }
@@ -488,6 +489,9 @@ fn the_legend_explains_without_spoiling() {
         "achievement",
         "drip",
         "archived",
+        "kabuto",
+        "helmet",
+        "weekend",
     ];
     for fixture in fixtures::all() {
         for side in [Legend::Left, Legend::Right] {
@@ -497,7 +501,7 @@ fn the_legend_explains_without_spoiling() {
             for theme in Theme::ALL {
                 let svg = render::svg(&bonsai, &config, theme);
                 let label = format!("{}/{side:?}/{}", fixture.name, theme.name());
-                assert!(svg.len() <= 190 * 1024, "{label}: {} bytes", svg.len());
+                assert!(svg.len() <= 215 * 1024, "{label}: {} bytes", svg.len());
                 if bonsai.is_empty() {
                     assert!(!svg.contains("<text"), "{label}: nothing to explain yet");
                     continue;
@@ -622,6 +626,26 @@ fn edge_accounts_still_grow_something() {
     let dormant = grow("dormant");
     assert!(dormant.dormant());
     assert!(dormant.description().contains("Dormant"));
+}
+
+/// The description names the dead wood's languages, says "a bit of" for a
+/// small share of the leaves, and says when the work is mostly private.
+#[test]
+fn the_description_names_what_the_tree_shows() {
+    let showcase = grow("showcase").description();
+    assert!(showcase.contains("C# turned to deadwood."), "{showcase}");
+    let path = format!(
+        "{}/site/snapshots/stevenbtw.snapshot.json",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    let snapshot = gitbonsai::Snapshot::load(std::path::Path::new(&path)).unwrap();
+    let mine = Bonsai::grow(&snapshot, &Config::default(), None).description();
+    assert!(
+        mine.contains("Leaves of Rust, Python, a bit of TypeScript."),
+        "{mine}"
+    );
+    let private = grow("private").description();
+    assert!(private.contains("Mostly private work."), "{private}");
 }
 
 #[test]
@@ -1242,4 +1266,121 @@ fn branches_start_inside_their_parent() {
             }
         }
     }
+}
+
+/// No living wood ends blunt: every chain end lies in a cloud's leaf mass,
+/// where it can't be seen, or the wood tapers gently to a twig before it
+/// ends. Else a thick limb or trunk top reads as a sawn-off stump against
+/// the sky. Nor does a twig run through the leaves and out the other side,
+/// a bare stick poking out of the crown. Dead wood may end snapped.
+#[test]
+fn no_wood_ends_blunt() {
+    // Thicker than this (world units, before the tip's taper) is not a twig;
+    // a gentle taper thins by at most `SLOPE` a unit of length.
+    const TWIG: f64 = 1.6;
+    const SLOPE: f64 = 0.15;
+    // Judged over the last stretch: lower down wood may taper as it grew.
+    const BACK: f64 = 30.0;
+    let mut trees: Vec<(String, gitbonsai::Snapshot)> = fixtures::all()
+        .into_iter()
+        .map(|f| (f.name.to_string(), f.snapshot))
+        .collect();
+    for name in ["steipete", "stevenbtw", "tj", "torvalds"] {
+        let path = format!(
+            "{}/site/snapshots/{name}.snapshot.json",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        let s = gitbonsai::Snapshot::load(std::path::Path::new(&path)).unwrap();
+        trees.push((name.to_string(), s));
+    }
+    let mut blunt = Vec::new();
+    for (name, snapshot) in &trees {
+        for style in std::iter::once(None).chain(Style::ALL.into_iter().map(Some)) {
+            let config = style.map_or_else(Config::default, config);
+            let b = Bonsai::grow(snapshot, &config, None);
+            let scene = gitbonsai::scene::Scene::build(&b);
+            // How deep in a leaf mass a point lies: 0 at its center, 1 on its
+            // rim; a dome has no leaves below its flat bottom.
+            let depth = |e: [f64; 3]| {
+                scene
+                    .pads
+                    .iter()
+                    .filter(|(c, ..)| e[1] >= c[1])
+                    .map(|(c, rx, ry)| (sq((e[0] - c[0]) / rx) + sq((e[1] - c[1]) / ry)).sqrt())
+                    .fold(f64::INFINITY, f64::min)
+            };
+            for (ci, (wood, dead)) in scene.chains.iter().enumerate() {
+                let Some(&(e, re)) = wood.last() else {
+                    continue;
+                };
+                // An end inside other wood doesn't show.
+                if dead.is_some() || gitbonsai::scene::in_wood(&scene.chains, ci, e, re) {
+                    continue;
+                }
+                // How thick the wood is near its end, less what a gentle taper
+                // would thin it by on the way: the girth the end shows.
+                let mut arc = 0.0;
+                let mut r = 0.0f64;
+                for j in (0..wood.len()).rev() {
+                    if j + 1 < wood.len() {
+                        let (a, b) = (wood[j].0, wood[j + 1].0);
+                        arc += (sq(b[0] - a[0]) + sq(b[1] - a[1])).sqrt();
+                    }
+                    if arc > BACK {
+                        break;
+                    }
+                    r = r.max(wood[j].1 - SLOPE * arc);
+                }
+                let d = depth(e);
+                let style = style.map_or("own".to_string(), |s| s.to_string());
+                let at = format!("{name}/{style} chain {ci} at ({:.0}, {:.0})", e[0], e[1]);
+                if r > TWIG && d > 0.85 {
+                    blunt.push(format!("{at}: ends {r:.1} thick, depth {d:.2}"));
+                } else if d > 1.3 && wood[1..].iter().any(|&(p, _)| depth(p) <= 0.85) {
+                    blunt.push(format!("{at}: a twig through the leaves, depth {d:.2}"));
+                }
+            }
+        }
+    }
+    assert!(
+        blunt.is_empty(),
+        "{} blunt ends:\n{}",
+        blunt.len(),
+        blunt.join("\n")
+    );
+}
+
+/// A cascade's legacy trunk turns to deadwood over a year and a half once a
+/// second language's trunk lies along it: it whitens a little each month,
+/// never all at once.
+#[test]
+fn a_legacy_trunk_dies_slowly() {
+    let path = format!(
+        "{}/site/snapshots/jacobwilliams.snapshot.json",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    let snapshot = gitbonsai::Snapshot::load(std::path::Path::new(&path)).unwrap();
+    let (y, m, _) = snapshot.first_active().unwrap().ymd();
+    let mut last = 0.0_f64;
+    for k in 1..1200 {
+        let i = y * 12 + m.cast_signed() - 1 + k;
+        let d = gitbonsai::date::Date::from_ymd(i / 12, (i % 12 + 1).cast_unsigned(), 1).unwrap();
+        if d > snapshot.observed_on {
+            break;
+        }
+        let jin = Bonsai::grow(&snapshot, &Config::default(), Some(d))
+            .skeleton
+            .legacy_jin;
+        assert!(
+            jin - last <= 0.1,
+            "{d}: legacy deadwood {last:.2} -> {jin:.2}"
+        );
+        last = jin;
+    }
+    // Python came along in early 2026: by late 2026 it is over half dead,
+    // and white by mid-2027.
+    assert!(
+        (0.4..0.8).contains(&last),
+        "the legacy trunk is dying: {last:.2}"
+    );
 }

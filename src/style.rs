@@ -90,6 +90,9 @@ pub struct Leader {
     /// How far the trunk cascades over the rim, signed by the side it
     /// spills to: 1 or -1 for a whole kengai.
     pub cascade: f64,
+    /// How far the crown stands in tiers over a straight trunk: 1 for a
+    /// whole chokkan, 0 for none.
+    pub tier: f64,
     /// The side the tree leans to when it leans, `+1` right or `-1` left:
     /// fixed for the account, so nothing changes side as its style does.
     pub downwind: f64,
@@ -144,6 +147,7 @@ impl Leader {
             },
             // A cascade always spills to the right.
             cascade: if style == Style::Kengai { 1.0 } else { 0.0 },
+            tier: if style == Style::Chokkan { 1.0 } else { 0.0 },
             downwind,
             mix: None,
         }
@@ -185,8 +189,14 @@ impl Leader {
             pull: sum(|l| l.pull),
             bend: sum(|l| l.bend),
             tilt: sum(|l| l.tilt),
-            sweep: sum(|l| l.sweep),
+            // An informal upright's calm keeps the wind off: past a trace of
+            // moyogi, the more of it, the less the crown and limbs sweep.
+            sweep: sum(|l| l.sweep) * {
+                let t = ((mix.weight(Style::Moyogi) - 0.2) / 0.8).clamp(0.0, 1.0);
+                1.0 - t * t * (3.0 - 2.0 * t)
+            },
             cascade: sum(|l| l.cascade),
+            tier: sum(|l| l.tier),
             downwind: fu.downwind,
             mix: Some(mix),
         }

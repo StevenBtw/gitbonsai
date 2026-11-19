@@ -364,8 +364,149 @@ impl Scene {
         if !sk.dormant {
             cloud_leaves(b, &mut scene);
         }
+        // Wood cut back can bare an end it hid: a few passes settle it.
+        for _ in 0..3 {
+            if !lead_on(&mut scene) {
+                break;
+            }
+        }
         scene
     }
+}
+
+/// Wood thicker than this (world units) is no twig: its end must not show.
+pub const TWIG: f64 = 1.5;
+
+/// The steepest a living end may taper outside the leaves: girth lost per
+/// unit of length.
+pub const LEAD_SLOPE: f64 = 0.15;
+
+/// How deep `e` lies in the leaves of `pads`: 0 at a pad's center, 1 on its
+/// rim, past 1 outside; a dome has no leaves below its flat bottom.
+pub fn leaf_depth(pads: &[(V3, f64, f64)], e: V3) -> f64 {
+    pads.iter()
+        .filter(|(c, ..)| e[1] >= c[1])
+        .map(|(c, rx, ry)| (math::sq((e[0] - c[0]) / rx) + math::sq((e[1] - c[1]) / ry)).sqrt())
+        .fold(f64::INFINITY, f64::min)
+}
+
+/// Whether a disc of radius `r` at `e` lies wholly within wood of `chains`
+/// other than chain `ci`, so wood ending there doesn't show.
+pub fn in_wood(chains: &[Chain], ci: usize, e: V3, r: f64) -> bool {
+    chains.iter().enumerate().any(|(k, (w, _))| {
+        k != ci
+            && w.iter()
+                .any(|(p, rp)| (math::sq(p[0] - e[0]) + math::sq(p[1] - e[1])).sqrt() + r <= *rp)
+    })
+}
+
+/// No living wood ends blunt. Shaping moves wood and clouds apart, and a tip
+/// carrying little thins only as fast as wood may below a fork, so a thick
+/// limb, strand or trunk top could stop short of the leaves in a few units,
+/// like a sawn-off stump. Where wood thins faster than [`LEAD_SLOPE`] toward
+/// an end outside the leaves, it runs on instead from where it is thickest
+/// as a leader, tapering gently into the nearest leaves; on a bare tree, or
+/// with no leaves in reach, it tapers to a twig in the open. A twig that ran
+/// through the leaves and out the far side is cut back to them. Returns
+/// whether any wood changed.
+fn lead_on(scene: &mut Scene) -> bool {
+    // The tip a leader tapers to, and how far it reaches for leaves.
+    const TIP: f64 = 0.7;
+    const REACH: f64 = 40.0;
+    // How far back from its end wood is judged: further down it may taper as
+    // it grew.
+    const BACK: f64 = 30.0;
+    let pads = &scene.pads;
+    let mut changed = false;
+    for ci in 0..scene.chains.len() {
+        let (wood, dead) = &scene.chains[ci];
+        let n = wood.len();
+        if dead.is_some() || n < 2 {
+            continue;
+        }
+        let (e, re) = wood[n - 1];
+        if leaf_depth(pads, e) <= 0.7 || in_wood(&scene.chains, ci, e, re) {
+            continue;
+        }
+        // Where the end's girth comes from: the point near it thickest less
+        // the gentle taper from there to the end.
+        let (mut arc, mut best) = (0.0, (f64::MIN, 0));
+        for j in (0..n).rev() {
+            if j + 1 < n {
+                let (a, b) = (wood[j].0, wood[j + 1].0);
+                arc += (math::sq(b[0] - a[0]) + math::sq(b[1] - a[1])).sqrt();
+            }
+            if arc > BACK {
+                break;
+            }
+            let shows = wood[j].1 - LEAD_SLOPE * arc;
+            if shows > best.0 {
+                best = (shows, j);
+            }
+        }
+        if best.0 <= TWIG {
+            // A twig that ran through leaves out into the open is cut back
+            // to where it leaves them.
+            if leaf_depth(pads, e) > 1.0
+                && let Some(k) = wood.iter().rposition(|(p, _)| leaf_depth(pads, *p) <= 0.9)
+                && k > 0
+            {
+                scene.chains[ci].0.truncate(k + 1);
+                changed = true;
+            }
+            continue;
+        }
+        let j = best.1;
+        let (s, r) = wood[j];
+        // Its line there, across the canvas.
+        let (a, b) = (wood[j.saturating_sub(1)].0, wood[(j + 1).min(n - 1)].0);
+        let t = v_norm([b[0] - a[0], b[1] - a[1], 0.0]);
+        // A little gentler than the steepest allowed, so it never reads blunt.
+        let slope = 0.8 * LEAD_SLOPE;
+        let gap =
+            |a: V3| (math::sq(a[0] - s[0]) + math::sq(a[1] - s[1]) + math::sq(a[2] - s[2])).sqrt();
+        // The nearest point half way into a pad's leaves, above its bottom.
+        let aim = pads
+            .iter()
+            .map(|(c, rx, ry)| {
+                let (mut u, mut w) = ((s[0] - c[0]) / rx, ((s[1] - c[1]) / ry).max(0.25));
+                let l = (u * u + w * w).sqrt();
+                if l > 0.5 {
+                    (u, w) = (u * 0.5 / l, w * 0.5 / l);
+                }
+                [c[0] + u * rx, c[1] + w * ry, c[2]]
+            })
+            .min_by(|a, b| gap(*a).total_cmp(&gap(*b)))
+            .filter(|a| gap(*a) <= REACH);
+        let (to, len) = aim.map_or_else(
+            || {
+                let len = (r - TIP) / slope;
+                (v_add(s, v_scale(t, len)), len)
+            },
+            |a| (a, gap(a).max(1e-9)),
+        );
+        // A curve that leaves along the wood's own line.
+        let ctrl = v_add(s, v_scale(t, 0.4 * len));
+        let steps = ((len / 2.5).ceil() as usize).clamp(2, 24);
+        let wood = &mut scene.chains[ci].0;
+        wood.truncate(j + 1);
+        let mut arc = 0.0;
+        for k in 1..=steps {
+            let f = k as f64 / steps as f64;
+            let p = v_add(
+                v_add(
+                    v_scale(s, math::sq(1.0 - f)),
+                    v_scale(ctrl, 2.0 * (1.0 - f) * f),
+                ),
+                v_scale(to, f * f),
+            );
+            let q = wood[wood.len() - 1].0;
+            arc += (math::sq(p[0] - q[0]) + math::sq(p[1] - q[1])).sqrt();
+            wood.push((p, (r - slope * arc).max(TIP)));
+        }
+        changed = true;
+    }
+    changed
 }
 
 /// A public language for a grey leaf: drawn with odds `odds` against

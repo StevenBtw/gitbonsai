@@ -1087,6 +1087,14 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
         }
     }
     items.sort_by(|a, c| a.0.total_cmp(&c.0));
+    // A sprout is drawn leaf by leaf in place of the seedling, which still
+    // sizes the pot and frame, so the hand-over doesn't move them, and fades
+    // in over the sprout's last contributions.
+    let sprout = crate::sprout::draw(b, &scene, &paints, &items);
+    if let Some(s) = &sprout {
+        items = vec![(0.0, s.clone())];
+        fallen.clear();
+    }
 
     // ---- the pot, sized to the tree, seen from a little above ----
     let size = ((SOIL_Y - extent.2).max(extent.1 - extent.0) * 0.62).clamp(80.0, 400.0);
@@ -1257,7 +1265,8 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
     );
     body.push_str(&egg.top);
     let signs = crate::legend::Signs {
-        fresh: scene.tufts.iter().any(|t| t.fresh),
+        fresh: (sprout.is_none() || crate::sprout::handover(crate::sprout::count(b)) > 0.5)
+            && scene.tufts.iter().any(|t| t.fresh),
         falling: !fallen.is_empty(),
         glaze: Some(pot.glaze),
     };

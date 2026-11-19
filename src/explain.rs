@@ -72,6 +72,13 @@ pub fn report(b: &Bonsai) -> String {
         "  capped lifetime     {:.0}",
         b.timeline.capped_lifetime()
     );
+    if crate::sprout::is_sprout(b) {
+        let _ = writeln!(
+            out,
+            "  sprout              drawn leaf by leaf until {:.0} contributions",
+            crate::sprout::SPROUT_UNTIL
+        );
+    }
     let _ = writeln!(
         out,
         "  trunk base radius   {:.2} (Murray's law on {:.0} flowing through it)",

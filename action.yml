@@ -17,8 +17,8 @@ inputs:
     default: bonsai
   style:
     description:
-      moyogi, chokkan, shakan or fukinagashi; empty uses the config or the
-      default (moyogi).
+      chokkan, moyogi, shakan, fukinagashi or kengai; empty uses the config,
+      or picks it from the last three years of activity.
     default: ""
   legend:
     description:

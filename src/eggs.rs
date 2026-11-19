@@ -15,6 +15,10 @@
 //! | Arctic Code Vault | snow on the rim | | | |
 //! | Mars 2020 | a taketombo (bamboo copter) on the soil | | | |
 //!
+//! One egg comes from the work itself: 3/7 of the window's contributions on
+//! the weekend fold a red paper kabuto (samurai helmet) on the soil, and 4/7
+//! gives it a gold crest.
+//!
 //! Kintsugi: every archived repository is a break in the pot, mended with gold.
 
 #![allow(
@@ -287,7 +291,7 @@ pub fn eggs(
 ) -> Eggs {
     let mut e = Eggs::default();
     let tier = |slug: &str| b.achievements.get(slug).copied();
-    if !DRAWN.iter().any(|slug| tier(slug).is_some()) {
+    if !DRAWN.iter().any(|slug| tier(slug).is_some()) && b.extras.weekend == 0 {
         return e;
     }
     let (hw, ry) = (pot.hw, pot.ry);
@@ -376,6 +380,26 @@ pub fn eggs(
             Num(CENTER_X - hw * 0.3),
             Num(SOIL_Y + ry * 0.45),
             Num(w * 1.5)
+        );
+    }
+    if b.extras.weekend > 0 {
+        // Folded from red washi; the gold crest comes with the second tier.
+        let paper = if dark {
+            Rgb::hex(0xb8433a).shift(0.05, 0.0)
+        } else {
+            Rgb::hex(0xb8433a)
+        };
+        let crest = if b.extras.weekend >= 2 {
+            r##"<use href="#kuwagata"/>"##
+        } else {
+            ""
+        };
+        let _ = write!(
+            e.front,
+            r##"<g transform="translate({} {}) scale({}) rotate(-6)"><ellipse cy=".5" rx="7" ry="1.6" fill="{shadow}" opacity=".45"/><use href="#kabuto" fill="{paper}"/>{crest}</g>"##,
+            Num(CENTER_X - hw * 0.66),
+            Num(SOIL_Y + ry * 0.22),
+            Num(w * 1.25)
         );
     }
     if tier("public-sponsor").is_some() {

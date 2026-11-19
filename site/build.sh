@@ -32,16 +32,15 @@ wf = open(workflow, encoding="utf-8").read().rstrip("\n")
 open(page, "w", encoding="utf-8", newline="\n").write(text.replace("@WORKFLOW@", html.escape(wf, quote=False)))
 EOF
 
-"$bin" render fixture:showcase --output-dir "$work/showcase" -q
-"$bin" render "$site/snapshots/stevenbtw.snapshot.json" --output-dir "$work/tree" -q
+# The Showcase wears a terracotta glaze, so the examples show more than one pot.
+"$bin" render fixture:showcase --config "$site/showcase.toml" --output-dir "$work/showcase" -q
 for t in light dark; do
   cp "$work/showcase/bonsai-$t.svg" "$out/hero/showcase-$t.svg"
-  cp "$work/tree/bonsai-$t.svg" "$out/hero/tree-$t.svg"
 done
 
-"$bin" timelapse fixture:showcase --every 1m --output-dir "$work/tl/showcase" -q
+"$bin" timelapse fixture:showcase --config "$site/showcase.toml" --every 1m --output-dir "$work/tl/showcase" -q
 "$bin" timelapse fixture:newbie --every 2w --output-dir "$work/tl/newcomer" -q
-for who in stevenbtw tj torvalds steipete; do
+for who in stevenbtw jacobwilliams tj torvalds steipete; do
   "$bin" timelapse "$site/snapshots/$who.snapshot.json" --every 1m --output-dir "$work/tl/$who" -q
 done
 python3 "$site/mkvideo.py" "$work/tl" "$out"

@@ -14,7 +14,7 @@ SRC, OUT = (os.path.abspath(a) for a in sys.argv[1:3])
 W, FPS = 1120, 10
 # The page background of each theme (tokens.css --background), baked into the frames.
 BG = {'dark': (0x14, 0x13, 0x10), 'light': (0xf5, 0xf2, 0xea)}
-TREES = ['showcase', 'newcomer', 'stevenbtw', 'tj', 'torvalds', 'steipete']
+TREES = ['showcase', 'newcomer', 'stevenbtw', 'jacobwilliams', 'tj', 'torvalds', 'steipete']
 
 
 def caption(desc):

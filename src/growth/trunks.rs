@@ -118,6 +118,8 @@ pub struct Strand {
     pub sag: f64,
     /// The largest share of all the work its language has reached.
     pub share: f64,
+    /// Months since its language claimed it.
+    pub months: i32,
 }
 
 /// The language that founded the trunk, and the strands claimed so far in
@@ -145,8 +147,8 @@ pub fn strands(life: &Life) -> (Option<String>, Vec<Strand>) {
     let mut so_far: BTreeMap<&str, f64> = BTreeMap::new();
     let mut history: Vec<(i32, BTreeMap<&str, f64>)> = Vec::new();
     let mut founder: Option<&str> = None;
-    // language, peel, sag, the largest share it reached
-    let mut claimed: Vec<(&str, f64, f64, f64)> = Vec::new();
+    // language, peel, sag, the largest share it reached, the month claimed
+    let mut claimed: Vec<(&str, f64, f64, f64, i32)> = Vec::new();
     for (k, (no, langs)) in months.iter().enumerate() {
         for (l, v) in *langs {
             *so_far.entry(l).or_default() += v;
@@ -170,7 +172,7 @@ pub fn strands(life: &Life) -> (Option<String>, Vec<Strand>) {
             if v >= CLAIM && founder.is_none() {
                 founder = Some(l);
             } else if v >= CLAIM && founder != Some(l) && !claimed.iter().any(|c| c.0 == l) {
-                claimed.push((l, 0.0, 0.0, 0.0));
+                claimed.push((l, 0.0, 0.0, 0.0, *no));
             }
         }
         // Each month a strand comes away as far as its language worked,
@@ -195,11 +197,12 @@ pub fn strands(life: &Life) -> (Option<String>, Vec<Strand>) {
     }
     let claimed = claimed
         .into_iter()
-        .map(|(l, peel, sag, share)| Strand {
+        .map(|(l, peel, sag, share, since)| Strand {
             lang: l.to_string(),
             peel,
             sag,
             share,
+            months: now - since,
         })
         .collect();
     (founder.map(str::to_string), claimed)

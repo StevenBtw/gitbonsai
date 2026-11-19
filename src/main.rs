@@ -36,7 +36,7 @@ struct TreeArgs {
     #[arg(long)]
     config: Option<PathBuf>,
 
-    /// Override [tree] style: chokkan, moyogi, shakan, fukinagashi
+    /// Override [tree] style: chokkan, moyogi, shakan, fukinagashi, kengai
     #[arg(long)]
     style: Option<String>,
 

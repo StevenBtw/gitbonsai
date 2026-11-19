@@ -1,7 +1,7 @@
 # bonsai.toml: every key is optional; these are the defaults unless noted.
 
 [tree]
-style = "moyogi"        # chokkan | moyogi | shakan | fukinagashi (kengai comes later)
+# style = "moyogi"      # chokkan | moyogi | shakan | fukinagashi | kengai; unset, the last three years pick it
 # wind = "left"         # fukinagashi only; default comes from the seed
 
 [leaves]
