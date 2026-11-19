@@ -12,6 +12,7 @@ Styles release: a tree's last three years now pick its style, and each of the fi
 - **Kengai, the cascade**: steady work in a legacy language (COBOL, Fortran, Pascal, Perl and 19 others) grows a semi-cascade that leans over the rim of a deeper pot in flat pads, never below the pot. `style = "kengai"` sets it.
 - **A legacy trunk turns to white deadwood**: on a kengai tree with a second language's trunk, the legacy trunk whitens over a year and a half and stays full size as deadwood, with the living trunk running over it.
 - **A sprout for the first 60 contributions**: a shoot breaks the soil, two seed leaves open in the languages of the 2nd and 3rd contributions, and young leaf pairs follow in the two largest languages (private work in silver), before the seedling takes over at 60.
+- **A tree leans to its own side**: the rhythm of its first 60 contributions picks left or right, and the windswept, slanting and cascade styles follow it. A left tree is the right one's mirror image, and the side never changes after the 60th contribution.
 - **`explain` says where the style comes from**: the share of pauses, of work past one language and of legacy work, or that the style is configured.
 
 ### Changed

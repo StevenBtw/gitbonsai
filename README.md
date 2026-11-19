@@ -17,16 +17,21 @@ Your last three years pick the shape: steady work in one language grows a formal
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/row-dark.svg" />
-    <img src="assets/row-light.svg" width="100%" alt="Six bonsai at one scale, by total contributions: a simulated newcomer sprout, then the trees of StevenBtw, jacobwilliams, tj, torvalds and steipete" />
+    <source media="(prefers-color-scheme: dark)" srcset="assets/row-top-dark.svg" />
+    <img src="assets/row-top-light.svg" width="100%" alt="Four bonsai at one scale: a simulated sprout three days in and the same account months later, then the trees of jacobwilliams and StevenBtw" />
+  </picture>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/row-bottom-dark.svg" />
+    <img src="assets/row-bottom-light.svg" width="92%" alt="Three more bonsai at the same scale: the trees of tj, torvalds and steipete" />
   </picture>
 </p>
 
-From left:
+From top left:
 
-- **Newcomer** (simulated): a thin sprout, a few months in.
-- **[@StevenBtw](https://github.com/StevenBtw)**: 9 years of Python and Rust; quiet summers swept it windswept.
+- **Sprout** (simulated): three days and 12 contributions in, its seed leaves still open.
+- **Newcomer**: the same account a few months in, a thin seedling.
 - **[@jacobwilliams](https://github.com/jacobwilliams)**: 13 years, mostly Fortran; a cascade over the rim.
+- **[@StevenBtw](https://github.com/StevenBtw)**: 9 years of Python and Rust; quiet summers swept it windswept.
 - **[@tj](https://github.com/tj)**: 19 years; long pauses slant it, and resting since 2021, bare for the winter.
 - **[@torvalds](https://github.com/torvalds)**: 16 years of C every week; a thick formal upright.
 - **[@steipete](https://github.com/steipete)**: 17 years; new languages on new strands, its crown starting to bend downwind.
