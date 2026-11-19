@@ -507,6 +507,11 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
     let mut twigs = [String::new(), String::new()];
     // Each chain's line as drawn, by index.
     let mut lines: Vec<Vec<(f64, f64)>> = Vec::with_capacity(scene.chains.len());
+    // A cascade's wood is slender.
+    let slim = {
+        let w = b.leader.cascade.abs();
+        1.0 - 0.4 * w * w * (3.0 - 2.0 * w)
+    };
     for (ci, (chain, dead)) in scene.chains.iter().enumerate() {
         // Dead wood greys from bark to bleached; past half way it is drawn
         // the way jin is, inked and weathered.
@@ -516,7 +521,7 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
             .iter()
             .map(|(p, r)| {
                 let (x, y, z) = project(*p);
-                (x, y, *r * WORLD, z)
+                (x, y, *r * WORLD * slim, z)
             })
             .collect();
         // Relax the growth zigzag, then subdivide; thin twigs need less. The
@@ -1107,10 +1112,8 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                 .map(|p| (p.0 - CENTER_X).abs() - base_r - 4.0)
         });
         let narrow = hw * (1.0 - 0.35 * k);
-        (
-            spill.map_or(narrow, |s| narrow.min(s.max(base_r * 2.0))),
-            depth * (1.0 + 1.1 * k),
-        )
+        let hw = spill.map_or(narrow, |s| narrow.min(s.max(base_r * 2.0)));
+        (hw, depth + k * (hw * 1.2 - depth).max(0.0))
     } else {
         (hw, depth)
     };
@@ -1118,7 +1121,8 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
         hw,
         ry: hw * math::sin(TILT) * 0.55,
         depth,
-        bw: hw * 0.88,
+        // Straight-sided for a cascade.
+        bw: hw * (0.88 + 0.09 * k),
         glaze: pot_glaze(b.extras.pot_tier, config, &paints),
     };
     out.frame = frame(extent, &pot);
@@ -1283,14 +1287,18 @@ fn pot_glaze(tier: u8, config: &Config, paints: &Paints) -> Rgb {
 
 /// How far a surface root at azimuth `az` reaches: longer with a stout
 /// trunk and old nebari, shorter toward the viewer, and always inside the pot
-/// rim (half-width `hw`). `u` in `[0, 1)` varies it; `brace` (0 to 1)
-/// lengthens a root that holds the tree against the wind.
-fn root_reach(base_r: f64, nebari: f64, hw: f64, az: f64, u: f64, brace: f64) -> f64 {
+/// rim (half-width `hw`) from a foot `off` sideways of the pot's center.
+/// `u` in `[0, 1)` varies it; `brace` (0 to 1) lengthens a root that holds
+/// the tree against the wind.
+fn root_reach(base_r: f64, nebari: f64, hw: f64, az: f64, u: f64, brace: f64, off: f64) -> f64 {
     // At least 1.6 trunk radii, so a root shows past the trunk's foot,
     // unless the pot rim needs it shorter.
     let reach = (base_r * (1.35 + u * (0.25 + 0.5 * nebari.clamp(0.0, 1.0)))).max(base_r * 1.6)
         * (1.0 + 0.45 * brace);
-    reach.min(hw * 0.78 * (0.45 + 0.55 * math::cos(az).abs()))
+    // From the foot to the rim along the root, on the soil.
+    let (c, s, rim) = (math::cos(az), math::sin(az), hw * 0.78);
+    let to_rim = (-off * c + (math::sq(rim) - math::sq(off * s)).max(0.0).sqrt()).max(0.0);
+    reach.min(to_rim * (0.45 + 0.55 * c.abs()))
 }
 
 /// Convex hull of points, counter-clockwise (monotone chain).
@@ -1345,8 +1353,20 @@ fn nebari(
         let mut r = Rng::keyed(b.account_id, &format!("root/{i}"));
         let az = 0.9 + f64::from(i) * 2.399_963 + r.range(-0.2, 0.2);
         // Roots facing into the wind brace the tree: longer and thicker.
-        let brace = (-b.leader.sweep * math::cos(az)).max(0.0);
-        let reach = root_reach(base_r, b.extras.nebari, pot.hw, az, r.unit(), brace);
+        // And those on the uphill side of a leaning trunk.
+        let uphill = -b.leader.tilt.signum() * (b.leader.tilt.abs() / 0.55).min(1.0);
+        let brace = (-b.leader.sweep * math::cos(az))
+            .max(uphill * math::cos(az))
+            .max(0.0);
+        let reach = root_reach(
+            base_r,
+            b.extras.nebari,
+            pot.hw,
+            az,
+            r.unit(),
+            brace,
+            x0 - CENTER_X,
+        );
         let bend = r.range(-0.3, 0.3);
         // Front roots are seen across their width: slimmer, so each stays
         // its own root.
@@ -1763,11 +1783,14 @@ mod tests {
                     for i in 0..16 {
                         let az = f64::from(i) / 16.0 * math::TAU;
                         for (u, brace) in [(0.0, 0.0), (0.5, 0.5), (0.999, 1.0)] {
-                            let reach = root_reach(base_r, nebari, hw, az, u, brace);
-                            assert!(
-                                reach * math::cos(az).abs() <= hw * 0.78 + 1e-9,
-                                "{base_r} {nebari} {hw} {az}: {reach}"
-                            );
+                            // A trunk off center, as a cascade's is, too.
+                            for off in [0.0, -0.3 * hw, 0.2 * hw] {
+                                let reach = root_reach(base_r, nebari, hw, az, u, brace, off);
+                                assert!(
+                                    (off + reach * math::cos(az)).abs() <= hw * 0.78 + 1e-9,
+                                    "{base_r} {nebari} {hw} {az} {off}: {reach}"
+                                );
+                            }
                         }
                     }
                 }

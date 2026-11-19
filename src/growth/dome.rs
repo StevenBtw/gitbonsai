@@ -848,6 +848,8 @@ struct Wood {
     peel_b: f64,
     /// How far the main trunk cascades over the rim, signed ([`Leader::cascade`]).
     cascade: f64,
+    /// The side the tree leans to when it leans ([`Leader::downwind`]).
+    downwind: f64,
 }
 
 impl Wood {
@@ -1059,6 +1061,7 @@ pub fn tree(
         arms.len(),
     );
     wind_shape(sk, &wood, &eras);
+    wind_branches(sk, &wood);
     cascade_shape(sk, &wood);
     girth(sk, &c, &wood);
     crate::growth::wood::hug(sk);
@@ -1100,17 +1103,27 @@ const WIND_UP: [(f64, f64); 11] = [
 // (han-kengai): it rises, arches over the rim and ends just outside it,
 // about level with the rim, never below the pot.
 const CASCADE: [(f64, f64); 11] = [
-    (0.0, 0.0),
-    (0.06, 0.2),
-    (0.16, 0.35),
-    (0.28, 0.45),
-    (0.42, 0.48),
-    (0.56, 0.43),
-    (0.7, 0.32),
-    (0.84, 0.18),
-    (0.96, 0.06),
-    (1.06, -0.03),
-    (1.14, -0.08),
+    (-0.12, 0.0),
+    (-0.05, 0.18),
+    (0.05, 0.33),
+    (0.17, 0.43),
+    (0.3, 0.47),
+    (0.43, 0.44),
+    (0.56, 0.36),
+    (0.69, 0.25),
+    (0.82, 0.13),
+    (0.94, 0.04),
+    (1.04, -0.04),
+];
+
+// Where a cascade's foliage pads sit, as (along the trunk, sideways and up
+// from that point, as shares of its height): one over the crest, then down
+// the arc past the rim, the last a little below it.
+const PADS: [(f64, f64, f64); 4] = [
+    (0.36, -0.1, 0.2),
+    (0.6, 0.04, 0.1),
+    (0.82, 0.08, 0.05),
+    (1.0, 0.12, -0.04),
 ];
 
 /// Bends the main trunk into a cascade over the rim; everything grown from
@@ -1146,30 +1159,279 @@ fn cascade_shape(sk: &mut Skeleton, wood: &Wood) {
         .collect();
     let mut delta: Vec<Option<P>> = vec![None; sk.nodes.len()];
     let n = main.len().max(2) - 1;
+    let on_main: std::collections::BTreeSet<usize> = main.iter().copied().collect();
     for (i, &node) in main.iter().enumerate() {
         let (p, t) = (sk.nodes[node].p, at(i as f64 / n as f64));
         delta[node] = Some((k * (t.0 - p.0), k * (t.1 - p.1)));
     }
+    // A strand lies along the trunk: it bends with the trunk at its height.
+    for i in 0..sk.nodes.len() {
+        if sk.nodes[i].strand && delta[i].is_none() {
+            let y = sk.nodes[i].p.1;
+            delta[i] = main
+                .iter()
+                .min_by(|&&x, &&z| {
+                    (sk.nodes[x].p.1 - y)
+                        .abs()
+                        .total_cmp(&(sk.nodes[z].p.1 - y).abs())
+                })
+                .and_then(|&m| delta[m]);
+        }
+    }
+    // Everything else follows the point it grew from, first.
     for i in 0..sk.nodes.len() {
         if delta[i].is_none() {
             delta[i] = sk.nodes[i].parent.and_then(|p| delta[p]);
         }
-        if let Some((dx, dy)) = delta[i] {
-            sk.nodes[i].p.0 += dx;
-            sk.nodes[i].p.1 += dy;
+    }
+    let follow_of = |c: usize| delta[hangs[c]].unwrap_or((0.0, 0.0));
+    // The clouds gather in a few pads along the arc, left to right: each
+    // pad takes its share of them in order across the crown, keeping half
+    // their spread around its center.
+    let mut order: Vec<usize> = (0..sk.clouds.len()).collect();
+    order.sort_by(|&a, &b| sk.clouds[a].c.0.total_cmp(&sk.clouds[b].c.0));
+    let pads = PADS.len().min(order.len().div_ceil(3)).max(1);
+    let mut gather: Vec<P> = vec![(0.0, 0.0); sk.clouds.len()];
+    for (j, group) in order.chunks(order.len().div_ceil(pads).max(1)).enumerate() {
+        let (u, sx, sy) = PADS[j.min(PADS.len() - 1)];
+        let base = at(u);
+        let slot = (base.0 + d * sx * h, base.1 - sy * h);
+        let m = group.len() as f64;
+        let moved = |c: usize| {
+            (
+                sk.clouds[c].c.0 + follow_of(c).0,
+                sk.clouds[c].c.1 + follow_of(c).1,
+            )
+        };
+        let mid = (
+            group.iter().map(|&c| moved(c).0).sum::<f64>() / m,
+            group.iter().map(|&c| moved(c).1).sum::<f64>() / m,
+        );
+        for &c in group {
+            let p = moved(c);
+            let to = (slot.0 + 0.3 * (p.0 - mid.0), slot.1 + 0.15 * (p.1 - mid.1));
+            gather[c] = (k * (to.0 - p.0), k * (to.1 - p.1));
         }
     }
-    // Its foliage lies in flat, level pads along the branches.
+    // Each branch reaches out to its pad: from nothing where it leaves the
+    // trunk to its cloud's whole move at the cloud.
+    let before: Vec<P> = sk.nodes.iter().map(|n| n.p).collect();
+    let nearest_cloud = |p: P| {
+        (0..sk.clouds.len())
+            .min_by(|&a, &b| dist(sk.clouds[a].c, p).total_cmp(&dist(sk.clouds[b].c, p)))
+    };
+    let mut attach: Vec<Option<usize>> = vec![None; sk.nodes.len()];
+    for i in 0..sk.nodes.len() {
+        if on_main.contains(&i) {
+            attach[i] = Some(i);
+        } else {
+            attach[i] = sk.nodes[i].parent.and_then(|p| attach[p]);
+        }
+        let reach = match (attach[i], nearest_cloud(before[i])) {
+            (Some(a), Some(c)) if !on_main.contains(&i) => {
+                let t = dist(before[i], before[a]) / dist(sk.clouds[c].c, before[a]).max(1e-6);
+                let g = gather[c];
+                (g.0 * t.min(1.0), g.1 * t.min(1.0))
+            }
+            _ => (0.0, 0.0),
+        };
+        if let Some((dx, dy)) = delta[i] {
+            sk.nodes[i].p.0 += dx + reach.0;
+            sk.nodes[i].p.1 += dy + reach.1;
+        }
+    }
+    // Its foliage lies in flat, level pads, smaller than a crown's clouds so
+    // the pads stand apart.
     let flat = 1.0 - 0.55 * k;
-    for (cloud, &n) in sk.clouds.iter_mut().zip(&hangs) {
+    let small = 1.0 - 0.35 * k;
+    for ((cloud, &n), g) in sk.clouds.iter_mut().zip(&hangs).zip(&gather) {
         let (dx, dy) = delta[n].unwrap_or((0.0, 0.0));
+        let (dx, dy) = (dx + g.0, dy + g.1);
         let cy = cloud.c.1;
         cloud.c.0 += dx;
         cloud.c.1 += dy;
-        cloud.ry *= flat;
+        let cx = cloud.c.0;
+        cloud.rx *= small;
+        cloud.ry *= flat * small;
+        for patch in &mut cloud.patches {
+            patch.0.0 = cx + (patch.0.0 + dx - cx) * small;
+            patch.0.1 = cy + (patch.0.1 - cy) * flat * small + dy;
+        }
+    }
+    // Twigs that stray from their pad, out past it or hanging off it, are
+    // drawn back into it; the branch carrying them out stays. The trunk's own
+    // tip, and what grows from it, ends inside the last pad.
+    let tip_from = main.len() * 85 / 100;
+    let tip: std::collections::BTreeSet<usize> = main[tip_from..].iter().copied().collect();
+    for i in 0..sk.nodes.len() {
+        let at_tip = tip.contains(&i) || attach[i].is_some_and(|a| tip.contains(&a));
+        let Some(a) = attach[i].filter(|&a| a != i || at_tip) else {
+            continue;
+        };
+        let a = if at_tip {
+            main[tip_from.saturating_sub(1)]
+        } else {
+            a
+        };
+        let p = sk.nodes[i].p;
+        let Some(c) = (0..sk.clouds.len())
+            .min_by(|&x, &y| dist(sk.clouds[x].c, p).total_cmp(&dist(sk.clouds[y].c, p)))
+        else {
+            continue;
+        };
+        let (cc, rx, base) = (sk.clouds[c].c, sk.clouds[c].rx, sk.nodes[a].p);
+        let (ax, ay) = (cc.0 - base.0, cc.1 - base.1);
+        let along = ((p.0 - base.0) * ax + (p.1 - base.1) * ay) / (ax * ax + ay * ay).max(1e-9);
+        let off = dist(p, cc);
+        if along > 0.6 && off > rx {
+            let keep = 1.0 + k * (rx / off - 1.0);
+            sk.nodes[i].p = (cc.0 + (p.0 - cc.0) * keep, cc.1 + (p.1 - cc.1) * keep);
+        }
+    }
+    // Bare twigs that end outside every pad fold back into the wood they
+    // grew from, tips first: nothing dangles below or past the foliage.
+    let mut kids = vec![0usize; sk.nodes.len()];
+    for n in &sk.nodes {
+        if let Some(p) = n.parent {
+            kids[p] += 1;
+        }
+    }
+    // Judged where they are drawn: wood toward the viewer shows lower.
+    let (ts, tc, w) = (
+        math::sin(crate::scene::TILT),
+        math::cos(crate::scene::TILT),
+        crate::scene::WORLD,
+    );
+    let drawn = |p: P, z: f64| {
+        (
+            CENTER_X + w * (p.0 - CENTER_X),
+            SOIL_Y - w * (SOIL_Y - p.1) * tc + w * z * ts,
+        )
+    };
+    let pads: Vec<(P, f64, f64)> = sk
+        .clouds
+        .iter()
+        .map(|c| (drawn(c.c, c.z), w * c.rx.max(1.0), w * tc * c.ry.max(1.0)))
+        .collect();
+    let outside = |p: P| {
+        pads.iter()
+            .all(|&(c, rx, ry)| math::sq((p.0 - c.0) / rx) + math::sq((p.1 - c.1) / ry * 0.5) > 1.6)
+    };
+    // Which twigs are bare, from the tips in: a tip outside every pad is,
+    // and so is the wood that only carried bare tips.
+    let mut bare = vec![false; sk.nodes.len()];
+    for i in (1..sk.nodes.len()).rev() {
+        let n = &sk.nodes[i];
+        if kids[i] > 0 || on_main.contains(&i) || n.strand || !outside(drawn(n.p, zof(sk, i))) {
+            continue;
+        }
+        bare[i] = true;
+        if let Some(p) = n.parent {
+            kids[p] -= 1;
+        }
+    }
+    // Each folds back to where it leaves the wood that stays.
+    for i in 1..sk.nodes.len() {
+        if !bare[i] {
+            continue;
+        }
+        let mut at = sk.nodes[i].parent;
+        while let Some(a) = at.filter(|&a| bare[a]) {
+            at = sk.nodes[a].parent;
+        }
+        // Gone well before the tree is wholly kengai.
+        let fold = (2.5 * k).min(1.0);
+        if let Some(a) = at {
+            let (to, q) = (sk.nodes[a].p, sk.nodes[i].p);
+            sk.nodes[i].p = (q.0 + fold * (to.0 - q.0), q.1 + fold * (to.1 - q.1));
+        }
+    }
+    // Nor does any twig hang below its pad: what dips under one is lifted
+    // to its lower edge, as drawn.
+    for i in 1..sk.nodes.len() {
+        if on_main.contains(&i) || sk.nodes[i].strand {
+            continue;
+        }
+        let at = drawn(sk.nodes[i].p, zof(sk, i));
+        let Some(&(c, rx, ry)) = pads
+            .iter()
+            .min_by(|a, b| (a.0.0 - at.0).abs().total_cmp(&(b.0.0 - at.0).abs()))
+        else {
+            continue;
+        };
+        let floor = c.1 + ry * 1.2;
+        if (at.0 - c.0).abs() < rx * 1.3 && at.1 > floor {
+            sk.nodes[i].p.1 -= (2.5 * k).min(1.0) * (at.1 - floor) / (w * tc);
+        }
+    }
+    // With a second language's trunk lying along it, the legacy trunk
+    // turns to white deadwood, full size, and the living strand runs over it
+    // as its lifeline, feeding the pads.
+    if wood.chains.len() > 1 {
+        // White well before the tree is wholly kengai.
+        sk.legacy_jin = (1.6 * k).min(1.0);
+    }
+}
+
+/// In the wind every branch leans downwind: one reaching upwind keeps its
+/// side but swings up and over around where it leaves the trunk, as far as
+/// the tree is windswept, and its leaves go with it. At its fullest it
+/// stands up and leans a little downwind; nothing crosses to crowd the
+/// other side.
+fn wind_branches(sk: &mut Skeleton, wood: &Wood) {
+    let w = wood.sweep.abs();
+    let s = w * w * (3.0 - 2.0 * w);
+    if s <= 0.0 {
+        return;
+    }
+    let d = wood.sweep.signum();
+    let trunk: std::collections::BTreeSet<usize> = wood.chains.iter().flatten().copied().collect();
+    let before: Vec<P> = sk.nodes.iter().map(|n| n.p).collect();
+    let hangs: Vec<usize> = sk
+        .clouds
+        .iter()
+        .map(|cl| {
+            (1..sk.nodes.len())
+                .min_by(|&x, &y| dist(before[x], cl.c).total_cmp(&dist(before[y], cl.c)))
+                .unwrap_or(0)
+        })
+        .collect();
+    // Each branch: the trunk node it leaves and its first node off it.
+    let mut attach: Vec<Option<(usize, usize)>> = vec![None; sk.nodes.len()];
+    let (sin, cos) = (math::sin(d * s * 1.75), math::cos(d * s * 1.75));
+    let mut moved: Vec<P> = vec![(0.0, 0.0); sk.nodes.len()];
+    for i in 0..sk.nodes.len() {
+        if trunk.contains(&i) {
+            continue;
+        }
+        attach[i] = match sk.nodes[i].parent {
+            Some(p) if trunk.contains(&p) => Some((p, i)),
+            Some(p) => attach[p],
+            None => None,
+        };
+        let Some((a, root)) = attach[i] else {
+            continue;
+        };
+        // Upwind branches only, judged where they leave the trunk.
+        let side = before[root].0 - before[a].0;
+        if side * d >= 0.0 {
+            continue;
+        }
+        let (ox, oy) = (before[i].0 - before[a].0, before[i].1 - before[a].1);
+        let to = (
+            before[a].0 + ox * cos - oy * sin,
+            before[a].1 + ox * sin + oy * cos,
+        );
+        moved[i] = (to.0 - before[i].0, to.1 - before[i].1);
+        sk.nodes[i].p = to;
+    }
+    for (cloud, &n) in sk.clouds.iter_mut().zip(&hangs) {
+        let (dx, dy) = moved[n];
+        cloud.c.0 += dx;
+        cloud.c.1 += dy;
         for patch in &mut cloud.patches {
             patch.0.0 += dx;
-            patch.0.1 = cy + (patch.0.1 - cy) * flat + dy;
+            patch.0.1 += dy;
         }
     }
 }
@@ -1447,16 +1709,19 @@ fn grow_trunks(sk: &mut Skeleton, c: &Ctx, leader: &Leader, rng: &mut Rng) -> Wo
         sweep: leader.sweep,
         peel_b,
         cascade: leader.cascade,
+        downwind: leader.downwind,
     }
 }
 
 /// Old eras: low limbs, oldest lowest, sides alternating.
 fn grow_eras(sk: &mut Skeleton, c: &Ctx, wood: &Wood) {
-    let (life, seed, s_a) = (c.life, c.seed, c.s_a);
+    let (life, seed) = (c.life, c.seed);
     let Frame { big_s, cell, .. } = c.frame;
     // The eras alternate sides, counted from the oldest: a new era moves no
     // older limb, and no crown change swings one across.
-    let era_side = |ei: usize| -> f64 { if ei.is_multiple_of(2) { -s_a } else { s_a } };
+    // The oldest, lowest limb grows on the side away from any lean.
+    let first = -wood.downwind;
+    let era_side = |ei: usize| -> f64 { if ei.is_multiple_of(2) { first } else { -first } };
     // A year leaving the crown grows into its era limb; a young tree grows
     // its first limbs, leaves and all, over its second year, from nothing the
     // day the seedling becomes a tree.
@@ -1496,7 +1761,14 @@ fn grow_eras(sk: &mut Skeleton, c: &Ctx, wood: &Wood) {
             .map(|d| d.1 / d.0)
             .fold(1.0, f64::min);
         let k = wood.chain_for(wood.chain_on(side), era_dead);
-        let from = at_height(sk, &wood.chains[k], c.frame.limb_h(ei));
+        // In the wind a living limb on the downwind side leaves the trunk
+        // lower, under the crown that streams that way.
+        let low = if side * wood.sweep >= 0.0 && !era_dead {
+            1.0 - 0.35 * wood.sweep.abs()
+        } else {
+            1.0
+        };
+        let from = at_height(sk, &wood.chains[k], c.frame.limb_h(ei) * low);
         let p0 = sk.nodes[from].p;
         let grown: f64 = era
             .iter()
@@ -1520,14 +1792,14 @@ fn grow_eras(sk: &mut Skeleton, c: &Ctx, wood: &Wood) {
         } else {
             len
         };
-        // In the wind, limbs on the windward side stay short and those
-        // downwind reach further.
+        // In the wind a limb on the windward side keeps a little shorter, and
+        // one downwind reaches a little further.
         let (ws, wd) = (wood.sweep.abs(), wood.sweep.signum());
         let len = len
             * if side * wd < 0.0 {
-                1.0 - 0.55 * ws
+                1.0 - 0.2 * ws
             } else {
-                1.0 + 0.25 * ws
+                1.0 + 0.1 * ws
             };
         // Limbs leave the trunk to the side or behind it, never toward the
         // viewer: the trunk hides where they join, as on a bonsai.
@@ -1538,6 +1810,15 @@ fn grow_eras(sk: &mut Skeleton, c: &Ctx, wood: &Wood) {
             p0.0 + side * len,
             p0.1 + (0.55 * ag.min(14.0) - 2.0) * era_w,
         );
+        // In the wind the windward limb turns into the open space between the
+        // trunks, downwind and a little up, and the downwind limb tucks in
+        // under its crown.
+        let aim = if side * wd < 0.0 {
+            (p0.0 + wd * len * 0.75, p0.1 - len * 0.2)
+        } else {
+            (end.0 - wd * len * 0.15, end.1 + len * 0.25)
+        };
+        let end = (end.0 + ws * (aim.0 - end.0), end.1 + ws * (aim.1 - end.1));
         let gnarl = 0.004 * ag.min(14.0);
         let limb = limb_to(
             sk,

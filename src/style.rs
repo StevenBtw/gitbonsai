@@ -56,8 +56,9 @@ const QUIET_DAYS: u32 = 2;
 /// See [`QUIET_DAYS`].
 const BUSY_DAYS: u32 = 8;
 
-/// A month counts half as much for the style a year and a half on.
-const HALF_LIFE_MONTHS: f64 = 18.0;
+/// A month counts half as much for the style 22 months on: the last three
+/// years hold most of it.
+const HALF_LIFE_MONTHS: f64 = 22.0;
 
 /// The soil line on the 512-unit canvas.
 pub const SOIL_Y: f64 = 404.0;
@@ -89,6 +90,9 @@ pub struct Leader {
     /// How far the trunk cascades over the rim, signed by the side it
     /// spills to: 1 or -1 for a whole kengai.
     pub cascade: f64,
+    /// The side the tree leans to when it leans, `+1` right or `-1` left:
+    /// fixed for the account, so nothing changes side as its style does.
+    pub downwind: f64,
     /// Where the last three years put the tree between the styles; `None`
     /// when the style is configured.
     pub mix: Option<Mix>,
@@ -107,10 +111,11 @@ impl Leader {
         };
         let (lean, meander, favor, pull, bend, tilt) = match style {
             Style::Chokkan => (0.0, 0.02, 0.0, 0.0, 0.4, 0.0),
-            Style::Moyogi => (0.0, 0.14, 0.0, 0.0, 1.0, 0.0),
-            // Slanting 20° to 35°, the trunk as straight as a formal upright;
+            // Informal upright: deep S-bends.
+            Style::Moyogi => (0.0, 0.14, 0.0, 0.0, 2.2, 0.0),
+            // Slanting about 25°, the trunk as straight as a formal upright;
             // foliage favors the side opposite the lean.
-            Style::Shakan => (sign * (0.22 + 0.16 * amount), 0.05, -sign, 0.7, 0.4, 0.25),
+            Style::Shakan => (sign * (0.22 + 0.16 * amount), 0.05, -sign, 0.7, 0.4, 0.42),
             // Windswept: leaning downwind, and everything streams that way.
             Style::Fukinagashi => (
                 downwind * (0.3 + 0.18 * amount),
@@ -139,6 +144,7 @@ impl Leader {
             },
             // A cascade always spills to the right.
             cascade: if style == Style::Kengai { 1.0 } else { 0.0 },
+            downwind,
             mix: None,
         }
     }
@@ -181,6 +187,7 @@ impl Leader {
             tilt: sum(|l| l.tilt),
             sweep: sum(|l| l.sweep),
             cascade: sum(|l| l.cascade),
+            downwind: fu.downwind,
             mix: Some(mix),
         }
     }

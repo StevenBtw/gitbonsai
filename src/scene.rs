@@ -212,10 +212,14 @@ impl Scene {
                 starts.extend_from_slice(&kids[1..]);
                 cur = kids[0];
             }
-            // Deadwood is marked in the skeleton; the trunk never is.
+            // Deadwood is marked in the skeleton; the trunk never is, except a
+            // cascade's legacy trunk, which turns to white deadwood.
             let last = chain[chain.len() - 1];
-            let jin = (chain[0] != 0 && sk.nodes[last].language.as_deref() == Some(JIN))
-                .then_some(sk.nodes[last].bleach);
+            let jin = if chain[0] == 0 {
+                (sk.legacy_jin > 0.0).then_some(sk.legacy_jin)
+            } else {
+                (sk.nodes[last].language.as_deref() == Some(JIN)).then_some(sk.nodes[last].bleach)
+            };
             let mut wood: Vec<(V3, f64)> = chain
                 .iter()
                 .map(|&i| {

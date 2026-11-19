@@ -68,6 +68,9 @@ pub struct Skeleton {
     /// The language that founded the trunk was dropped: a shari, a strip of
     /// dead wood up the main trunk, bleached this far (0 to 1).
     pub shari: Option<f64>,
+    /// How far a cascade's legacy trunk has turned to white deadwood, 0 to
+    /// 1 (kengai with a second language's living strand along it).
+    pub legacy_jin: f64,
     /// The dropped languages whose dead wood the tree shows: a dead limb,
     /// twig, stub or strand, or the shari. The legend names only these.
     pub deadwood: std::collections::BTreeSet<String>,
