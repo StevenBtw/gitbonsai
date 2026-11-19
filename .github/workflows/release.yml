@@ -1,22 +1,88 @@
 name: Release
 
+# Releases are immutable, so binaries can only be attached while a release is a
+# draft. Create the release in the GitHub UI as a draft (new tag vX.Y.Z on
+# publish, target main) and save it unpublished: merging to main, or the Run
+# workflow button, builds the binaries, attaches them and publishes the draft,
+# which creates the tag. Pushing a bare tag works too: the draft is made here.
 on:
   push:
+    branches: [main]
     tags: ['v*']
+  workflow_dispatch:
 
 # Read-only by default: the build jobs run dependency build scripts, so only
-# the publishing job gets write access.
+# the jobs that read drafts or publish get write access.
 permissions:
   contents: read
+
+# A merge and a button press never publish the same draft twice.
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # Which release this run fills: the pushed tag, or v<Cargo.toml version>.
+  # A push to main without a draft for that version releases nothing.
+  plan:
+    name: Find the draft
+    runs-on: ubuntu-latest
+    permissions:
+      # Draft releases are listed only for tokens that can write.
+      contents: write
+    outputs:
+      tag: ${{ steps.find.outputs.tag }}
+      go: ${{ steps.find.outputs.go }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - id: find
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          # The button would otherwise publish whatever branch it was pressed on.
+          if [ "$EVENT" = workflow_dispatch ] && [ "$REF" != refs/heads/main ]; then
+            echo "::error::run the release from main, not $REF"
+            exit 1
+          fi
+          if [ "$REF_TYPE" = tag ]; then
+            tag=$REF_NAME
+          else
+            tag=v$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
+          fi
+          state=$(gh api --paginate "repos/$REPO/releases?per_page=100" \
+            --jq ".[] | select(.tag_name == \"$tag\") | if .draft then \"draft\" else \"published\" end")
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          if [ "$state" = draft ]; then
+            echo "go=true" >> "$GITHUB_OUTPUT"
+          elif [ "$REF_TYPE" = tag ] && [ "$state" = published ]; then
+            echo "::error::release $tag is already published, so no binaries can be attached; create the release as a draft, not published"
+            exit 1
+          elif [ "$REF_TYPE" = tag ]; then
+            echo "go=true" >> "$GITHUB_OUTPUT" # a bare tag: the release job makes the draft
+          elif [ "$EVENT" = push ]; then
+            echo "no draft release $tag, so this push releases nothing"
+          else
+            echo "::error::no draft release $tag; create it as a draft in the GitHub UI first"
+            exit 1
+          fi
+
   # Before anything is built: the tag, Cargo.toml, Cargo.lock, README, example
   # workflow and CHANGELOG all name the same version.
   version:
     name: Version agrees
+    needs: plan
+    if: needs.plan.outputs.go == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -25,7 +91,7 @@ jobs:
 
       - run: bash scripts/check-version.sh "$TAG"
         env:
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ needs.plan.outputs.tag }}
 
   build:
     name: Build (${{ matrix.target }})
@@ -89,7 +155,7 @@ jobs:
 
   release:
     name: Publish the GitHub release
-    needs: build
+    needs: [plan, build]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -115,30 +181,29 @@ jobs:
           BUNDLE: ${{ steps.attest.outputs.bundle-path }}
         run: cp "$BUNDLE" gitbonsai-provenance.sigstore.json
 
-      # Create the release in the GitHub UI with a new tag, or push only the
-      # tag: either way this job attaches the binaries. A release created by
-      # hand gets them added; for a bare tag the release is created here.
+      # Everything goes onto a draft, which is published only once it holds
+      # every archive, checksum and the provenance bundle: publishing locks it.
+      # A draft made by hand gets its tag on the commit just built; for a bare
+      # tag the draft is made here.
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ needs.plan.outputs.tag }}
+          REF_TYPE: ${{ github.ref_type }}
+          SHA: ${{ github.sha }}
           REPO: ${{ github.repository }}
         run: |
-          if gh release view "$TAG" --repo "$REPO" > /dev/null 2>&1; then
-            if [ "$(gh release view "$TAG" --repo "$REPO" --json isImmutable --jq .isImmutable)" = true ]; then
-              echo "::error::release $TAG is immutable, so no binaries can be added; turn off immutable releases in the repository settings"
-              exit 1
-            fi
-            gh release upload "$TAG" gitbonsai-* --repo "$REPO" --clobber
-          else
-            gh release create "$TAG" gitbonsai-* --repo "$REPO" --title "Release ${TAG#v}" --generate-notes
+          if [ "$REF_TYPE" = tag ] && ! gh release view "$TAG" --repo "$REPO" > /dev/null 2>&1; then
+            gh release create "$TAG" --repo "$REPO" --draft --verify-tag --title "Release ${TAG#v}" --generate-notes
+          elif [ "$REF_TYPE" != tag ]; then
+            gh release edit "$TAG" --repo "$REPO" --target "$SHA"
           fi
-          want=$(ls gitbonsai-* | wc -l)
-          got=$(gh release view "$TAG" --repo "$REPO" --json assets --jq '.assets | length')
-          if [ "$got" -lt "$want" ]; then
-            echo "::error::release $TAG has $got of $want binaries"
+          gh release upload "$TAG" gitbonsai-* --repo "$REPO" --clobber
+          if ! diff <(ls gitbonsai-* | sort) <(gh release view "$TAG" --repo "$REPO" --json assets --jq '.assets[].name' | sort); then
+            echo "::error::draft $TAG does not hold every binary, so it stays a draft"
             exit 1
           fi
+          gh release edit "$TAG" --repo "$REPO" --draft=false
 
   # The GitHub Action end to end against the release just published: download,
   # sha256 check, collect, render. A release made with the built-in token

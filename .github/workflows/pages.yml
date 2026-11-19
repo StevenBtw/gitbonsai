@@ -1,11 +1,14 @@
-# Builds gitbonsai.dev (site/) and deploys it to GitHub Pages on every push to
-# main (a release reaches main as a merged pull request, so its trees are drawn
-# with the released code) or by hand. The github-pages environment only accepts
-# deploys from main, so there is no release or tag trigger.
+# Builds gitbonsai.dev (site/) and deploys it to GitHub Pages after the Release
+# workflow succeeds on main, or by hand. Release runs on every push to main and
+# finishes at once when there is no draft to publish, so site changes still
+# deploy; a release that fails leaves the site on the version whose binaries
+# exist. The github-pages environment only accepts deploys from main.
 name: pages
 
 on:
-  push:
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
     branches: [main]
   workflow_dispatch:
 
@@ -18,11 +21,14 @@ concurrency:
 
 jobs:
   build:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+          # The commit Release ran on; empty for a run by hand (the branch head).
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@92e73e19cbfb3981e63ef478a16f95f415e634d3 # 1.99.0
