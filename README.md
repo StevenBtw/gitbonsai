@@ -18,11 +18,11 @@ Your last three years pick the shape: steady work in one language grows a formal
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/row-top-dark.svg" />
-    <img src="assets/row-top-light.svg" width="100%" alt="Four bonsai at one scale: a simulated sprout three days in and the same account months later, then the trees of jacobwilliams and StevenBtw" />
+    <img src="assets/row-top-light.svg" width="87%" alt="Four bonsai at one scale: a simulated sprout three days in and the same account months later, then the trees of jacobwilliams and StevenBtw" />
   </picture>
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/row-bottom-dark.svg" />
-    <img src="assets/row-bottom-light.svg" width="92%" alt="Three more bonsai at the same scale: the trees of tj, torvalds and steipete" />
+    <img src="assets/row-bottom-light.svg" width="100%" alt="Three more bonsai at the same scale: the trees of tj, torvalds and steipete" />
   </picture>
 </p>
 
