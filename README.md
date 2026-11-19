@@ -13,22 +13,25 @@ Grow a Japanese maple bonsai from your GitHub activity: an animated SVG for your
 
 A newcomer is a thin sprout; years of work make it short, thick and wide, the way a prize bonsai is. Your first language is the trunk; another that reaches a tenth of your work claims a strand of it, and the languages of your recent years share the crown, each in its color. Nothing is erased: the tree changes a little each month, and its trunk only grows.
 
+Your last three years pick the shape: steady work in one language grows a formal upright (chokkan), new languages an informal upright (moyogi), pauses a slanting tree (shakan), pauses with several languages a windswept one (fukinagashi), and steady work in a legacy language such as COBOL or Fortran a cascade (kengai).
+
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/row-dark.svg" />
-    <img src="assets/row-light.svg" width="100%" alt="Five bonsai at one scale: a simulated newcomer sprout, then the trees of StevenBtw, tj, torvalds and steipete" />
+    <img src="assets/row-light.svg" width="100%" alt="Six bonsai at one scale, by total contributions: a simulated newcomer sprout, then the trees of StevenBtw, jacobwilliams, tj, torvalds and steipete" />
   </picture>
 </p>
 
 From left:
 
 - **Newcomer** (simulated): a thin sprout, a few months in.
-- **[@StevenBtw](https://github.com/StevenBtw)**: 9 years; Rust on its own strand.
-- **[@tj](https://github.com/tj)**: 19 years; resting since 2021, bare for the winter.
-- **[@torvalds](https://github.com/torvalds)**: 16 years of C; one steady trunk.
-- **[@steipete](https://github.com/steipete)**: 17 years; new languages on new strands.
+- **[@StevenBtw](https://github.com/StevenBtw)**: 9 years of Python and Rust; quiet summers swept it windswept.
+- **[@jacobwilliams](https://github.com/jacobwilliams)**: 13 years, mostly Fortran; a cascade over the rim.
+- **[@tj](https://github.com/tj)**: 19 years; long pauses slant it, and resting since 2021, bare for the winter.
+- **[@torvalds](https://github.com/torvalds)**: 16 years of C every week; a thick formal upright.
+- **[@steipete](https://github.com/steipete)**: 17 years; new languages on new strands, its crown starting to bend downwind.
 
-The four real trees are grown from their public GitHub activity with `gitbonsai collect <login>` and `gitbonsai render`. Look closely: a tree may hide a few small surprises of its own.
+The five real trees are grown from their public GitHub activity with `gitbonsai collect <login>` and `gitbonsai render`. Look closely: a tree may hide a few small surprises of its own.
 
 <details>
 <summary>What every part shows</summary>
@@ -52,6 +55,7 @@ The four real trees are grown from their public GitHub activity with `gitbonsai 
 | Falling leaves | You crossed a level this week |
 | Moss | Your current weekly streak |
 | The pot | Your longest streak |
+| The shape | Your last three years: steady, new languages, pauses, or a legacy language |
 
 </details>
 
