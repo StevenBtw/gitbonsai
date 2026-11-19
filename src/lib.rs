@@ -250,13 +250,13 @@ impl Bonsai {
         }
         let mut ranked: Vec<(&String, &f64)> = self.window.by_language.iter().collect();
         ranked.sort_by(|a, c| c.1.total_cmp(a.1).then(a.0.cmp(c.0)));
-        let named: f64 = self.window.by_language.values().sum::<f64>().max(1e-9);
+        let leaves = self.window.total.max(1e-9);
         // After the first, a language under 15% of the leaves is "a bit of".
         let (main, bit): (Vec<_>, Vec<_>) = ranked
             .iter()
             .take(3)
             .enumerate()
-            .partition(|(i, (_, v))| *i == 0 || **v / named >= 0.15);
+            .partition(|(i, (_, v))| *i == 0 || **v / leaves >= 0.15);
         let main: Vec<&str> = main.iter().map(|(_, (l, _))| l.as_str()).collect();
         let bit: Vec<&str> = bit.iter().map(|(_, (l, _))| l.as_str()).collect();
         if !main.is_empty() {

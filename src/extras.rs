@@ -84,18 +84,24 @@ impl Extras {
 // Weekends by UTC date, the only date the snapshot keeps.
 fn weekend(timeline: &Timeline) -> u8 {
     let (mut all, mut end) = (0.0, 0.0);
-    for day in timeline.window_days() {
+    // The first day carries the strays folded into it: not that day's work.
+    for day in timeline
+        .window_days()
+        .filter(|d| Some(d.date) != timeline.first_active)
+    {
         all += day.total;
         if day.date.weekday() >= 5 {
             end += day.total;
         }
     }
+    // Capped totals are fractions: a hair of slack keeps 3/7 and 4/7 exact.
+    let slack = 1e-9 * all;
     if all < crate::timeline::SUSTAINED {
         0
-    } else if 7.0 * end >= 4.0 * all {
+    } else if 7.0 * end + slack >= 4.0 * all {
         2
     } else {
-        u8::from(7.0 * end >= 3.0 * all)
+        u8::from(7.0 * end + slack >= 3.0 * all)
     }
 }
 
@@ -191,13 +197,19 @@ mod tests {
     }
 
     /// 13 weeks to 2026-10-31 (a Saturday) with `week` contributions on
-    /// Monday to Friday and `end` on Saturday and Sunday, every week.
+    /// Monday to Friday and `end` on Saturday and Sunday, every week, after
+    /// a month of daily work in January, so the window holds no first day.
     fn weeks(week: u32, end: u32) -> Timeline {
         let observed: Date = "2026-10-31".parse().unwrap();
-        let days: Vec<(Date, u32, &[(&str, u32)])> = (0..91)
-            .map(|i| observed.add_days(-i))
-            .rev()
-            .map(|d| (d, if d.weekday() >= 5 { end } else { week }, &[][..]))
+        let january: Date = "2026-01-05".parse().unwrap();
+        let days: Vec<(Date, u32, &[(&str, u32)])> = (0..28)
+            .map(|i| (january.add_days(i), 3, &[][..]))
+            .chain(
+                (0..91)
+                    .map(|i| observed.add_days(-i))
+                    .rev()
+                    .map(|d| (d, if d.weekday() >= 5 { end } else { week }, &[][..])),
+            )
             .filter(|d| d.1 > 0)
             .collect();
         Timeline::new(&crate::growth::testkit::snap(&days, observed))

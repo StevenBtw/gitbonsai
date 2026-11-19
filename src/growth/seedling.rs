@@ -56,7 +56,7 @@ pub fn seedling(sk: &mut Skeleton, life: &Life, seed: u64, side: f64) {
     sk.height = h;
     let t = total.max(1e-9);
     let named: Vec<&(Lang, f64)> = shares.iter().filter(|s| s.1 / t >= 0.05).take(4).collect();
-    let mut side = rng.sign();
+    let mut side = rng.sign() * side;
     let lows = named.len().saturating_sub(1).max(1);
     for (q, (lang, w)) in named.iter().enumerate() {
         let rx = (5.0 + 7.0 * (w / t).sqrt()).clamp(5.0, 9.5);

@@ -173,7 +173,7 @@ impl Leader {
         }
     }
 
-    /// The leader `mix` blends from the four styles. Shakan leans the way
+    /// The leader `mix` blends from the five styles. Shakan leans the way
     /// the wind blows, so it and fukinagashi blend into one lean.
     pub fn mixed(mix: Mix, wind: Option<Wind>, side: f64) -> Self {
         let fu = Self::new(Style::Fukinagashi, wind, side);
@@ -217,7 +217,7 @@ impl Leader {
     }
 }
 
-/// Where a tree stands between the four styles, from its last three years.
+/// Where a tree stands between the five styles, from its last three years.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Mix {
     /// How much of the time went in pauses, 0 (steady) to 1.

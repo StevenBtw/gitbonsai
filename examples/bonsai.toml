@@ -2,7 +2,7 @@
 
 [tree]
 # style = "moyogi"      # chokkan | moyogi | shakan | fukinagashi | kengai; unset, the last three years pick it
-# wind = "left"         # fukinagashi only; default comes from the seed
+# wind = "left"         # the side it leans and streams to; unset, its sprout picks it
 
 [leaves]
 pins = []               # at most 5 languages, e.g. ["Rust", "Python"]; they take color slots first

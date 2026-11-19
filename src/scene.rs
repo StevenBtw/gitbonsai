@@ -215,7 +215,7 @@ impl Scene {
             // Deadwood is marked in the skeleton; the trunk never is, except a
             // cascade's legacy trunk, which turns to white deadwood.
             let last = chain[chain.len() - 1];
-            let jin = if chain[0] == 0 {
+            let jin = if s0 == 0 {
                 (sk.legacy_jin > 0.0).then_some(sk.legacy_jin)
             } else {
                 (sk.nodes[last].language.as_deref() == Some(JIN)).then_some(sk.nodes[last].bleach)
@@ -625,7 +625,9 @@ fn cloud_leaves(b: &Bonsai, scene: &mut Scene) {
                 dom.is_none(),
             ));
         }
-        scene.pads.push((c3, cl.rx, cl.ry));
+        if left > 0.02 {
+            scene.pads.push((c3, cl.rx, cl.ry));
+        }
         if b.extras.drip && (li == 0 || lobes[li - 1].0 != *ci) {
             // Tubing follows the wood from the cloud's nearest node down to
             // the soil, until it joins a line already laid.

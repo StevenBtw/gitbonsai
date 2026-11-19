@@ -698,10 +698,7 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                 };
                 let _ = write!(s, r#"<path d="{}" fill="{base}"{ink}/>"#, d.as_str());
             }
-            // Thick wood gets a shadow side and a lit side; a limb past a few
-            // units the shadow side only, so overlapping limbs read apart.
-            let thick = seg.iter().any(|p| p.2 > 6.5);
-            if thick || seg.iter().any(|p| p.2 > 3.0) {
+            if seg.iter().any(|p| p.2 > 6.5) {
                 // The shadow falls on whichever side faces away from the light.
                 let m = seg.len();
                 let away = |i: usize| {
@@ -753,13 +750,11 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                     r#"<path d="{}" fill="{shade}"/>"#,
                     strip(0.05, 0.98).as_str(),
                 );
-                if thick {
-                    let _ = write!(
-                        s,
-                        r#"<path d="{}" fill="{lit}"/>"#,
-                        strip(-0.35, -0.72).as_str(),
-                    );
-                }
+                let _ = write!(
+                    s,
+                    r#"<path d="{}" fill="{lit}"/>"#,
+                    strip(-0.35, -0.72).as_str(),
+                );
                 if let Some(g) = scene.shari.filter(|_| ci == 0) {
                     // A shari: the founding language's dead wood, a strip up
                     // the living trunk that narrows to a point as it climbs and
@@ -1412,7 +1407,7 @@ fn nebari(
             brace,
             x0 - CENTER_X,
         );
-        let bend = r.range(-0.3, 0.3);
+        let bend = b.leader.side * r.range(-0.3, 0.3);
         // Front roots are seen across their width: slimmer, so each stays
         // its own root.
         let front_k = 1.0 - 0.3 * math::sin(az).max(0.0);

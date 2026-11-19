@@ -394,11 +394,19 @@ pub fn eggs(
         } else {
             ""
         };
+        // Beside the pebbles it needs 33 units of room (both half-widths and a
+        // gap); on a smaller pot it sits further back, behind them.
+        let crowded = tier("pair-extraordinaire").is_some_and(|t| t >= 2) && hw * 0.36 < 33.0;
+        let (x, y, layer) = if crowded {
+            (CENTER_X - hw * 0.55, SOIL_Y - ry * 0.3, &mut e.back)
+        } else {
+            (CENTER_X - hw * 0.66, SOIL_Y + ry * 0.22, &mut e.front)
+        };
         let _ = write!(
-            e.front,
+            layer,
             r##"<g transform="translate({} {}) scale({}) rotate(-6)"><ellipse cy=".5" rx="7" ry="1.6" fill="{shadow}" opacity=".45"/><use href="#kabuto" fill="{paper}"/>{crest}</g>"##,
-            Num(CENTER_X - hw * 0.66),
-            Num(SOIL_Y + ry * 0.22),
+            Num(x),
+            Num(y),
             Num(w * 1.25)
         );
     }
@@ -427,8 +435,7 @@ pub fn eggs(
             let star = if dark { "#f6efd2" } else { "#efe3b8" };
             let _ = write!(
                 g,
-                // Folded paper: a darker half to each point, creases to the tips.
-                r##"<path d="M0 0V7" stroke="#8a7a5a" stroke-width=".35"/><use href="#star5" y="10.6" fill="{star}" stroke="#a88b4a" stroke-width=".45"/><path transform="translate(0 10.6)" d="M0 0L0 -3.6L.86 -1.18ZM0 0L3.42 -1.11L1.39 .45ZM0 0L2.12 2.91L0 1.46ZM0 0L-2.12 2.91L-1.39 .45ZM0 0L-3.42 -1.11L-.86 -1.18Z" fill="#7a5f2a" opacity=".16"/><path transform="translate(0 10.6)" d="M0 0L0 -3.6M0 0L3.42 -1.11M0 0L2.12 2.91M0 0L-2.12 2.91M0 0L-3.42 -1.11" stroke="#a88b4a" stroke-width=".22" opacity=".7"/><circle class="tw" cx="1.2" cy="9" r=".7" fill="#fff"/>"##
+                r##"<path d="M0 0V7" stroke="#8a7a5a" stroke-width=".35"/><use href="#star5" y="10.6" fill="{star}" stroke="#b39a5a" stroke-width=".35"/><circle class="tw" cx="1.2" cy="9" r=".7" fill="#fff"/>"##
             );
             e.animated += 1;
         } else {

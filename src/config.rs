@@ -87,7 +87,8 @@ pub struct Config {
 pub struct TreeConfig {
     /// The bonsai style; unset, the last three years pick it ([`crate::style::Mix`]).
     pub style: Option<Style>,
-    /// Wind direction for fukinagashi; from the seed when unset.
+    /// The side the tree leans, streams and cascades to; its sprout picks it
+    /// when unset ([`crate::style::side`]).
     pub wind: Option<Wind>,
 }
 
@@ -255,7 +256,7 @@ impl FromStr for Style {
     }
 }
 
-/// The wind direction of a fukinagashi tree.
+/// The side a tree leans, streams and cascades to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Wind {

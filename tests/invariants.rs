@@ -1286,9 +1286,9 @@ fn branches_start_inside_their_parent() {
 /// a bare stick poking out of the crown. Dead wood may end snapped.
 #[test]
 fn no_wood_ends_blunt() {
-    // Thicker than this (world units, before the tip's taper) is not a twig;
-    // a gentle taper thins by at most `SLOPE` a unit of length.
-    const TWIG: f64 = 1.6;
+    // Thicker than a twig (world units, before the tip's taper) is wood a
+    // stump shows on; a gentle taper thins by at most `SLOPE` a unit of length.
+    const TWIG: f64 = gitbonsai::scene::TWIG;
     const SLOPE: f64 = 0.15;
     // Judged over the last stretch: lower down wood may taper as it grew.
     const BACK: f64 = 30.0;
