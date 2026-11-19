@@ -49,14 +49,15 @@
             <a class="btn btn-outline" href="#yours">Preview your tree</a>
           </div>
         </div>
-        <figure class="plate">
-          <div class="art"><img data-tree="hero/showcase" alt="The showcase bonsai, from simulated activity: fourteen years, with deadwood from a language it dropped" width="400" height="319"></div>
+        <figure class="plate heroplate">
+          <div class="art"><div class="canvas" id="herocanvas"><img id="heroimg" data-tree="hero/showcase" alt="The showcase bonsai, from simulated activity: fourteen years, with deadwood from a language it dropped" width="400" height="319"></div></div>
           <figcaption class="label">
-            <div><span class="k">Plate</span><span class="v tnum">01</span></div>
-            <div><span class="k">Grown for</span><span class="v">Showcase</span></div>
-            <div><span class="k">Style</span><span class="v">moyogi</span></div>
+            <div><span class="k">Plate</span><span class="v tnum" id="herono">03</span></div>
+            <div><span class="k">Grown for</span><span class="v" id="herofor">Showcase</span></div>
+            <div><span class="k">Style</span><span class="v" id="herostyle">moyogi</span></div>
             <div><span class="k">Observed</span><span class="v tnum" id="heroweek">this week</span></div>
           </figcaption>
+          <div class="gallery" id="gallery" role="radiogroup" aria-label="Plates" hidden></div>
         </figure>
       </div>
     </div>
@@ -67,7 +68,7 @@
       <div class="sec-head">
         <p class="eyebrow">Examples</p>
         <h2>Watch a tree grow</h2>
-        <p class="lede">Pick a tree and play its life. Two are simulated accounts that show a pattern; five are real, grown from public GitHub activity, sorted by total contributions.</p>
+        <p class="lede">Pick a tree and play its life. The first is a simulated account that shows a pattern; the four below it are real, grown from public GitHub activity and sorted by total contributions.</p>
       </div>
       <div class="player">
         <div class="picks" role="radiogroup" aria-label="Example trees" id="picks"></div>
@@ -152,7 +153,7 @@
       <figure class="plate result" aria-live="polite">
         <div class="art" id="yourart"><p class="msg">Your tree grows here.</p></div>
         <figcaption class="label">
-          <div><span class="k">Plate</span><span class="v tnum">02</span></div>
+          <div><span class="k">Plate</span><span class="v tnum" id="yourno">09</span></div>
           <div><span class="k">Grown for</span><span class="v" id="yourlogin">@…</span></div>
           <div><span class="k">Style</span><span class="v" id="yourstyle">…</span></div>
           <div><span class="k">Observed</span><span class="v tnum" id="yourweek">…</span></div>
@@ -173,7 +174,7 @@
           <div class="bar"><i></i><i></i><i></i><span id="scenepath">you/you</span></div>
           <div class="scene type" data-scene="0">
             <p class="path">you/you / <em>.github/workflows/bonsai.yml</em></p>
-<pre class="code"><span class="ln">name: bonsai</span><span class="ln">on:</span><span class="ln">  schedule:</span><span class="ln">    - cron: "17 6 * * 1"</span><span class="ln">  workflow_dispatch:</span><span class="ln">permissions:</span><span class="ln">  contents: write</span><span class="ln">jobs:</span><span class="ln">  bonsai:</span><span class="ln">    runs-on: ubuntu-latest</span><span class="ln">    steps:</span><span class="ln">      - uses: actions/checkout@v7</span><span class="ln">      - uses: StevenBtw/gitbonsai@v@VERSION@</span><span class="ln">        with:</span><span class="ln">          output-dir: assets</span><span class="ln">      - name: Commit if it changed</span><span class="ln">        run: git add assets &amp;&amp; git commit -m "Grow bonsai" &amp;&amp; git push</span></pre>
+<pre class="code"><span class="ln">name: bonsai</span><span class="ln">on:</span><span class="ln">  schedule:</span><span class="ln">    - cron: "17 6 * * 1"</span><span class="ln">  workflow_dispatch:</span><span class="ln">permissions:</span><span class="ln">  contents: write</span><span class="ln">jobs:</span><span class="ln">  bonsai:</span><span class="ln">    runs-on: ubuntu-latest</span><span class="ln">    steps:</span><span class="ln">      - uses: actions/checkout@v7</span><span class="ln">      - uses: StevenBtw/gitbonsai@v@VERSION@</span><span class="ln">        with:</span><span class="ln">          output-dir: assets</span><span class="ln">      - name: Commit if it changed</span><span class="ln">        run: |</span><span class="ln">          git config user.name "github-actions[bot]"</span><span class="ln">          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"</span><span class="ln">          git add assets</span><span class="ln">          git diff --cached --quiet || git commit -m "Grow bonsai"</span><span class="ln">          git push</span></pre>
           </div>
           <div class="scene" data-scene="1">
             <p class="path">you/you / <em>Actions</em></p>
@@ -194,7 +195,7 @@
         <div class="steps" id="steps">
           <div class="step"><button class="h" type="button">Add the workflow</button>
             <span class="d">Save this as <code>.github/workflows/bonsai.yml</code> in your profile repository. Its last step commits the tree; without it a run is green but changes nothing.</span>
-            <span class="snip"><button class="copy" type="button" data-copy="wf">Copy</button><pre class="code long" id="snip-wf">@WORKFLOW@</pre></span>
+            <span class="snip"><button class="copy" type="button" data-copy="wf">Copy</button><pre class="code long" id="snip-wf" tabindex="0" aria-label="The workflow file, bonsai.yml">@WORKFLOW@</pre></span>
           </div>
           <div class="step"><button class="h" type="button">Run it once</button>
             <span class="d">In the Actions tab, run <code>bonsai</code> by hand. After that it runs every Monday.</span>

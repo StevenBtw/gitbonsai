@@ -32,15 +32,28 @@ wf = open(workflow, encoding="utf-8").read().rstrip("\n")
 open(page, "w", encoding="utf-8", newline="\n").write(text.replace("@WORKFLOW@", html.escape(wf, quote=False)))
 EOF
 
+# The hero's plates, in gallery order; the page opens on the Showcase. Each tree
+# is rendered once; hero.py writes plates.json (the label) and the thumbnails.
+plate() {
+  local id=$1 name=$2
+  shift 2
+  "$bin" render "$@" --output-dir "$work/hero/$id" -q
+  for t in light dark; do
+    cp "$work/hero/$id/bonsai-$t.svg" "$out/hero/$id-$t.svg"
+  done
+  printf '%s\t%s\n' "$id" "$name" >> "$work/plates.tsv"
+}
+plate sprout Sprout fixture:newbie --as-of 2026-08-01
+plate newcomer Newcomer fixture:newbie
 # The Showcase wears a terracotta glaze, so the examples show more than one pot.
-"$bin" render fixture:showcase --config "$site/showcase.toml" --output-dir "$work/showcase" -q
-for t in light dark; do
-  cp "$work/showcase/bonsai-$t.svg" "$out/hero/showcase-$t.svg"
+plate showcase Showcase fixture:showcase --config "$site/showcase.toml"
+for who in stevenbtw:@StevenBtw jacobwilliams:@jacobwilliams tj:@tj torvalds:@torvalds steipete:@steipete; do
+  plate "${who%%:*}" "${who#*:}" "$site/snapshots/${who%%:*}.snapshot.json"
 done
+python3 "$site/hero.py" "$work/plates.tsv" "$out"
 
 "$bin" timelapse fixture:showcase --config "$site/showcase.toml" --every 1m --output-dir "$work/tl/showcase" -q
-"$bin" timelapse fixture:newbie --every 2w --output-dir "$work/tl/newcomer" -q
-for who in stevenbtw jacobwilliams tj torvalds steipete; do
+for who in stevenbtw tj torvalds steipete; do
   "$bin" timelapse "$site/snapshots/$who.snapshot.json" --every 1m --output-dir "$work/tl/$who" -q
 done
 python3 "$site/mkvideo.py" "$work/tl" "$out"
