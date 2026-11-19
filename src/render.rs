@@ -200,11 +200,6 @@ impl PathData {
         self
     }
 
-    /// Whether nothing was drawn.
-    pub fn is_empty(&self) -> bool {
-        self.d.is_empty()
-    }
-
     /// The `d` attribute's value.
     pub fn as_str(&self) -> &str {
         &self.d

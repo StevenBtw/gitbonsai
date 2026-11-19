@@ -1,8 +1,7 @@
-//! Styles: the leader's path and which side foliage pads favor.
+//! Styles: how the trunk bends, leans, streams in the wind and cascades.
 //!
-//! A style only bends the leader and biases pad placement. It never changes
-//! growth amounts, language states or colors. The leader's position is a
-//! function of height only, so growing taller never moves the wood below.
+//! A style only shapes the wood. It never changes growth amounts, language
+//! states or colors.
 //!
 //! Unless one is configured, the last three years pick the style
 //! ([`Mix::of`]): steady work in one language stands formal upright
@@ -15,8 +14,6 @@ use std::collections::BTreeMap;
 
 use crate::config::{Style, Wind};
 use crate::math;
-use crate::noise::fbm;
-use crate::rng::Rng;
 use crate::snapshot::{Day, Snapshot};
 
 /// The months a new account takes to grow into its style.
@@ -94,23 +91,14 @@ pub fn side(days: &[Day]) -> f64 {
     }
 }
 
-/// A style made concrete for one account: its seeded lean and wind.
+/// A style made concrete for one account: its bends, lean and wind.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Leader {
     /// The style.
     pub style: Style,
-    seed: u64,
-    /// Sideways lean per unit of height (shakan, fukinagashi); signed.
-    lean: f64,
-    /// How far the leader meanders, as a share of height.
-    meander: f64,
-    /// `+1` if foliage favors the right, `-1` the left, `0` for no preference.
-    favor: f64,
-    /// How often a pad goes to the favored side, 0 to 1.
-    pull: f64,
     /// How far the trunk's own bends swing, 1 for an informal upright.
     pub bend: f64,
-    /// How far the trunk leans as it rises, signed like the lean.
+    /// How far the trunk leans as it rises, signed by the side it leans to.
     pub tilt: f64,
     /// How far the crown streams downwind, signed: 1 or -1 for a whole
     /// fukinagashi, 0 for no wind.
@@ -133,46 +121,28 @@ pub struct Leader {
 }
 
 impl Leader {
-    /// The leader of `style` for the account `seed` on `side` ([`side`]).
-    pub fn new(style: Style, seed: u64, wind: Option<Wind>, side: f64) -> Self {
-        let mut rng = Rng::keyed(seed, "lean");
-        // The side was once this coin: still drawn, so the amount stays.
-        let _ = rng.sign();
-        let sign = side;
-        let amount = rng.range(0.0, 1.0);
+    /// The leader of `style` on `side` ([`side`]).
+    pub fn new(style: Style, wind: Option<Wind>, side: f64) -> Self {
         let downwind = match wind {
             Some(Wind::Left) => -1.0,
             Some(Wind::Right) => 1.0,
             None => side,
         };
-        let (lean, meander, favor, pull, bend, tilt) = match style {
-            Style::Chokkan => (0.0, 0.02, 0.0, 0.0, 0.4, 0.0),
+        let (bend, tilt) = match style {
+            Style::Chokkan => (0.4, 0.0),
             // Informal upright: deep S-bends.
-            Style::Moyogi => (0.0, 0.14, 0.0, 0.0, 2.2, 0.0),
-            // Slanting about 25°, the trunk as straight as a formal upright;
-            // foliage favors the side opposite the lean.
-            Style::Shakan => (sign * (0.22 + 0.16 * amount), 0.05, -sign, 0.7, 0.4, 0.42),
+            Style::Moyogi => (2.2, 0.0),
+            // Slanting about 25°, the trunk as straight as a formal upright.
+            Style::Shakan => (0.4, side * 0.42),
             // Windswept: leaning downwind, and everything streams that way.
-            Style::Fukinagashi => (
-                downwind * (0.3 + 0.18 * amount),
-                0.05,
-                downwind,
-                0.9,
-                1.0,
-                0.75,
-            ),
+            Style::Fukinagashi => (1.0, downwind * 0.75),
             // Cascade: the trunk rises straight, then spills over the rim.
-            Style::Kengai => (0.0, 0.03, downwind, 0.8, 0.5, 0.0),
+            Style::Kengai => (0.5, 0.0),
         };
         Self {
             style,
-            seed,
-            lean,
-            meander,
-            favor,
-            pull,
             bend,
-            tilt: tilt * lean.signum(),
+            tilt,
             sweep: if style == Style::Fukinagashi {
                 downwind
             } else {
@@ -194,8 +164,6 @@ impl Leader {
     pub fn canonical(&self) -> Self {
         let s = self.side;
         Self {
-            lean: s * self.lean,
-            favor: s * self.favor,
             tilt: s * self.tilt,
             sweep: s * self.sweep,
             cascade: s * self.cascade,
@@ -207,38 +175,31 @@ impl Leader {
 
     /// The leader `mix` blends from the four styles. Shakan leans the way
     /// the wind blows, so it and fukinagashi blend into one lean.
-    pub fn mixed(mix: Mix, seed: u64, wind: Option<Wind>, side: f64) -> Self {
-        let fu = Self::new(Style::Fukinagashi, seed, wind, side);
-        let mut sh = Self::new(Style::Shakan, seed, wind, side);
-        if sh.lean.signum() != fu.lean.signum() {
-            sh.lean = -sh.lean;
-            sh.favor = -sh.favor;
+    pub fn mixed(mix: Mix, wind: Option<Wind>, side: f64) -> Self {
+        let fu = Self::new(Style::Fukinagashi, wind, side);
+        let mut sh = Self::new(Style::Shakan, wind, side);
+        if sh.tilt.signum() != fu.tilt.signum() {
             sh.tilt = -sh.tilt;
         }
         let corners = [
             (
-                Self::new(Style::Chokkan, seed, wind, side),
+                Self::new(Style::Chokkan, wind, side),
                 mix.weight(Style::Chokkan),
             ),
             (
-                Self::new(Style::Moyogi, seed, wind, side),
+                Self::new(Style::Moyogi, wind, side),
                 mix.weight(Style::Moyogi),
             ),
             (sh, mix.weight(Style::Shakan)),
             (fu, mix.weight(Style::Fukinagashi)),
             (
-                Self::new(Style::Kengai, seed, wind, side),
+                Self::new(Style::Kengai, wind, side),
                 mix.weight(Style::Kengai),
             ),
         ];
         let sum = |f: fn(&Self) -> f64| corners.iter().map(|(l, w)| f(l) * w).sum::<f64>();
         Self {
             style: mix.style(),
-            seed,
-            lean: sum(|l| l.lean),
-            meander: sum(|l| l.meander),
-            favor: if mix.spread > 0.0 { fu.favor } else { 0.0 },
-            pull: sum(|l| l.pull),
             bend: sum(|l| l.bend),
             tilt: sum(|l| l.tilt),
             // An informal upright's calm keeps the wind off: past a trace of
@@ -252,21 +213,6 @@ impl Leader {
             downwind: fu.downwind,
             side,
             mix: Some(mix),
-        }
-    }
-
-    /// The leader's horizontal offset from the trunk base at height `h`.
-    pub fn x_at(&self, h: f64) -> f64 {
-        self.lean * h + self.side * self.meander * h * fbm(self.seed, h / 80.0)
-    }
-
-    /// The side a new pad goes to: its natural side, or flipped toward the
-    /// style's favored side when `u` (uniform in `[0, 1)`) says so.
-    pub fn pad_side(&self, natural: f64, u: f64) -> f64 {
-        if self.favor != 0.0 && u < self.pull {
-            self.favor
-        } else {
-            natural
         }
     }
 }
@@ -408,19 +354,17 @@ mod tests {
     use crate::date::Date;
 
     #[test]
-    fn chokkan_is_nearly_straight_and_shakan_leans() {
-        let straight = Leader::new(Style::Chokkan, 5, None, 1.0);
-        assert!(straight.x_at(250.0).abs() < 10.0);
-        let slant = Leader::new(Style::Shakan, 5, None, 1.0);
-        assert!(slant.x_at(250.0).abs() > 40.0);
+    fn chokkan_stands_straight_and_shakan_leans() {
+        assert_eq!(Leader::new(Style::Chokkan, None, 1.0).tilt, 0.0);
+        assert!(Leader::new(Style::Shakan, None, 1.0).tilt > 0.3);
     }
 
     #[test]
     fn fukinagashi_follows_the_configured_wind() {
         for (wind, sign) in [(Wind::Left, -1.0), (Wind::Right, 1.0)] {
-            let leader = Leader::new(Style::Fukinagashi, 9, Some(wind), 1.0);
-            assert!(leader.x_at(200.0) * sign > 40.0);
-            assert_eq!(leader.pad_side(-sign, 0.1), sign);
+            let leader = Leader::new(Style::Fukinagashi, Some(wind), 1.0);
+            assert!(leader.tilt * sign > 0.5);
+            assert_eq!(leader.sweep, sign);
         }
     }
 
@@ -476,25 +420,16 @@ mod tests {
     #[test]
     fn a_left_leader_mirrors_the_right() {
         for style in Style::ALL {
-            let right = Leader::new(style, 5, None, 1.0);
-            let left = Leader::new(style, 5, None, -1.0);
-            for h in [40.0, 120.0, 250.0] {
-                assert_eq!(left.x_at(h), -right.x_at(h), "{style:?}");
-            }
+            let right = Leader::new(style, None, 1.0);
+            let left = Leader::new(style, None, -1.0);
             assert_eq!(left.downwind, -right.downwind);
             assert_eq!(left.cascade, -right.cascade);
             assert_eq!(left.tilt, -right.tilt);
             assert_eq!(left.canonical(), right);
         }
         // The configured wind still wins.
-        let left = Leader::new(Style::Fukinagashi, 5, Some(Wind::Right), -1.0);
+        let left = Leader::new(Style::Fukinagashi, Some(Wind::Right), -1.0);
         assert_eq!(left.downwind, 1.0);
-    }
-
-    #[test]
-    fn the_leader_depends_on_height_only() {
-        let leader = Leader::new(Style::Moyogi, 42, None, 1.0);
-        assert_eq!(leader.x_at(120.0), leader.x_at(120.0));
     }
 
     fn mix(totals: &[f64], langs: &[(&'static str, u32)], age: i32) -> Mix {
@@ -553,11 +488,14 @@ mod tests {
                 spread,
                 legacy,
             };
-            let corner = Leader::mixed(mix, 3, None, 1.0);
+            let corner = Leader::mixed(mix, None, 1.0);
             assert_eq!(mix.style(), style);
             assert_eq!(
-                corner.x_at(200.0),
-                Leader::new(style, 3, None, 1.0).x_at(200.0)
+                Leader {
+                    mix: None,
+                    ..corner
+                },
+                Leader::new(style, None, 1.0)
             );
         }
         // Halfway into pauses, a one-language tree leans about half as far
@@ -569,11 +507,10 @@ mod tests {
                     spread: 0.0,
                     legacy: 0.0,
                 },
-                3,
                 None,
                 1.0,
             )
-            .x_at(200.0)
+            .tilt
         };
         let (full, half) = (lean(1.0), lean(0.5));
         assert!(

@@ -139,7 +139,7 @@ mod tests {
             .collect();
         let mut s = snap(&days, d0.add_days(n + 1));
         s.account_id = seed;
-        let leader = Leader::new(Style::Chokkan, seed, None, side);
+        let leader = Leader::new(Style::Chokkan, None, side);
         let sk = grow(
             &Timeline::new(&s),
             seed,

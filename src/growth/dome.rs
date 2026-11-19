@@ -3439,7 +3439,7 @@ mod tests {
     /// trunk; dead wood when that language was dropped.
     #[test]
     fn trunk_stage_makes_the_main_trunk_and_the_first_claimed_strand() {
-        let leader = Leader::new(crate::config::Style::Moyogi, 1, None, 1.0);
+        let leader = Leader::new(crate::config::Style::Moyogi, None, 1.0);
         let mut seen = std::collections::BTreeSet::new();
         for (name, life, seed) in dome_lives() {
             let c = Ctx::new(&life, seed, 0.0);
@@ -3511,7 +3511,7 @@ mod tests {
         let timeline = Timeline::new(&snapshot);
         let life = Life::of(&timeline, &[]).unwrap();
         let mut sk = root_only();
-        let leader = Leader::new(crate::config::Style::Moyogi, 1, None, 1.0);
+        let leader = Leader::new(crate::config::Style::Moyogi, None, 1.0);
         tree(&mut sk, &life, 1, &leader, Reach::default(), None);
         let flow = sk.flows();
         let dead = (0..sk.nodes.len())
@@ -3527,7 +3527,7 @@ mod tests {
     fn no_limb_outgrows_the_trunk_it_leaves() {
         for (name, life, seed) in dome_lives() {
             let mut sk = root_only();
-            let leader = Leader::new(crate::config::Style::Moyogi, 1, None, 1.0);
+            let leader = Leader::new(crate::config::Style::Moyogi, None, 1.0);
             let chains = tree(&mut sk, &life, seed, &leader, Reach::default(), None);
             let flow = sk.flows();
             let on: std::collections::BTreeSet<usize> = chains.iter().flatten().copied().collect();
@@ -3565,7 +3565,7 @@ mod tests {
         let snapshot = crate::growth::testkit::snap(&days, d("2026-11-17"));
         let life = Life::of(&Timeline::new(&snapshot), &[]).unwrap();
         let mut sk = root_only();
-        let leader = Leader::new(crate::config::Style::Moyogi, 1, None, 1.0);
+        let leader = Leader::new(crate::config::Style::Moyogi, None, 1.0);
         let chains = tree(&mut sk, &life, 1, &leader, Reach::default(), None);
         let on: std::collections::BTreeSet<usize> = chains.iter().flatten().copied().collect();
         let jin = |i: usize| sk.nodes[i].language.as_deref() == Some(crate::growth::JIN);
@@ -3606,7 +3606,7 @@ mod tests {
         let timeline = Timeline::new(&snapshot);
         let life = Life::of(&timeline, &[]).unwrap();
         let mut sk = root_only();
-        let leader = Leader::new(crate::config::Style::Moyogi, 1, None, 1.0);
+        let leader = Leader::new(crate::config::Style::Moyogi, None, 1.0);
         let chains = tree(
             &mut sk,
             &life,
@@ -3658,7 +3658,7 @@ mod tests {
         let timeline = Timeline::new(&snap(&days, start.add_days(900)));
         let life = Life::of(&timeline, &[]).unwrap();
         let mut sk = root_only();
-        let leader = Leader::new(crate::config::Style::Moyogi, 1, None, 1.0);
+        let leader = Leader::new(crate::config::Style::Moyogi, None, 1.0);
         let chains = tree(&mut sk, &life, 1, &leader, Reach::default(), None);
         assert_eq!(chains.len(), 2, "a third trunk language shares a trunk");
         let top = |c: &Vec<usize>| sk.nodes[*c.last().unwrap()].p.0;

@@ -59,18 +59,6 @@ pub fn zof(sk: &Skeleton, i: usize) -> f64 {
     sk.node_z.get(i).copied().unwrap_or(0.0)
 }
 
-/// The signed shortest turn from angle `from` to angle `to`.
-fn turn(from: f64, to: f64) -> f64 {
-    let mut d = (to - from) % math::TAU;
-    if d > PI {
-        d -= math::TAU;
-    }
-    if d < -PI {
-        d += math::TAU;
-    }
-    d
-}
-
 /// A sinuous limb from node `from` to `to` at depth `tz`: an arc of `sag`
 /// plus `waves` half-waves of `amp`, which also twist it in depth. Returns
 /// its nodes, the last at `to`.
@@ -161,143 +149,36 @@ pub fn flare(sk: &mut Skeleton, chain: &[usize]) {
     }
 }
 
-/// A limb grown in 3D: azimuth around the trunk (0 = right, +pi/2 = toward
-/// the viewer) and elevation (positive = up), wandering as it goes.
-#[derive(Clone)]
+/// Where a limb leaves the trunk: node `at`, azimuth `az` around the trunk
+/// (0 = right, +pi/2 = toward the viewer) and elevation `el` (positive = up).
 pub struct Limb {
     at: usize,
     az: f64,
     el: f64,
-    head_el: f64,
-    head_az: f64,
-    wander: f64,
-    pull: f64,
-    curl: f64,
-    freq: f64,
-    phase: f64,
-    run: f64,
 }
 
 impl Limb {
     /// A limb from node `at`, heading `az`, `el`.
     pub fn new(at: usize, az: f64, el: f64) -> Self {
-        Self {
-            at,
-            az,
-            el,
-            head_az: az,
-            head_el: el,
-            wander: 0.25,
-            pull: 0.4,
-            curl: 0.0,
-            freq: 0.0,
-            phase: 0.0,
-            run: 0.0,
-        }
+        Self { at, az, el }
     }
-
-    /// Bend character from irregularity `r` (0 to 1.2): steady growth is
-    /// straight, irregular growth curls.
-    #[must_use]
-    pub fn character(mut self, r: f64, rng: &mut Rng) -> Self {
-        let r = r.min(1.0);
-        self.wander = 0.06 + 0.3 * r;
-        self.pull = 0.55 - 0.2 * r;
-        self.curl = 0.04 + 0.62 * r;
-        self.freq = 0.018 + 0.05 * r;
-        self.phase = rng.range(0.0, math::TAU);
-        self
-    }
-
-    /// Grows `length` more units.
-    pub fn grow(&mut self, sk: &mut Skeleton, rng: &mut Rng, length: f64, lang: &Lang) {
-        let mut left = length;
-        while left > 1.0 {
-            let seg = left.min(8.0);
-            let curl = self.curl * math::sin(self.phase + self.run * self.freq);
-            let t_el = (self.el
-                + rng.range(-self.wander, self.wander)
-                + self.pull * (self.head_el + curl - self.el))
-                .clamp(-0.85, 1.25);
-            let t_az = self.az
-                + rng.range(-self.wander, self.wander) * 0.7
-                + self.pull * turn(self.az, self.head_az)
-                + 0.6 * curl * self.curl;
-            let steps = segments(seg, 1.0);
-            for s in 1..=steps {
-                let f = s as f64 / steps as f64;
-                let az = self.az + turn(self.az, t_az) * f;
-                let el = self.el + (t_el - self.el) * f;
-                let p = sk.nodes[self.at].p;
-                let z = zof(sk, self.at);
-                let l = seg / steps as f64;
-                let q = (
-                    p.0 + math::cos(el) * math::cos(az) * l,
-                    (p.1 - math::sin(el) * l).min(FLOOR),
-                );
-                self.at = add(sk, q, z + math::cos(el) * math::sin(az) * l, self.at, lang);
-            }
-            self.az = t_az;
-            self.el = t_el;
-            self.run += seg;
-            left -= seg;
-        }
-    }
-}
-
-/// Deadwood on the trunk: a short, broken spur of jin carrying `amount`,
-/// coming out from behind the trunk.
-pub fn jin_limb(sk: &mut Skeleton, rng: &mut Rng, limb: Limb, len: f64, amount: f64) {
-    dead_kinked(
-        sk,
-        rng,
-        &limb,
-        len.max(16.0) * 1.15,
-        amount.clamp(60.0, 160.0),
-        &[0.6, 0.4],
-        false,
-        BEHIND,
-    );
-}
-
-/// A whole dead limb, the way jin looks on an old maple: an era in a
-/// dropped language, stout, coming out from behind the trunk and reaching
-/// up and out in weathered kinks to a broken tip, with a snapped-off fork.
-pub fn dead_limb(sk: &mut Skeleton, rng: &mut Rng, limb: Limb, len: f64, amount: f64) {
-    dead_kinked(
-        sk,
-        rng,
-        &limb,
-        len.max(28.0),
-        amount.clamp(320.0, 900.0),
-        &[0.42, 0.33, 0.25],
-        true,
-        BEHIND,
-    );
 }
 
 /// How far behind the trunk dead wood starts, so it never meets the bark
 /// in an abrupt joint.
 const BEHIND: f64 = 16.0;
 
-/// Dead wood in straight runs (`parts` of `len`) with sharp kinks, trending
-/// upward, starting `behind` the trunk at `limb`'s node; tapers slowly
-/// so it stays stout until it breaks off.
-fn dead_kinked(
-    sk: &mut Skeleton,
-    rng: &mut Rng,
-    limb: &Limb,
-    len: f64,
-    amount: f64,
-    parts: &[f64],
-    fork: bool,
-    behind: f64,
-) {
+/// Deadwood on the trunk: a short, broken spur of jin carrying `amount`,
+/// coming out from behind the trunk in two straight runs with a sharp kink,
+/// trending upward; tapers slowly so it stays stout until it breaks off.
+pub fn jin_limb(sk: &mut Skeleton, rng: &mut Rng, limb: Limb, len: f64, amount: f64) {
+    let len = len.max(16.0) * 1.15;
+    let amount = amount.clamp(60.0, 160.0);
     let lang = Some(JIN.to_string());
     let mut theta = math::atan2(-math::sin(limb.el), math::cos(limb.el) * math::cos(limb.az));
     let side = if math::cos(theta) >= 0.0 { 1.0 } else { -1.0 };
     let start = sk.nodes[limb.at].p;
-    let back = zof(sk, limb.at) - behind;
+    let back = zof(sk, limb.at) - BEHIND;
     // Out of sight first: from the trunk's heart straight back.
     let mut ids = limb_to(
         sk,
@@ -311,9 +192,8 @@ fn dead_kinked(
         &lang,
     );
     let mut at = *ids.last().unwrap_or(&limb.at);
-    let mut fork_at = None;
     let mut turn_sign = rng.sign();
-    for (k, part) in parts.iter().enumerate() {
+    for (k, part) in [0.6, 0.4].iter().enumerate() {
         if k > 0 {
             theta += turn_sign * rng.range(0.3, 0.55) - 0.16 * side;
             turn_sign = -turn_sign;
@@ -337,21 +217,9 @@ fn dead_kinked(
             &lang,
         );
         at = *run.last().unwrap_or(&at);
-        if k == 0 {
-            fork_at = Some(at);
-        }
         ids.extend(run);
     }
     taper(sk, &ids, amount, 1.1);
-    // A fork that broke off: a short spike rising from the first kink.
-    if fork && let Some(at) = fork_at {
-        let up = theta - side * 0.9;
-        let p = sk.nodes[at].p;
-        let l = len * 0.24;
-        let to = (p.0 + math::cos(up) * l, p.1 + math::sin(up) * l);
-        let spike = limb_to(sk, at, to, zof(sk, at), 0.0, 0.3, 1.0, 0.0, &lang);
-        taper(sk, &spike, amount * 0.12, 1.5);
-    }
 }
 
 /// Spreads `amount` along `ids` so their girth tapers toward the last node;

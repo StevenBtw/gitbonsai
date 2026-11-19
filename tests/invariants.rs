@@ -188,8 +188,12 @@ fn leaves_fall_over_the_year_before_the_rest() {
     let last = fixtures::by_name("dormant")
         .unwrap()
         .snapshot
-        .last_active()
-        .unwrap();
+        .days
+        .iter()
+        .rev()
+        .find(|d| d.total > 0)
+        .unwrap()
+        .date;
     let after: Vec<(gitbonsai::date::Date, usize, bool)> = frames
         .iter()
         .filter(|(d, _)| *d > last)
@@ -661,7 +665,7 @@ fn the_configured_wind_is_respected() {
     let mut config = config(Style::Fukinagashi);
     config.tree.wind = Some(Wind::Left);
     let bonsai = Bonsai::grow(&snapshot, &config, None);
-    assert!(bonsai.leader.x_at(150.0) < -20.0);
+    assert!(bonsai.leader.tilt < -0.5 && bonsai.leader.sweep < 0.0);
 }
 
 /// Truncating with `--as-of` gives the tree collection would have given then.
@@ -1469,7 +1473,7 @@ fn a_left_tree_mirrors_the_right() {
         let base = Bonsai::grow(&snapshot, &config(style), None);
         let on = |side: f64| {
             let mut b = base.clone();
-            b.leader = Leader::new(style, b.account_id, None, side);
+            b.leader = Leader::new(style, None, side);
             b.skeleton = gitbonsai::growth::grow(
                 &b.timeline,
                 b.account_id,

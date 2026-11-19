@@ -38,17 +38,6 @@ pub struct Month {
     pub langs: BTreeMap<String, f64>,
 }
 
-impl Month {
-    /// The month's busiest language.
-    pub fn top(&self) -> Lang {
-        self.langs
-            .iter()
-            .filter(|(_, v)| **v > 0.0)
-            .max_by(|a, b| a.1.total_cmp(b.1).then(b.0.cmp(a.0)))
-            .map(|(l, _)| l.clone())
-    }
-}
-
 /// One calendar year of activity.
 #[derive(Debug, Default, Clone)]
 pub struct Year {

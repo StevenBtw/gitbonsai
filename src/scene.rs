@@ -409,10 +409,38 @@ pub fn in_wood(chains: &[Chain], ci: usize, e: V3, r: f64) -> bool {
 /// with no leaves in reach, it tapers to a twig in the open. A twig that ran
 /// through the leaves and out the far side is cut back to them. Returns
 /// whether any wood changed.
-fn lead_on(scene: &mut Scene) -> bool {
-    // The tip a leader tapers to, and how far it reaches for leaves.
-    const TIP: f64 = 0.7;
+/// Where a leader from `s`, running along `t`, reaches into the leaves: the
+/// point half way into a pad's leaves, above its bottom, of the pad that is
+/// near and lies along the wood's own line. Preferring the line makes two
+/// pads about as near rarely trade places from one month to the next; a
+/// leader ends inside one pad, so it can't share between them.
+fn leader_aim(s: V3, t: V3, pads: &[(V3, f64, f64)]) -> Option<V3> {
+    // How far it reaches for leaves, and how many units nearer a pad counts
+    // for lying straight ahead.
     const REACH: f64 = 40.0;
+    const AHEAD: f64 = 10.0;
+    let gap =
+        |a: V3| (math::sq(a[0] - s[0]) + math::sq(a[1] - s[1]) + math::sq(a[2] - s[2])).sqrt();
+    pads.iter()
+        .map(|(c, rx, ry)| {
+            let (mut u, mut w) = ((s[0] - c[0]) / rx, ((s[1] - c[1]) / ry).max(0.25));
+            let l = (u * u + w * w).sqrt();
+            if l > 0.5 {
+                (u, w) = (u * 0.5 / l, w * 0.5 / l);
+            }
+            let a = [c[0] + u * rx, c[1] + w * ry, c[2]];
+            let d = gap(a);
+            let along = v_dot(v_norm([a[0] - s[0], a[1] - s[1], 0.0]), t);
+            (a, d, d - AHEAD * along)
+        })
+        .filter(|(_, d, _)| *d <= REACH)
+        .min_by(|a, b| a.2.total_cmp(&b.2))
+        .map(|(a, ..)| a)
+}
+
+fn lead_on(scene: &mut Scene) -> bool {
+    // The tip a leader tapers to.
+    const TIP: f64 = 0.7;
     // How far back from its end wood is judged: further down it may taper as
     // it grew.
     const BACK: f64 = 30.0;
@@ -465,26 +493,9 @@ fn lead_on(scene: &mut Scene) -> bool {
         let slope = 0.8 * LEAD_SLOPE;
         let gap =
             |a: V3| (math::sq(a[0] - s[0]) + math::sq(a[1] - s[1]) + math::sq(a[2] - s[2])).sqrt();
-        // The nearest point half way into a pad's leaves, above its bottom.
-        let aim = pads
-            .iter()
-            .map(|(c, rx, ry)| {
-                let (mut u, mut w) = ((s[0] - c[0]) / rx, ((s[1] - c[1]) / ry).max(0.25));
-                let l = (u * u + w * w).sqrt();
-                if l > 0.5 {
-                    (u, w) = (u * 0.5 / l, w * 0.5 / l);
-                }
-                [c[0] + u * rx, c[1] + w * ry, c[2]]
-            })
-            .min_by(|a, b| gap(*a).total_cmp(&gap(*b)))
-            .filter(|a| gap(*a) <= REACH);
-        let (to, len) = aim.map_or_else(
-            || {
-                let len = (r - TIP) / slope;
-                (v_add(s, v_scale(t, len)), len)
-            },
-            |a| (a, gap(a).max(1e-9)),
-        );
+        // Near leaves it bends into them; else it tapers on along its line.
+        let to = leader_aim(s, t, pads).unwrap_or_else(|| v_add(s, v_scale(t, (r - TIP) / slope)));
+        let len = gap(to).max(1e-9);
         // A curve that leaves along the wood's own line.
         let ctrl = v_add(s, v_scale(t, 0.4 * len));
         let steps = ((len / 2.5).ceil() as usize).clamp(2, 24);
@@ -710,4 +721,26 @@ fn cloud_leaves(b: &Bonsai, scene: &mut Scene) {
         }
     }
     scene.tufts = tufts;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Two pads about as near: the leader takes the one along its line, and
+    /// a small move of the wood keeps it there.
+    #[test]
+    fn a_leader_keeps_to_the_leaves_along_its_line() {
+        let pads = [
+            ([-20.0, 100.0, 0.0], 12.0, 8.0),
+            ([20.0, 100.0, 0.0], 12.0, 8.0),
+        ];
+        let up_right = v_norm([1.0, -1.0, 0.0]);
+        for x in [-2.0, -0.2, 0.0, 0.2, 2.0] {
+            let aim = leader_aim([x, 110.0, 0.0], up_right, &pads).unwrap();
+            assert!(aim[0] > 0.0, "at {x}: {aim:?}");
+        }
+        // Out of reach, it doesn't aim.
+        assert!(leader_aim([0.0, 200.0, 0.0], up_right, &pads).is_none());
+    }
 }

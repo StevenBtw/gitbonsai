@@ -4,7 +4,7 @@
 //! Everything is a pure function of a seed and a coordinate, built on the
 //! crate's stable SipHash, so it is identical on every platform.
 
-use crate::rng::{Rng, siphash13};
+use crate::rng::siphash13;
 
 /// A value in `[0, 1)` for the integer `i` under `seed`.
 pub fn hash01(seed: u64, i: i64) -> f64 {
@@ -39,11 +39,6 @@ pub fn fbm(seed: u64, x: f64) -> f64 {
         frequency *= 2.0;
     }
     sum / 1.875
-}
-
-/// A rough normal deviate (sum of three uniforms), mean 0, deviation about 0.6.
-pub fn gauss(rng: &mut Rng) -> f64 {
-    (rng.unit() + rng.unit() + rng.unit() - 1.5) * 1.15
 }
 
 #[cfg(test)]
