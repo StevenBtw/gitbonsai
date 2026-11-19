@@ -141,7 +141,14 @@ fn growth_is_continuous_month_to_month() {
             // growth's own drift. The crown sits above the trunk top, so it
             // swings up to twice as far as its apex.
             let rise = gitbonsai::style::SOIL_Y - b.skeleton.apex.1;
-            let lean = (b.leader.tilt - a.leader.tilt).abs() * rise;
+            // A sprout still picking its side may swap it (a seedling's
+            // small shift, `the_side_never_flips` after): the lean's size
+            // still bends in slowly.
+            let lean = if a.leader.side == b.leader.side {
+                (b.leader.tilt - a.leader.tilt).abs()
+            } else {
+                (b.leader.tilt.abs() - a.leader.tilt.abs()).abs()
+            } * rise;
             if lean > 6.0 {
                 jumps.push(format!("{name} {day}: style leaned {lean:.1}"));
             }
@@ -1383,4 +1390,125 @@ fn a_legacy_trunk_dies_slowly() {
         (0.4..0.8).contains(&last),
         "the legacy trunk is dying: {last:.2}"
     );
+}
+
+/// The side a tree streams to is its sprout's: once it has 60
+/// contributions, no month moves it to the other side.
+#[test]
+fn the_side_never_flips() {
+    let path = format!(
+        "{}/site/snapshots/jacobwilliams.snapshot.json",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    let mut snapshots: Vec<(String, gitbonsai::Snapshot)> = fixtures::all()
+        .into_iter()
+        .map(|f| (f.name.to_string(), f.snapshot))
+        .collect();
+    snapshots.push((
+        "jacobwilliams".into(),
+        gitbonsai::Snapshot::load(std::path::Path::new(&path)).unwrap(),
+    ));
+    for (name, snapshot) in snapshots {
+        let mut seen = 0;
+        let Some(sixtieth) = snapshot.days.iter().find_map(|d| {
+            seen += d.total;
+            (seen >= 60).then_some(d.date)
+        }) else {
+            continue;
+        };
+        let (y, m, _) = sixtieth.ymd();
+        let mut sides = (0..1200)
+            .map(|k| {
+                let i = y * 12 + m.cast_signed() + k;
+                gitbonsai::date::Date::from_ymd(i / 12, (i % 12 + 1).cast_unsigned(), 1).unwrap()
+            })
+            .take_while(|d| *d <= snapshot.observed_on)
+            .map(|d| {
+                (
+                    d,
+                    Bonsai::grow(&snapshot, &Config::default(), Some(d))
+                        .leader
+                        .side,
+                )
+            });
+        let Some((_, first)) = sides.next() else {
+            continue;
+        };
+        for (d, side) in sides {
+            assert_eq!(side, first, "{name} {d}");
+        }
+    }
+}
+
+/// The same tree on the left is the right one's mirror image about the
+/// pot's center line: every piece of wood, every pad and every leaf.
+#[test]
+fn a_left_tree_mirrors_the_right() {
+    use gitbonsai::growth::dome::Reach;
+    use gitbonsai::scene::Scene;
+    use gitbonsai::style::Leader;
+    let path = format!(
+        "{}/site/snapshots/jacobwilliams.snapshot.json",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    let jacob = gitbonsai::Snapshot::load(std::path::Path::new(&path)).unwrap();
+    for (name, snapshot, style) in [
+        ("jacobwilliams", jacob.clone(), Style::Kengai),
+        (
+            "legacy",
+            fixtures::by_name("legacy").unwrap().snapshot,
+            Style::Kengai,
+        ),
+        ("jacobwilliams", jacob, Style::Fukinagashi),
+        (
+            "polyglot",
+            fixtures::by_name("polyglot").unwrap().snapshot,
+            Style::Shakan,
+        ),
+    ] {
+        let base = Bonsai::grow(&snapshot, &config(style), None);
+        let on = |side: f64| {
+            let mut b = base.clone();
+            b.leader = Leader::new(style, b.account_id, None, side);
+            b.skeleton = gitbonsai::growth::grow(
+                &b.timeline,
+                b.account_id,
+                &b.leader,
+                &[],
+                Reach::default(),
+                None,
+            );
+            Scene::build(&b)
+        };
+        let (right, left) = (on(1.0), on(-1.0));
+        let mirrors = |a: [f64; 3], b: [f64; 3], what: &str| {
+            assert!(
+                (a[0] + b[0]).abs() < 1e-6
+                    && (a[1] - b[1]).abs() < 1e-6
+                    && (a[2] - b[2]).abs() < 1e-6,
+                "{name} {style:?} {what}: {a:?} vs {b:?}"
+            );
+        };
+        assert_eq!(right.chains.len(), left.chains.len());
+        for (r, l) in right.chains.iter().zip(&left.chains) {
+            assert_eq!(r.0.len(), l.0.len());
+            for (p, q) in r.0.iter().zip(&l.0) {
+                mirrors(p.0, q.0, "wood");
+            }
+        }
+        // The cascade spills to its side, the foot stands off center on the other.
+        if style == Style::Kengai {
+            let (foot, tip) = (right.chains[0].0[0].0, right.chains[0].0.last().unwrap().0);
+            assert!(foot[0] < 0.0 && tip[0] > 0.0, "{name}: {foot:?} {tip:?}");
+        }
+        assert_eq!(right.pads.len(), left.pads.len());
+        for (r, l) in right.pads.iter().zip(&left.pads) {
+            mirrors(r.0, l.0, "pad");
+        }
+        assert_eq!(right.tufts.len(), left.tufts.len());
+        for (r, l) in right.tufts.iter().zip(&left.tufts) {
+            mirrors(r.p, l.p, "leaf");
+            mirrors(r.n, l.n, "leaf normal");
+        }
+    }
 }

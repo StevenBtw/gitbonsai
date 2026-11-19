@@ -547,6 +547,8 @@ const PI_HALF: f64 = math::TAU / 4.0;
 fn cloud_leaves(b: &Bonsai, scene: &mut Scene) {
     let sk = &b.skeleton;
     let seed = b.account_id;
+    // A left tree's leaves lie as the right one's mirror image.
+    let side = b.leader.side;
     let seeds = samara_share(b.extras.level);
     let fresh_share = (b.last_week_total / (b.window.total.max(1.0) * 6.0)).min(0.15);
     let (s, c) = (math::sin(TILT), math::cos(TILT));
@@ -563,7 +565,7 @@ fn cloud_leaves(b: &Bonsai, scene: &mut Scene) {
             let f = j as f64 / (count - 1) as f64 * 2.0 - 1.0;
             let hj = hash01(seed ^ 0x10b, (ci * 10 + j) as i64);
             let mut l = cl.clone();
-            l.c.0 += f * (cl.rx - lrx);
+            l.c.0 += side * f * (cl.rx - lrx);
             l.c.1 += hash01(seed ^ 0x10c, (ci * 10 + j) as i64) * 4.0 - 2.0;
             l.z += (hj - 0.5) * cl.rz * 0.5;
             l.rx = lrx;
@@ -653,7 +655,7 @@ fn cloud_leaves(b: &Bonsai, scene: &mut Scene) {
             }
             let r = (1.0 - y * y).sqrt();
             let th = math::rad(i as f64 * GOLDEN) + phase;
-            let u = [math::cos(th) * r, y.max(0.0), math::sin(th) * r];
+            let u = [side * math::cos(th) * r, y.max(0.0), math::sin(th) * r];
             if u[2] < -0.3 {
                 continue;
             }

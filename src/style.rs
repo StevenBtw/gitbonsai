@@ -17,7 +17,7 @@ use crate::config::{Style, Wind};
 use crate::math;
 use crate::noise::fbm;
 use crate::rng::Rng;
-use crate::snapshot::Snapshot;
+use crate::snapshot::{Day, Snapshot};
 
 /// The months a new account takes to grow into its style.
 const WINDOW_MONTHS: i32 = 36;
@@ -66,6 +66,34 @@ pub const SOIL_Y: f64 = 404.0;
 /// The canvas center.
 pub const CENTER_X: f64 = 256.0;
 
+/// The contributions that make the sprout: their rhythm picks the side.
+pub const SPROUT: u32 = 60;
+
+/// The side a tree leans and streams to, `+1` right or `-1` left, from its
+/// sprout's rhythm: the first [`SPROUT`] contributions of `days` (in date
+/// order). More than 2/7 of them on a Saturday or Sunday (UTC) is
+/// weekend-heavy and keeps the right; otherwise it is the left. Settled at
+/// the 60th contribution, so it never changes after; nothing yet is the
+/// right.
+pub fn side(days: &[Day]) -> f64 {
+    let (mut seen, mut weekend) = (0, 0);
+    for d in days {
+        let n = d.total.min(SPROUT - seen);
+        seen += n;
+        if d.date.weekday() >= 5 {
+            weekend += n;
+        }
+        if seen == SPROUT {
+            break;
+        }
+    }
+    if seen == 0 || 7 * weekend > 2 * seen {
+        1.0
+    } else {
+        -1.0
+    }
+}
+
 /// A style made concrete for one account: its seeded lean and wind.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Leader {
@@ -94,23 +122,28 @@ pub struct Leader {
     /// whole chokkan, 0 for none.
     pub tier: f64,
     /// The side the tree leans to when it leans, `+1` right or `-1` left:
-    /// fixed for the account, so nothing changes side as its style does.
+    /// the account's [`side`] unless a wind is configured, so nothing
+    /// changes side as its style does.
     pub downwind: f64,
+    /// The account's [`side`]: a left tree is the right one's mirror image.
+    pub side: f64,
     /// Where the last three years put the tree between the styles; `None`
     /// when the style is configured.
     pub mix: Option<Mix>,
 }
 
 impl Leader {
-    /// The leader of `style` for the account `seed`.
-    pub fn new(style: Style, seed: u64, wind: Option<Wind>) -> Self {
+    /// The leader of `style` for the account `seed` on `side` ([`side`]).
+    pub fn new(style: Style, seed: u64, wind: Option<Wind>, side: f64) -> Self {
         let mut rng = Rng::keyed(seed, "lean");
-        let sign = rng.sign();
+        // The side was once this coin: still drawn, so the amount stays.
+        let _ = rng.sign();
+        let sign = side;
         let amount = rng.range(0.0, 1.0);
         let downwind = match wind {
             Some(Wind::Left) => -1.0,
             Some(Wind::Right) => 1.0,
-            None => Rng::keyed(seed, "wind").sign(),
+            None => side,
         };
         let (lean, meander, favor, pull, bend, tilt) = match style {
             Style::Chokkan => (0.0, 0.02, 0.0, 0.0, 0.4, 0.0),
@@ -145,19 +178,38 @@ impl Leader {
             } else {
                 0.0
             },
-            // A cascade always spills to the right.
-            cascade: if style == Style::Kengai { 1.0 } else { 0.0 },
+            // A cascade spills to the tree's side.
+            cascade: if style == Style::Kengai { side } else { 0.0 },
             tier: if style == Style::Chokkan { 1.0 } else { 0.0 },
             downwind,
+            side,
             mix: None,
+        }
+    }
+
+    /// This leader as grown: on the right. A left tree grows as the right
+    /// one and is mirrored after ([`crate::growth::grow`]), so the left is a
+    /// true mirror image of the right.
+    #[must_use]
+    pub fn canonical(&self) -> Self {
+        let s = self.side;
+        Self {
+            lean: s * self.lean,
+            favor: s * self.favor,
+            tilt: s * self.tilt,
+            sweep: s * self.sweep,
+            cascade: s * self.cascade,
+            downwind: s * self.downwind,
+            side: 1.0,
+            ..*self
         }
     }
 
     /// The leader `mix` blends from the four styles. Shakan leans the way
     /// the wind blows, so it and fukinagashi blend into one lean.
-    pub fn mixed(mix: Mix, seed: u64, wind: Option<Wind>) -> Self {
-        let fu = Self::new(Style::Fukinagashi, seed, wind);
-        let mut sh = Self::new(Style::Shakan, seed, wind);
+    pub fn mixed(mix: Mix, seed: u64, wind: Option<Wind>, side: f64) -> Self {
+        let fu = Self::new(Style::Fukinagashi, seed, wind, side);
+        let mut sh = Self::new(Style::Shakan, seed, wind, side);
         if sh.lean.signum() != fu.lean.signum() {
             sh.lean = -sh.lean;
             sh.favor = -sh.favor;
@@ -165,17 +217,17 @@ impl Leader {
         }
         let corners = [
             (
-                Self::new(Style::Chokkan, seed, wind),
+                Self::new(Style::Chokkan, seed, wind, side),
                 mix.weight(Style::Chokkan),
             ),
             (
-                Self::new(Style::Moyogi, seed, wind),
+                Self::new(Style::Moyogi, seed, wind, side),
                 mix.weight(Style::Moyogi),
             ),
             (sh, mix.weight(Style::Shakan)),
             (fu, mix.weight(Style::Fukinagashi)),
             (
-                Self::new(Style::Kengai, seed, wind),
+                Self::new(Style::Kengai, seed, wind, side),
                 mix.weight(Style::Kengai),
             ),
         ];
@@ -198,13 +250,14 @@ impl Leader {
             cascade: sum(|l| l.cascade),
             tier: sum(|l| l.tier),
             downwind: fu.downwind,
+            side,
             mix: Some(mix),
         }
     }
 
     /// The leader's horizontal offset from the trunk base at height `h`.
     pub fn x_at(&self, h: f64) -> f64 {
-        self.lean * h + self.meander * h * fbm(self.seed, h / 80.0)
+        self.lean * h + self.side * self.meander * h * fbm(self.seed, h / 80.0)
     }
 
     /// The side a new pad goes to: its natural side, or flipped toward the
@@ -352,27 +405,95 @@ impl Mix {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::date::Date;
 
     #[test]
     fn chokkan_is_nearly_straight_and_shakan_leans() {
-        let straight = Leader::new(Style::Chokkan, 5, None);
+        let straight = Leader::new(Style::Chokkan, 5, None, 1.0);
         assert!(straight.x_at(250.0).abs() < 10.0);
-        let slant = Leader::new(Style::Shakan, 5, None);
+        let slant = Leader::new(Style::Shakan, 5, None, 1.0);
         assert!(slant.x_at(250.0).abs() > 40.0);
     }
 
     #[test]
     fn fukinagashi_follows_the_configured_wind() {
         for (wind, sign) in [(Wind::Left, -1.0), (Wind::Right, 1.0)] {
-            let leader = Leader::new(Style::Fukinagashi, 9, Some(wind));
+            let leader = Leader::new(Style::Fukinagashi, 9, Some(wind), 1.0);
             assert!(leader.x_at(200.0) * sign > 40.0);
             assert_eq!(leader.pad_side(-sign, 0.1), sign);
         }
     }
 
+    /// `n` days of `per_day` contributions each, from `from` on.
+    fn days(from: (i32, u32, u32), n: i32, per_day: u32) -> Vec<Day> {
+        let start = Date::from_ymd(from.0, from.1, from.2).unwrap();
+        (0..n)
+            .map(|i| Day {
+                date: start.add_days(i),
+                total: per_day,
+                by_language: BTreeMap::new(),
+                private: 0,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn the_sprouts_rhythm_picks_the_side() {
+        // 2026-11-16 is a Monday: a week of one a day is 2/7 on the weekend,
+        // which is not more than 2/7, so it leans left.
+        let week = days((2026, 11, 16), 7, 1);
+        assert_eq!(side(&week), -1.0);
+        // One more Saturday tips it right.
+        let mut more = week.clone();
+        more.extend(days((2026, 11, 28), 1, 1));
+        assert_eq!(side(&more), 1.0);
+        // Weekdays only, and weekends only.
+        assert_eq!(side(&days((2026, 11, 16), 5, 12)), -1.0);
+        assert_eq!(side(&days((2026, 11, 21), 2, 30)), 1.0);
+        // Nothing yet keeps the right.
+        assert_eq!(side(&[]), 1.0);
+    }
+
+    #[test]
+    fn the_side_is_settled_by_the_sixtieth_contribution() {
+        // 60 on weekdays, then a flood of weekend work: still left.
+        let mut d = days((2026, 1, 5), 5, 12);
+        for w in 0..40 {
+            let (y, m, dd) = Date::from_ymd(2026, 1, 10).unwrap().add_days(7 * w).ymd();
+            d.extend(days((y, m, dd), 2, 50));
+        }
+        assert_eq!(side(&d), -1.0);
+        // A day that crosses the 60th counts only up to it: 58 on Saturday,
+        // then 100 on Monday, of which 2 count.
+        let mut d = days((2026, 1, 10), 1, 58);
+        d.extend(days((2026, 1, 12), 1, 100));
+        assert_eq!(side(&d), 1.0);
+        let mut d = days((2026, 1, 10), 1, 10);
+        d.extend(days((2026, 1, 12), 1, 100));
+        assert_eq!(side(&d), -1.0);
+    }
+
+    #[test]
+    fn a_left_leader_mirrors_the_right() {
+        for style in Style::ALL {
+            let right = Leader::new(style, 5, None, 1.0);
+            let left = Leader::new(style, 5, None, -1.0);
+            for h in [40.0, 120.0, 250.0] {
+                assert_eq!(left.x_at(h), -right.x_at(h), "{style:?}");
+            }
+            assert_eq!(left.downwind, -right.downwind);
+            assert_eq!(left.cascade, -right.cascade);
+            assert_eq!(left.tilt, -right.tilt);
+            assert_eq!(left.canonical(), right);
+        }
+        // The configured wind still wins.
+        let left = Leader::new(Style::Fukinagashi, 5, Some(Wind::Right), -1.0);
+        assert_eq!(left.downwind, 1.0);
+    }
+
     #[test]
     fn the_leader_depends_on_height_only() {
-        let leader = Leader::new(Style::Moyogi, 42, None);
+        let leader = Leader::new(Style::Moyogi, 42, None, 1.0);
         assert_eq!(leader.x_at(120.0), leader.x_at(120.0));
     }
 
@@ -432,9 +553,12 @@ mod tests {
                 spread,
                 legacy,
             };
-            let corner = Leader::mixed(mix, 3, None);
+            let corner = Leader::mixed(mix, 3, None, 1.0);
             assert_eq!(mix.style(), style);
-            assert_eq!(corner.x_at(200.0), Leader::new(style, 3, None).x_at(200.0));
+            assert_eq!(
+                corner.x_at(200.0),
+                Leader::new(style, 3, None, 1.0).x_at(200.0)
+            );
         }
         // Halfway into pauses, a one-language tree leans about half as far
         // as a whole shakan.
@@ -447,6 +571,7 @@ mod tests {
                 },
                 3,
                 None,
+                1.0,
             )
             .x_at(200.0)
         };

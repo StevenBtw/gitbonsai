@@ -849,7 +849,9 @@ impl<'a> Ctx<'a> {
             seed,
             age: life.age(),
             y_first: life.years[0].y,
-            s_a: Rng::keyed(seed, "bdome/side").sign(),
+            // The main trunk's side: the right, as every tree grows there
+            // ([`grow`] mirrors a left one).
+            s_a: 1.0,
             dormant: life.dormant(),
             y_b: SOIL_Y - frame.h_vis,
             plan,
@@ -1524,6 +1526,11 @@ fn trim_to_cone(sk: &mut Skeleton, wood: &Wood, dome: &Dome) {
 /// into the wood they grew from, tips first: nothing dangles below or past
 /// the foliage. Wood in `keep` and strands stay.
 fn fold_bare(sk: &mut Skeleton, keep: &std::collections::BTreeSet<usize>, fold: f64) {
+    // A bare tree has no foliage to fold into: its winter twigs stay, or
+    // they would fold flat and point straight back.
+    if sk.clouds.is_empty() {
+        return;
+    }
     let on_main = keep;
     // Bare twigs that end outside every pad fold back into the wood they
     // grew from, tips first: nothing dangles below or past the foliage.
@@ -3399,10 +3406,15 @@ pub fn grow(
         return sk;
     };
     if life.is_seedling() {
-        crate::growth::seedling::seedling(&mut sk, &life, seed);
+        crate::growth::seedling::seedling(&mut sk, &life, seed, leader.side);
         sk.dormant = life.dormant();
     } else {
-        tree(&mut sk, &life, seed, leader, past, recent);
+        // Every tree grows on the right; one on the left
+        // ([`Leader::side`]) is its mirror image.
+        tree(&mut sk, &life, seed, &leader.canonical(), past, recent);
+        if leader.side < 0.0 {
+            sk.mirror();
+        }
     }
     sk
 }
@@ -3427,7 +3439,7 @@ mod tests {
     /// trunk; dead wood when that language was dropped.
     #[test]
     fn trunk_stage_makes_the_main_trunk_and_the_first_claimed_strand() {
-        let leader = Leader::new(crate::config::Style::Moyogi, 1, None);
+        let leader = Leader::new(crate::config::Style::Moyogi, 1, None, 1.0);
         let mut seen = std::collections::BTreeSet::new();
         for (name, life, seed) in dome_lives() {
             let c = Ctx::new(&life, seed, 0.0);
@@ -3499,7 +3511,7 @@ mod tests {
         let timeline = Timeline::new(&snapshot);
         let life = Life::of(&timeline, &[]).unwrap();
         let mut sk = root_only();
-        let leader = Leader::new(crate::config::Style::Moyogi, 1, None);
+        let leader = Leader::new(crate::config::Style::Moyogi, 1, None, 1.0);
         tree(&mut sk, &life, 1, &leader, Reach::default(), None);
         let flow = sk.flows();
         let dead = (0..sk.nodes.len())
@@ -3515,7 +3527,7 @@ mod tests {
     fn no_limb_outgrows_the_trunk_it_leaves() {
         for (name, life, seed) in dome_lives() {
             let mut sk = root_only();
-            let leader = Leader::new(crate::config::Style::Moyogi, 1, None);
+            let leader = Leader::new(crate::config::Style::Moyogi, 1, None, 1.0);
             let chains = tree(&mut sk, &life, seed, &leader, Reach::default(), None);
             let flow = sk.flows();
             let on: std::collections::BTreeSet<usize> = chains.iter().flatten().copied().collect();
@@ -3553,7 +3565,7 @@ mod tests {
         let snapshot = crate::growth::testkit::snap(&days, d("2026-11-17"));
         let life = Life::of(&Timeline::new(&snapshot), &[]).unwrap();
         let mut sk = root_only();
-        let leader = Leader::new(crate::config::Style::Moyogi, 1, None);
+        let leader = Leader::new(crate::config::Style::Moyogi, 1, None, 1.0);
         let chains = tree(&mut sk, &life, 1, &leader, Reach::default(), None);
         let on: std::collections::BTreeSet<usize> = chains.iter().flatten().copied().collect();
         let jin = |i: usize| sk.nodes[i].language.as_deref() == Some(crate::growth::JIN);
@@ -3594,7 +3606,7 @@ mod tests {
         let timeline = Timeline::new(&snapshot);
         let life = Life::of(&timeline, &[]).unwrap();
         let mut sk = root_only();
-        let leader = Leader::new(crate::config::Style::Moyogi, 1, None);
+        let leader = Leader::new(crate::config::Style::Moyogi, 1, None, 1.0);
         let chains = tree(
             &mut sk,
             &life,
@@ -3646,7 +3658,7 @@ mod tests {
         let timeline = Timeline::new(&snap(&days, start.add_days(900)));
         let life = Life::of(&timeline, &[]).unwrap();
         let mut sk = root_only();
-        let leader = Leader::new(crate::config::Style::Moyogi, 1, None);
+        let leader = Leader::new(crate::config::Style::Moyogi, 1, None, 1.0);
         let chains = tree(&mut sk, &life, 1, &leader, Reach::default(), None);
         assert_eq!(chains.len(), 2, "a third trunk language shares a trunk");
         let top = |c: &Vec<usize>| sk.nodes[*c.last().unwrap()].p.0;

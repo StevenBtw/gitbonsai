@@ -97,6 +97,21 @@ pub struct Cloud {
 }
 
 impl Skeleton {
+    /// The skeleton's mirror image about the pot's center line.
+    pub fn mirror(&mut self) {
+        let m = |x: &mut f64| *x = crate::style::CENTER_X - (*x - crate::style::CENTER_X);
+        for n in &mut self.nodes {
+            m(&mut n.p.0);
+        }
+        m(&mut self.apex.0);
+        for c in &mut self.clouds {
+            m(&mut c.c.0);
+            for p in &mut c.patches {
+                m(&mut p.0.0);
+            }
+        }
+    }
+
     /// The total contributions carried by each node: its own plus everything
     /// above it (the pipe model's flow).
     pub fn flows(&self) -> Vec<f64> {

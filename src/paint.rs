@@ -940,7 +940,9 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
         let c = lighting(base);
         let h = hash01(seed, j as i64 + 7);
         let (sx, sy, _) = project(v_add(t.p, t.n));
-        let angle = math::deg(math::atan2(sy - y, sx - x)) + 90.0 + (h - 0.5) * 50.0;
+        // Turned the mirror way on a left tree.
+        let angle =
+            math::deg(math::atan2(sy - y, sx - x)) + 90.0 + b.leader.side * (h - 0.5) * 50.0;
         let symbol = if h < 0.5 { "t" } else { "u" };
         let scale = WORLD
             * t.size
@@ -1329,6 +1331,12 @@ fn root_reach(base_r: f64, nebari: f64, hw: f64, az: f64, u: f64, brace: f64, of
     reach.min(to_rim * (0.45 + 0.55 * c.abs()))
 }
 
+/// A root's azimuth `az` on a tree on `side`: a left tree's roots lie as the
+/// right one's mirror image.
+fn mirror_az(az: f64, side: f64) -> f64 {
+    if side < 0.0 { math::TAU / 2.0 - az } else { az }
+}
+
 /// Convex hull of points, counter-clockwise (monotone chain).
 fn hull(mut p: Vec<(f64, f64)>) -> Vec<(f64, f64)> {
     p.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.total_cmp(&b.1)));
@@ -1379,7 +1387,10 @@ fn nebari(
     let mut roots: Vec<(f64, String)> = Vec::new();
     for i in 0..n {
         let mut r = Rng::keyed(b.account_id, &format!("root/{i}"));
-        let az = 0.9 + f64::from(i) * 2.399_963 + r.range(-0.2, 0.2);
+        let az = mirror_az(
+            0.9 + f64::from(i) * 2.399_963 + r.range(-0.2, 0.2),
+            b.leader.side,
+        );
         // Roots facing into the wind brace the tree: longer and thicker.
         // And those on the uphill side of a leaning trunk.
         let uphill = -b.leader.tilt.signum() * (b.leader.tilt.abs() / 0.55).min(1.0);
@@ -1812,12 +1823,23 @@ mod tests {
                         let az = f64::from(i) / 16.0 * math::TAU;
                         for (u, brace) in [(0.0, 0.0), (0.5, 0.5), (0.999, 1.0)] {
                             // A trunk off center, as a cascade's is, too.
-                            for off in [0.0, -0.3 * hw, 0.2 * hw] {
+                            // On either side: a left cascade's foot is the mirror image.
+                            for off in [0.0, -0.3 * hw, 0.2 * hw, 0.3 * hw, -0.2 * hw] {
                                 let reach = root_reach(base_r, nebari, hw, az, u, brace, off);
                                 assert!(
                                     (off + reach * math::cos(az)).abs() <= hw * 0.78 + 1e-9,
                                     "{base_r} {nebari} {hw} {az} {off}: {reach}"
                                 );
+                                let mirrored = root_reach(
+                                    base_r,
+                                    nebari,
+                                    hw,
+                                    mirror_az(az, -1.0),
+                                    u,
+                                    brace,
+                                    -off,
+                                );
+                                assert!((mirrored - reach).abs() < 1e-9, "{az} {off}");
                             }
                         }
                     }

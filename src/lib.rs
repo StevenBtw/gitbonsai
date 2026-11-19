@@ -128,9 +128,10 @@ impl Bonsai {
             None => snapshot.clone(),
         };
         let (id, wind) = (snapshot.account_id, config.tree.wind);
+        let side = crate::style::side(&snapshot.days);
         let leader = match config.tree.style {
-            Some(style) => Leader::new(style, id, wind),
-            None => Leader::mixed(crate::style::Mix::of(&snapshot), id, wind),
+            Some(style) => Leader::new(style, id, wind, side),
+            None => Leader::mixed(crate::style::Mix::of(&snapshot), id, wind, side),
         };
         let timeline = Timeline::new(&snapshot);
         let periods = config.private_periods();
