@@ -1717,6 +1717,11 @@ fn no_lone_tuft(sk: &mut Skeleton, wood: &Wood) {
             }
         }
         let h = hangs[ci];
+        // A cloud with no wood of its own in it (a dropped language's, its
+        // twigs gone) is no tuft: it bends nobody's arm.
+        if dist(at[h], sk.clouds[ci].c) > sk.clouds[ci].rx {
+            continue;
+        }
         let mut arm = h;
         while let Some(p) = sk.nodes[arm].parent {
             if carry[p] > carry[h] || trunk.contains(&p) {

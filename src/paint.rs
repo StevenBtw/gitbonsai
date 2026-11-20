@@ -594,14 +594,6 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                 p.2 = p.2.max((own * (1.0 + 0.7 * k * k)).min(0.9 * r));
             }
         }
-        for p in &fine {
-            extent = (
-                extent.0.min(p.0 - p.2),
-                extent.1.max(p.0 + p.2),
-                extent.2.min(p.1 - p.2),
-            );
-            low = low.max(p.1 + p.2);
-        }
         let strand = scene.strands.contains(&ci);
         // What grows from dead wood left out goes with it: no twig hangs in
         // the air. A chain always comes after the chain it grows from.
@@ -629,6 +621,15 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                 dropped[ci] = true;
                 continue;
             }
+        }
+        // Only wood that is drawn sets the frame.
+        for p in &fine {
+            extent = (
+                extent.0.min(p.0 - p.2),
+                extent.1.max(p.0 + p.2),
+                extent.2.min(p.1 - p.2),
+            );
+            low = low.max(p.1 + p.2);
         }
         // Thin twigs all share one path per color, drawn behind the leaves.
         if !thick && !strand {

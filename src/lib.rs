@@ -177,7 +177,7 @@ impl Bonsai {
     pub fn grow(snapshot: &Snapshot, config: &Config, as_of: Option<Date>) -> Self {
         let mut b = Self::grow_at(snapshot, config, as_of);
         let spring = last_spring(b.observed_on, b.hemisphere);
-        let then = (spring < b.observed_on && spring > snapshot.range.from)
+        let then = (spring < b.observed_on && spring >= snapshot.range.from)
             .then(|| Self::grow_at(snapshot, config, Some(spring)).pot_need());
         b.pot = pot_size(b.pot_need(), then);
         b
