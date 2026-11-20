@@ -69,6 +69,9 @@ const plateNo = (i: number): string => String(i + 1).padStart(2, "0");
 // never again once a visitor picks a plate.
 const growIn = !reduce && scrollY < 120;
 let touched = false;
+// While the grow-in runs, and the plate it comes to rest on (the Showcase).
+let growing = false;
+let homeAt = -1;
 if (growIn) heroCanvas.classList.add("waiting");
 
 // Every tree sits on one canvas at one scale, the pot where the SVG puts it, so a
@@ -120,17 +123,27 @@ for (const ev of ["pointerdown", "keydown"]) {
     heroCanvas.classList.remove("waiting");
   });
 }
-// The legend box counts as a choice too: it stops the grow-in and redraws the plate.
+// The legend box stops the grow-in too, but it is no choice of tree: mid grow-in
+// it lands on the Showcase with its legend; after, it redraws the plate shown.
 heroLegend.addEventListener("change", () => {
   touched = true;
   heroCanvas.classList.remove("waiting");
-  if (shown >= 0) showPlate(shown);
+  if (growing && homeAt >= 0) showPlate(homeAt);
+  else if (shown >= 0) showPlate(shown);
 });
 narrow.addEventListener("change", () => {
   if (heroLegend.checked && shown >= 0) showPlate(shown);
 });
 /** Shows the plates before `home` in turn, then `home`; stops as soon as a visitor picks one. */
 async function playGrowIn(home: number): Promise<void> {
+  growing = true;
+  try {
+    await runGrowIn(home);
+  } finally {
+    growing = false;
+  }
+}
+async function runGrowIn(home: number): Promise<void> {
   const seq = [...plates.keys()].slice(0, home + 1);
   const ready = seq.map((i) => {
     const img = new Image();
@@ -272,6 +285,7 @@ fetch("plates.json")
       heroCanvas.classList.add("scaled");
       $("yourno").textContent = plateNo(plates.length);
       const home = Math.max(0, plates.findIndex((p) => p.id === "showcase"));
+      homeAt = home;
       // A checked plate and one tab stop before the row is shown, also during the grow-in.
       check(home);
       gallery.hidden = false;
