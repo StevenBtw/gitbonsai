@@ -79,15 +79,16 @@ section { padding-block: 72px; border-bottom: 1px solid var(--border); }
 .thumb:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
 /* The Legend cell of the hero's label: a square tick, outlined in muted ink (3:1
    against the page, unlike the hairline) and filled with ink when on. Hidden at phone width, where the legend's text would be
-   too small to read; Style then takes the row's last two columns. */
+   too small to read: the label closes up to three columns, and at the narrowest
+   Style takes a row of its own. */
 .heroplate .legendcell label { display: block; cursor: pointer; }
 .tick { appearance: none; display: block; width: 16px; height: 16px; margin: 3px 0 2px; border: 1px solid var(--muted-foreground); border-radius: 3px; background: transparent; cursor: pointer; transition: background-color .12s, border-color .12s, box-shadow .12s; }
 .tick:hover:enabled { border-color: var(--foreground); }
 .tick:checked { border-color: var(--primary); background: var(--primary); box-shadow: inset 0 0 0 3px var(--background); }
 .tick:disabled { opacity: .4; cursor: default; }
 .tick:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
-@media (max-width: 600px) { .heroplate .legendcell { display: none; } }
-@media (max-width: 520px) { .heroplate .label div:nth-child(3) { grid-column: span 2; } }
+@media (max-width: 600px) { .heroplate .legendcell { display: none; } .heroplate .label { grid-template-columns: repeat(3, auto); } }
+@media (max-width: 520px) { .heroplate .label { grid-template-columns: repeat(2, minmax(0, 1fr)); } .heroplate .label div:nth-child(3) { grid-column: span 2; } }
 @media (prefers-reduced-motion: reduce) { .tick { transition: none; } }
 
 /* Examples + timelapse player */

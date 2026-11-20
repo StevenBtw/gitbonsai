@@ -143,7 +143,11 @@ async function playGrowIn(home: number): Promise<void> {
     new Promise<boolean>((r) => setTimeout(() => r(false), 2500)),
   ]);
   heroCanvas.classList.remove("waiting");
-  if (touched) return;
+  // Touched before any tree showed (the legend box, say): straight to the Showcase.
+  if (touched) {
+    if (shown < 0) showPlate(home);
+    return;
+  }
   if (!loaded) return showPlate(home);
   for (const i of seq) {
     if (touched) return;
