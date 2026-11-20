@@ -26,7 +26,7 @@ png = ["dep:resvg"]
 
 [dependencies]
 anyhow = "1.0.104"
-clap = { version = "4.6.8", features = ["derive"] }
+clap = { version = "4.6.9", features = ["derive"] }
 # Pure-Rust math, so coordinates round the same on every platform
 libm = "0.2.16"
 # No text, fonts or embedded images: the SVG has none
