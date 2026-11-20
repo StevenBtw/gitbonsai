@@ -13,7 +13,7 @@ Grow a Japanese maple bonsai from your GitHub activity: an animated SVG for your
 
 A newcomer is a thin sprout; years of work make it short, thick and wide, the way a prize bonsai is. Your first language is the trunk; another that reaches a tenth of your work claims a strand of it, and the languages of your recent years share the crown, each in its color. Nothing is erased: the tree changes a little each month, and its trunk only grows.
 
-Unless you set a style, your last three years pick the shape: steady work in one language grows a formal upright (chokkan), new languages an informal upright (moyogi), pauses a slanting tree (shakan), pauses with several languages a windswept one (fukinagashi), and steady work in a legacy language such as COBOL or Fortran a cascade (kengai).
+Unless you set a style, your last three years mostly pick the shape: steady work in one language grows a formal upright (chokkan), new languages an informal upright (moyogi), pauses a slanting tree (shakan), pauses with several languages a windswept one (fukinagashi), and steady work in a classic language such as COBOL or Fortran a semi-cascade (han-kengai) whose trunk turns white while it keeps growing.
 
 <p align="center">
   <picture>
@@ -30,7 +30,7 @@ From top left:
 
 - **Sprout** (simulated): three days and 12 contributions in, its seed leaves still open.
 - **Newcomer**: the same account a few months in, a thin seedling.
-- **[@jacobwilliams](https://github.com/jacobwilliams)**: 13 years, mostly Fortran; a cascade over the rim.
+- **[@jacobwilliams](https://github.com/jacobwilliams)**: 13 years, mostly Fortran; a semi-cascade over the rim, its Fortran trunk white and still growing.
 - **[@StevenBtw](https://github.com/StevenBtw)**: 9 years of Python and Rust; quiet summers swept it windswept.
 - **[@tj](https://github.com/tj)**: 19 years; long pauses slant it, and resting since 2021, bare for the winter.
 - **[@torvalds](https://github.com/torvalds)**: 16 years of C every week; a thick formal upright.
@@ -60,7 +60,8 @@ The five real trees are grown from their public GitHub activity with `gitbonsai 
 | Falling leaves | You crossed a level this week |
 | Moss | Your current weekly streak |
 | The pot | Your longest streak |
-| The shape | Your last three years: steady, new languages, pauses, or a legacy language |
+| The shape | Mostly your last three years: steady, new languages, pauses, or a classic language |
+| A white trunk | A classic language such as COBOL or Fortran, still growing |
 
 </details>
 
@@ -69,7 +70,7 @@ The five real trees are grown from their public GitHub activity with `gitbonsai 
 Add the action to a weekly workflow in your profile repository (`<you>/<you>`); [examples/profile-workflow.yml](examples/profile-workflow.yml) is a complete one to copy to `.github/workflows/bonsai.yml`:
 
 ```yaml
-- uses: StevenBtw/gitbonsai@v0.4.0
+- uses: StevenBtw/gitbonsai@v0.5.0
   with:
     output-dir: assets   # bonsai-light.svg and bonsai-dark.svg
     legend: left         # optional: off (default), left or right
@@ -90,7 +91,7 @@ On its own, `width="600"` suits a desktop column, and phones scale it down to fi
 
 The action keeps `bonsai.snapshot.json` beside the SVGs; the example workflow commits it, so each run fetches only the last few months. It is public like the SVGs. After turning private contributions on or off in your profile, run once with `full: true` to fetch the whole history again.
 
-Styles, leaf colors, the pot glaze and the legend go in a `bonsai.toml`; see [examples/bonsai.toml](examples/bonsai.toml). The action reads it from the repository root, and its inputs `style` and `legend` override it.
+Styles, leaf colors, the pot glaze and the legend go in a `bonsai.toml`, and so does `hemisphere = "south"` if the seasons should follow the southern hemisphere; see [examples/bonsai.toml](examples/bonsai.toml). The action reads it from the repository root, and its inputs `style` and `legend` override it.
 
 ## Run it locally
 
