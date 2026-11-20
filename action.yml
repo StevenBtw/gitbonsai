@@ -18,7 +18,7 @@ inputs:
   style:
     description:
       chokkan, moyogi, shakan, fukinagashi or kengai; empty uses the config,
-      or picks it from the last three years of activity.
+      or picks it mostly from the last three years of activity.
     default: ""
   legend:
     description:
