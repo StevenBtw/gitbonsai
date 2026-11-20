@@ -4,7 +4,7 @@ All notable changes to gitbonsai, a Japanese maple bonsai grown from GitHub acti
 
 ## [0.5.0] - 2026-11-21
 
-Visibility release: every language the crown draws shows, a left tree is lit from its open side, and the legend names only what the tree draws. Most trees change a little from 0.4.0: formal uprights, windswept trees, cascades, left trees and trees with private work the most.
+Visual polish release: every language the crown draws shows, a left tree is lit from its open side, and the legend names only what the tree draws. Most trees change a little from 0.4.0: formal uprights, windswept trees, cascades, left trees and trees with private work the most.
 
 ### Added
 
