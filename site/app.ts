@@ -46,17 +46,23 @@ interface Plate {
   name: string;
   /** The shape the SVG records: chokkan, moyogi, shakan, fukinagashi or kengai. */
   style: string;
-  /** The ISO week the tree was observed. */
-  week: string;
   /** The SVG's own description, for the alt text. */
   alt: string;
   /** The SVG's viewBox: x, y, width, height. */
   box: [number, number, number, number];
+  /** The viewBox of the same tree rendered with its legend on the right. */
+  lbox: [number, number, number, number];
 }
 const gallery = $("gallery");
 const heroImg = $<HTMLImageElement>("heroimg");
 const heroCanvas = $("herocanvas");
+const heroLegend = $<HTMLInputElement>("herolegend");
+// The legend's text is unreadable at phone width, so its cell is hidden there (style.css).
+const narrow = matchMedia("(max-width: 600px)");
+const withLegend = (): boolean => heroLegend.checked && !narrow.matches;
+const variant = (p: Plate): string => `hero/${p.id}${withLegend() ? "-legend" : ""}`;
 let plates: Plate[] = [];
+let shown = -1;
 const plateNo = (i: number): string => String(i + 1).padStart(2, "0");
 // Grow-in, once: the plates before the Showcase pass by, then it rests there.
 // Not with reduced motion, not when the page opens scrolled past the hero, and
@@ -66,13 +72,24 @@ let touched = false;
 if (growIn) heroCanvas.classList.add("waiting");
 
 // Every tree sits on one canvas at one scale, the pot where the SVG puts it, so a
-// sprout is small next to a tree of eighteen years.
+// sprout is small next to a tree of eighteen years. With the legend on, each tree
+// and its legend are fitted to that same canvas instead, so the plate never resizes.
 function place(p: Plate, all: Plate[]): void {
   const x0 = Math.min(...all.map((q) => q.box[0]));
   const y0 = Math.min(...all.map((q) => q.box[1]));
   const w = Math.max(...all.map((q) => q.box[0] + q.box[2])) - x0;
   const h = Math.max(...all.map((q) => q.box[1] + q.box[3])) - y0;
   heroCanvas.style.aspectRatio = `${w} / ${h}`;
+  if (withLegend()) {
+    const a = p.lbox[2] / p.lbox[3];
+    const canvas = w / h;
+    const width = a >= canvas ? 100 : (a / canvas) * 100;
+    const height = a >= canvas ? (canvas / a) * 100 : 100;
+    heroImg.style.left = `${(100 - width) / 2}%`;
+    heroImg.style.top = `${(100 - height) / 2}%`;
+    heroImg.style.width = `${width}%`;
+    return;
+  }
   heroImg.style.left = `${((p.box[0] - x0) / w) * 100}%`;
   heroImg.style.top = `${((p.box[1] - y0) / h) * 100}%`;
   heroImg.style.width = `${(p.box[2] / w) * 100}%`;
@@ -80,14 +97,14 @@ function place(p: Plate, all: Plate[]): void {
 function showPlate(i: number): void {
   const p = plates[i];
   if (!p) return;
-  heroImg.dataset.tree = `hero/${p.id}`;
-  heroImg.src = `hero/${p.id}-${theme()}.svg`;
+  shown = i;
+  heroImg.dataset.tree = variant(p);
+  heroImg.src = `${variant(p)}-${theme()}.svg`;
   heroImg.alt = p.alt;
   place(p, plates);
   $("herono").textContent = plateNo(i);
   $("herofor").textContent = p.name;
   $("herostyle").textContent = p.style;
-  $("heroweek").textContent = p.week;
   check(i);
 }
 /** Marks thumbnail `i` as the chosen radio, with the roving tab stop on it. */
@@ -103,6 +120,15 @@ for (const ev of ["pointerdown", "keydown"]) {
     heroCanvas.classList.remove("waiting");
   });
 }
+// The legend box counts as a choice too: it stops the grow-in and redraws the plate.
+heroLegend.addEventListener("change", () => {
+  touched = true;
+  heroCanvas.classList.remove("waiting");
+  if (shown >= 0) showPlate(shown);
+});
+narrow.addEventListener("change", () => {
+  if (heroLegend.checked && shown >= 0) showPlate(shown);
+});
 /** Shows the plates before `home` in turn, then `home`; stops as soon as a visitor picks one. */
 async function playGrowIn(home: number): Promise<void> {
   const seq = [...plates.keys()].slice(0, home + 1);
@@ -139,6 +165,80 @@ gallery.addEventListener("keydown", (e) => {
   showPlate(to);
   (gallery.children[to] as HTMLElement | undefined)?.focus();
 });
+// "See it on @…" in Reading a tree: that plate, with its legend where there is room, in view.
+// Without plates.json the link just scrolls up to the hero.
+document.querySelectorAll<HTMLAnchorElement>(".seeit[data-plate]").forEach((a) => {
+  a.addEventListener("click", (e) => {
+    const i = plates.findIndex((p) => p.id === a.dataset.plate);
+    if (i < 0) return;
+    e.preventDefault();
+    touched = true;
+    heroCanvas.classList.remove("waiting");
+    if (!narrow.matches) heroLegend.checked = true;
+    showPlate(i);
+    heroCanvas.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" });
+    // Focus follows to the chosen thumbnail, so a keyboard visitor is where they look.
+    (gallery.children[i] as HTMLElement | undefined)?.focus({ preventScroll: true });
+  });
+});
+// Reading a tree: each card shows as many of its further rows as fit beside
+// the tallest card in its line, so the cards end level with no empty space;
+// the rest fold behind "Show more", and "Show less" below them folds them
+// back. Without script every row shows.
+type Fold = { rows: HTMLElement[]; card: HTMLElement; b: HTMLButtonElement; open: boolean };
+const folds: Fold[] = [];
+document.querySelectorAll<HTMLElement>(".theme .legend.extra").forEach((dl, k) => {
+  dl.id ||= `more-${k}`;
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "more";
+  b.setAttribute("aria-controls", dl.id);
+  const f: Fold = {
+    rows: Array.from(dl.children) as HTMLElement[],
+    card: dl.closest(".theme") as HTMLElement,
+    b,
+    open: false,
+  };
+  b.addEventListener("click", () => {
+    f.open = !f.open;
+    if (f.open) unfold(f, f.rows.map(() => true));
+    else fill();
+  });
+  dl.after(b);
+  folds.push(f);
+});
+// Shows the further rows `shown` marks, all of them when open; the toggle
+// stays while any is folded.
+function unfold(f: Fold, shown: boolean[]): void {
+  f.rows.forEach((r, i) => (r.hidden = !f.open && !shown[i]));
+  f.b.hidden = !f.open && shown.every(Boolean);
+  f.b.setAttribute("aria-expanded", String(f.open));
+  f.b.textContent = f.open ? "Show less" : "Show more";
+}
+// Folds every closed card, then lets each take, in order, every further row
+// that still fits the height its line already has: a row too tall is
+// skipped, and a shorter one after it may still fit.
+function fill(): void {
+  const closed = folds.filter((f) => !f.open);
+  closed.forEach((f) => unfold(f, f.rows.map(() => false)));
+  for (const f of closed) {
+    const line = f.card.offsetHeight;
+    const shown = f.rows.map(() => false);
+    f.rows.forEach((_, i) => {
+      shown[i] = true;
+      unfold(f, shown);
+      if (f.card.offsetHeight > line) shown[i] = false;
+    });
+    unfold(f, shown);
+  }
+}
+fill();
+let refit = 0;
+addEventListener("resize", () => {
+  cancelAnimationFrame(refit);
+  refit = requestAnimationFrame(fill);
+});
+void document.fonts.ready.then(fill);
 fetch("plates.json")
   .then((r) => r.json() as Promise<Plate[]>)
   .then(
@@ -160,7 +260,7 @@ fetch("plates.json")
         b.append(img, no);
         b.addEventListener("click", () => showPlate(i));
         // Fetch the full tree as soon as a thumbnail is pointed at, so the plate swaps at once.
-        const warm = (): void => void (new Image().src = `hero/${p.id}-${theme()}.svg`);
+        const warm = (): void => void (new Image().src = `${variant(p)}-${theme()}.svg`);
         b.addEventListener("pointerenter", warm, { once: true });
         b.addEventListener("focus", warm, { once: true });
         gallery.appendChild(b);
@@ -171,6 +271,7 @@ fetch("plates.json")
       // A checked plate and one tab stop before the row is shown, also during the grow-in.
       check(home);
       gallery.hidden = false;
+      heroLegend.disabled = false;
       if (growIn) void playGrowIn(home);
       else showPlate(home);
     },
@@ -342,8 +443,8 @@ interface Tree {
 const ERRORS = {
   invalid_login: "That isn't a GitHub username: letters, digits and single hyphens, up to 39 characters.",
   no_such_user: "There's no GitHub user with that username.",
-  rate_limited: "That's the limit of new trees from here for this hour. Try again in {wait}.",
-  busy: "The grower is busy with other trees. Try again in {wait}.",
+  rate_limited: "That's the limit of new trees from here for this hour. This one can grow here in {wait}.",
+  busy: "Too many trees at once. GitHub lets the grower read only so much per hour; yours can grow here in {wait}.",
   failed: "This tree didn't grow. Try again in a while.",
 } as const;
 // Own keys only: an error code such as "toString" must not find a method.
@@ -378,12 +479,44 @@ function showTree(): void {
   showing = true;
 }
 const inWords = (s: number): string => (s < 90 ? `${s} seconds` : `${Math.ceil(s / 60)} minutes`);
-function hold(seconds: number, template: string): void {
+/** A wait the visitor can't skip: seedlings still waiting (three when everyone's
+ *  trees queue, one when this visitor has had theirs), the wait counting down, and
+ *  the way round it, their own profile, where our limits don't apply. */
+function hold(seconds: number, template: string, pots: number): void {
   let left = seconds;
   lock(true);
-  say(template.replace("{wait}", inWords(left)));
+  const bench = document.createElement("div");
+  bench.className = "bench";
+  for (let i = 0; i < pots; i++) {
+    const img = document.createElement("img");
+    img.dataset.tree = "hero/waiting"; // paint() swaps its theme
+    img.src = `hero/waiting-${theme()}.svg`;
+    img.alt = "";
+    bench.append(img);
+  }
+  const [before = "", after = ""] = template.split("{wait}");
+  const count = document.createElement("span");
+  count.setAttribute("aria-live", "off"); // the plate reads the message once, not every second
+  count.textContent = inWords(left);
+  const line = document.createElement("p");
+  line.className = "why";
+  line.append(before, count, after);
+  const way = document.createElement("p");
+  way.textContent = "Or grow it where it lives: add it to your profile, and it grows from your own activity, private work included.";
+  const go = document.createElement("a");
+  go.className = "btn btn-outline";
+  go.href = "#add";
+  go.textContent = "Add it to your profile";
+  const rest = document.createElement("div");
+  rest.className = "rest";
+  rest.append(bench, line, way, go);
+  art.replaceChildren(rest);
+  showing = false;
   timer = window.setInterval(() => {
-    if (--left > 0) return say(template.replace("{wait}", inWords(left)));
+    if (--left > 0) {
+      count.textContent = inWords(left);
+      return;
+    }
     window.clearInterval(timer);
     timer = undefined;
     lock(false);
@@ -408,7 +541,11 @@ async function fetchTree(login: string): Promise<void> {
   if (!r.ok || !body.login || !body.light || !body.dark) {
     const text = errorText(body.error);
     const wait = parseInt(r.headers.get("Retry-After") ?? "", 10);
-    return text.includes("{wait}") ? hold(wait > 0 ? wait : 60, text) : say(text);
+    // Only the waits get the seedlings; a mistyped username keeps its one plain line.
+    if (body.error === "busy" || body.error === "rate_limited") {
+      return hold(wait > 0 ? wait : 60, text, body.error === "busy" ? 3 : 1);
+    }
+    return say(text);
   }
   if (grown) {
     URL.revokeObjectURL(grown.light);

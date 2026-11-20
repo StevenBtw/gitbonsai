@@ -33,13 +33,16 @@ open(page, "w", encoding="utf-8", newline="\n").write(text.replace("@WORKFLOW@",
 EOF
 
 # The hero's plates, in gallery order; the page opens on the Showcase. Each tree
-# is rendered once; hero.py writes plates.json (the label) and the thumbnails.
+# is rendered twice, bare and with its legend (the hero's "Show the legend");
+# hero.py writes plates.json (the label) and the thumbnails.
 plate() {
   local id=$1 name=$2
   shift 2
   "$bin" render "$@" --output-dir "$work/hero/$id" -q
+  "$bin" render "$@" --legend right --output-dir "$work/hero/$id-legend" -q
   for t in light dark; do
     cp "$work/hero/$id/bonsai-$t.svg" "$out/hero/$id-$t.svg"
+    cp "$work/hero/$id-legend/bonsai-$t.svg" "$out/hero/$id-legend-$t.svg"
   done
   printf '%s\t%s\n' "$id" "$name" >> "$work/plates.tsv"
 }
@@ -49,6 +52,12 @@ plate newcomer Newcomer fixture:newbie
 plate showcase Showcase fixture:showcase --config "$site/showcase.toml"
 for who in stevenbtw:@StevenBtw jacobwilliams:@jacobwilliams tj:@tj torvalds:@torvalds steipete:@steipete; do
   plate "${who%%:*}" "${who#*:}" "$site/snapshots/${who%%:*}.snapshot.json"
+done
+# The seedling still waiting for its first contribution: the picture "See your own
+# tree" shows when the grower is busy or a visitor has had their trees for the hour.
+"$bin" render fixture:newbie --as-of 2026-07-01 --output-dir "$work/waiting" -q
+for t in light dark; do
+  cp "$work/waiting/bonsai-$t.svg" "$out/hero/waiting-$t.svg"
 done
 python3 "$site/hero.py" "$work/plates.tsv" "$out"
 
