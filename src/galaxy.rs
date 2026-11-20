@@ -233,10 +233,13 @@ pub fn footprint(leaf: bool) -> Vec<P> {
             if u * u + v * v > 1.0 {
                 continue;
             }
+            // The petunia's samples fill its five petals, not the circle
+            // round them: no phantom flower between the petals counts as shown.
             pts.push(if leaf {
                 (-8.5 + 9.5 * u, -1.0 + 7.0 * v)
             } else {
-                (PETUNIA_R * u, 0.88 * PETUNIA_R * v)
+                let r = petunia_r(math::atan2(v, u));
+                (r * u, 0.88 * r * v)
             });
         }
     }
@@ -246,14 +249,19 @@ pub fn footprint(leaf: bool) -> Vec<P> {
 /// The petunia's radius in its own units, before the squash.
 pub const PETUNIA_R: f64 = 3.0;
 
+/// The petunia's outline radius at angle `th`: five petals round
+/// [`PETUNIA_R`], each edge a little ruffled.
+fn petunia_r(th: f64) -> f64 {
+    PETUNIA_R * (0.86 + 0.14 * math::cos(5.0 * th + 0.3) + 0.035 * math::sin(17.0 * th))
+}
+
 /// The petunia: creased magenta-purple petals in three depths, five soft
 /// white patches and glowing stars clustered across it, a small dark throat.
 /// Its throat is at the origin, about 6 units across; its stem hangs down
 /// to the right, with one leaf unless the plant is a small one (`leaf`).
 pub fn petunia(leaf: bool) -> String {
     let mut rng = Rng::keyed(0, "galaxy/petunia");
-    let big_r =
-        |th: f64| 3.0 * (0.86 + 0.14 * math::cos(5.0 * th + 0.3) + 0.035 * math::sin(17.0 * th));
+    let big_r = petunia_r;
     let pt = |f: f64, th: f64| {
         let r = f * big_r(th);
         (r * math::cos(th), 0.88 * r * math::sin(th))
@@ -371,6 +379,20 @@ pub fn petunia(leaf: bool) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The petunia's footprint lies within its petals, so placement never
+    /// counts flower that isn't drawn.
+    #[test]
+    fn the_petunia_footprint_lies_in_its_petals() {
+        for (x, y) in footprint(false) {
+            let (u, v) = (x, y / 0.88);
+            let r = (u * u + v * v).sqrt();
+            assert!(
+                r <= petunia_r(math::atan2(v, u)) + 1e-9,
+                "({x:.2}, {y:.2}) outside"
+            );
+        }
+    }
 
     /// Each plant is one fixed drawing of few elements: its specks share
     /// paths.
