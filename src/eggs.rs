@@ -889,8 +889,12 @@ mod tests {
             (-40.0, 9.0),
             (20.0, 5.0),
         ] {
-            let _ = settle(&mut soil, (CENTER_X + dx, SOIL_Y), r, 70.0);
+            assert!(
+                settle(&mut soil, (CENTER_X + dx, SOIL_Y), r, 70.0).is_some(),
+                "no room for an egg of {r} at {dx}"
+            );
         }
+        assert_eq!(soil.len(), 5);
         // A pot with no room left lays no egg on another.
         let mut full = vec![(CENTER_X, SOIL_Y, 60.0)];
         assert_eq!(settle(&mut full, (CENTER_X, SOIL_Y), 10.0, 70.0), None);
