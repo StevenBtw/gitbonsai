@@ -41,7 +41,7 @@ const BORN: [f64; 8] = [4.0, 10.0, 18.0, 26.0, 33.0, 38.0, 43.0, 48.0];
 /// When each pair drops: the lowest first, the last at the hand-over.
 const DROP: [f64; 8] = [35.0, 40.0, 44.0, 47.0, 50.0, 53.0, 56.0, SPROUT_UNTIL];
 /// The least a pair stands below the next, as a share of the stem for each
-/// unit of that pair's size: about its leaves' height.
+/// unit of leaf size: about a leaf's height.
 const PAIR_GAP: f64 = 0.2;
 /// Pairs from this one gather into the top tuft; the two below stay low.
 const TUFT: usize = 5;
@@ -335,10 +335,12 @@ pub fn draw(
     };
     // A pair stays where the stem's tip was when it opened: the stem grows
     // on above it, so older pairs stand lower and spaced out, the newest at
-    // the top. The stem's growth slows, so a pair keeps a leaf's height
-    // below the next as that one grows to its size: they never touch.
+    // the top. The stem's growth slows, so a pair keeps the height of the
+    // larger leaves below the next, easing in as that one grows to its size:
+    // a grown pair's leaves never reach into a new one.
     let open = BORN.iter().take_while(|&&born| n >= born).count();
-    let size = |i: usize| (0.3 + (n - BORN[i]) / 0.6 / 16.0).min(1.0) * (1.25 - 0.05 * i as f64);
+    let full = |i: usize| 1.25 - 0.05 * i as f64;
+    let size = |i: usize| (0.3 + (n - BORN[i]) / 0.6 / 16.0).min(1.0) * full(i);
     let mut at_h: Vec<f64> = (0..open)
         .map(|i| {
             let young = 0.5 + 0.45 * (i + 1) as f64 / BORN.len() as f64;
@@ -346,7 +348,8 @@ pub fn draw(
         })
         .collect();
     for i in (0..open.saturating_sub(1)).rev() {
-        at_h[i] = at_h[i].min(at_h[i + 1] - PAIR_GAP * size(i + 1));
+        let gap = size(i).max(size(i + 1)) * size(i + 1) / full(i + 1);
+        at_h[i] = at_h[i].min(at_h[i + 1] - PAIR_GAP * gap);
     }
     let mut leaf = 0usize;
     for (i, born) in BORN.iter().enumerate().take(open) {
