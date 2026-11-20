@@ -2,6 +2,45 @@
 
 All notable changes to gitbonsai, a Japanese maple bonsai grown from GitHub activity. Any change to how a tree grows or looks is at least a minor version, because people notice their tree changing.
 
+## [0.5.0] - 2026-11-21
+
+Visibility release: every language the crown draws shows, a left tree is lit from its open side, and the legend names only what the tree draws. Most trees change a little from 0.4.0: formal uprights, windswept trees, cascades, left trees and trees with private work the most.
+
+### Added
+
+- **The white trunk has its own legend row**: a semi-cascade's trunk reads "white trunk: Fortran, still growing", and the SVG's description says "A white Fortran trunk: a classic language, still growing." It no longer looks like a dropped language.
+- **`hemisphere` sets whose seasons a tree keeps**: `hemisphere = "south"` under `[tree]` runs them six months from the north's; unset, the northern.
+
+### Changed
+
+- **Every language in the crown shows**: a small language's leaves are drawn in front of a big one's, so a language with 5% of the work shows as a patch instead of hiding behind the others.
+- **A left tree is lit from its open side**: the light, the pot's highlight and the table shadow mirror with the tree, so every tree is lit from the side it leans away from.
+- **`wind` sets the side**: a configured `[tree] wind` now also sets the side the tree leans to and is lit from, not only where a windswept crown streams.
+- **A formal upright stands on a third of bare trunk**: its first limb leaves the straight trunk about a third of the way up, its triangle stands taller (1.2 times as wide as tall instead of 1.5) in four tiers a side, and its pads carry 40% more leaves.
+- **A windswept crown stays above the rim**: a long downwind arm runs out level just above the pot instead of hanging past it; only a cascade goes lower.
+- **A cascade's pads are fuller**: its clouds lie side by side along the arc instead of stacked on one another, so it shows 40 to 54% of the foliage the same tree shows upright, up from 22 to 36%.
+- **Private work stays low**: silver leaves no longer top the crown of a windswept tree or a cascade; the top belongs to a public language.
+- **Dead wood up a trunk shows in front**: a living trunk that crosses a dead one, or one with a strip of dead wood, passes behind it.
+- **Leaves cover their clouds**: the flat color behind a cloud's leaves stays inside them, so sparse clouds no longer show plain patches.
+- **The legend lists only leaves the crown draws**: a language too small for a cloud of its own no longer gets a leaf in the legend or a place in "Leaves of" in the description.
+- **The legend's leaf is cut deeper**: its five lobes are joined about a third of the way up, as on a Japanese maple, instead of halfway.
+- **A resting tree's legend line is shorter**: "resting for the winter", so the legend no longer shrinks the tree beside it.
+- **SVGs stay under 215 KB**: a crown heavier than that keeps fewer, larger leaves (230 KB before).
+- **A few surprises keep the seasons**: some come and go through the year.
+- **The pot grows in steps**: a tree is repotted into the next of nine sizes at the start of spring, or at once when it outgrows its pot by two sizes. A pot never shrinks, and a timelapse keeps it centered.
+- **A windswept crown streams downwind**: a branch that ran out level upwind swings over to run out downwind instead of standing straight up, so a single leaning trunk no longer carries its crown as a column.
+- **A sprout's leaf pairs stand apart**: each pair stays where it opened, at least a leaf's height below the next.
+
+### Fixed
+
+- **No crown floats**: a branch is drawn at least as thick as the leaves it carries, so a high crown no longer sits on hairline twigs.
+- **A cascade's leaves stay on its wood**: pads spread along the arc no longer reach past their branches.
+- **A dropped language leaves no bare twigs**: its place in the crown no longer grows brown twigs from the living wood beside it.
+- **A leaning trunk goes into the soil**: a steep trunk's foot no longer shows a square cut above the soil.
+- **No lone tuft stands off a windswept crown**: a few clouds stranded high, or out on their own long bare arm, come in to the crown.
+- **Leaves stay on living wood**: a windswept crown's cloud no longer rides off its own branch on a dead arm swinging past it.
+- **Dead twigs never float**: a dead branch left out of the drawing takes its twigs with it.
+
 ## [0.4.0] - 2026-11-19
 
 Styles release: a tree's last three years now pick its style, and each of the five styles has its own shape. Every tree may change shape from 0.3.2; set `style` in `bonsai.toml` (or the action's `style` input) to keep one style.
