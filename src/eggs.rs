@@ -290,8 +290,9 @@ const POT_FULL: f64 = 110.0;
 
 /// Places a soil egg of radius `r` at `at` if it is clear of the eggs in
 /// `soil`, else at the nearest clear spot sideways along the soil, within the
-/// pot; either way it takes that spot. A spot nothing clears keeps `at`.
-fn settle(soil: &mut Vec<(f64, f64, f64)>, at: (f64, f64), r: f64, hw: f64) -> (f64, f64) {
+/// pot, and takes that spot. With no clear spot left it gets none: the egg
+/// is left out rather than laid on another.
+fn settle(soil: &mut Vec<(f64, f64, f64)>, at: (f64, f64), r: f64, hw: f64) -> Option<(f64, f64)> {
     let clear = |x: f64| {
         soil.iter()
             .all(|&(a, b, q)| math::sq(a - x) + math::sq(b - at.1) >= math::sq(r + q))
@@ -304,10 +305,9 @@ fn settle(soil: &mut Vec<(f64, f64, f64)>, at: (f64, f64), r: f64, hw: f64) -> (
             if i % 2 == 1 { at.0 + d } else { at.0 - d }
         })
         .filter(|x| (x - CENTER_X).abs() <= room)
-        .find(|&x| clear(x))
-        .unwrap_or(at.0);
+        .find(|&x| clear(x))?;
     soil.push((x, at.1, r));
-    (x, at.1)
+    Some((x, at.1))
 }
 
 /// How high above the soil a galaxy plant's stem meets the trunk's side.
@@ -411,15 +411,16 @@ pub fn eggs(
     // ---- back soil ----
     if tier("galaxy-brain") == Some(1) && season == Season::Summer {
         let at = (CENTER_X - hw * 0.45, SOIL_Y + ry * 0.15);
-        let (x, y) = settle(&mut soil, at, 4.0 * w * 1.1 * k, hw);
-        let _ = write!(
-            e.back,
-            r##"<g transform="translate({} {}) scale({})"><use href="#glowworm"/></g>"##,
-            Num(x),
-            Num(y),
-            Num(w * 1.1 * k)
-        );
-        e.animated += 1;
+        if let Some((x, y)) = settle(&mut soil, at, 4.0 * w * 1.1 * k, hw) {
+            let _ = write!(
+                e.back,
+                r##"<g transform="translate({} {}) scale({})"><use href="#glowworm"/></g>"##,
+                Num(x),
+                Num(y),
+                Num(w * 1.1 * k)
+            );
+            e.animated += 1;
+        }
     }
     if tier("mars-2020-contributor").is_some() && season == Season::Autumn {
         // A fallen samara, the maple's own helicopter seed, in the leaf color
@@ -477,17 +478,18 @@ pub fn eggs(
             paints.stone
         };
         let at = (CENTER_X + hw * 0.5, SOIL_Y + ry * 0.35);
-        let (x, y) = settle(&mut soil, at, half * w * 1.3 * k, hw);
-        let _ = write!(
-            e.front,
-            r##"<g transform="translate({} {}) scale({})"><ellipse cy="1.4" rx="{}" ry="1.6" fill="{shadow}" opacity=".45"/><use href="#{symbol}" fill="{paint}" stroke="{}" stroke-width=".3"/><path d="M-2-2.2Q.4-3.2 2.6-2.2" fill="none" stroke="#fff" stroke-width=".55" opacity=".45"/><g fill="{}" opacity=".3"><circle cx="-2" cy="-.6" r=".35"/><circle cx="1" cy="-1.4" r=".28"/><circle cx="-.4" cy=".4" r=".3"/></g></g>"##,
-            Num(x),
-            Num(y),
-            Num(w * 1.3 * k),
-            Num(half),
-            paint.shift(-0.18, 0.0),
-            paint.shift(-0.2, 0.0)
-        );
+        if let Some((x, y)) = settle(&mut soil, at, half * w * 1.3 * k, hw) {
+            let _ = write!(
+                e.front,
+                r##"<g transform="translate({} {}) scale({})"><ellipse cy="1.4" rx="{}" ry="1.6" fill="{shadow}" opacity=".45"/><use href="#{symbol}" fill="{paint}" stroke="{}" stroke-width=".3"/><path d="M-2-2.2Q.4-3.2 2.6-2.2" fill="none" stroke="#fff" stroke-width=".55" opacity=".45"/><g fill="{}" opacity=".3"><circle cx="-2" cy="-.6" r=".35"/><circle cx="1" cy="-1.4" r=".28"/><circle cx="-.4" cy=".4" r=".3"/></g></g>"##,
+                Num(x),
+                Num(y),
+                Num(w * 1.3 * k),
+                Num(half),
+                paint.shift(-0.18, 0.0),
+                paint.shift(-0.2, 0.0)
+            );
+        }
     }
     // A pair is a spring thing: the pebbles and the cranes' courtship.
     let pair = tier("pair-extraordinaire").filter(|_| season == Season::Spring);
@@ -500,14 +502,15 @@ pub fn eggs(
             _ => "cranes",
         };
         let at = (CENTER_X - hw * 0.3, SOIL_Y + ry * 0.45);
-        let (x, y) = settle(&mut soil, at, 8.0 * w * 1.5 * k, hw);
-        let _ = write!(
-            e.front,
-            r##"<g transform="translate({} {}) scale({})"><ellipse cy=".6" rx="8" ry="1.4" fill="{shadow}" opacity=".45"/><use href="#{symbol}"/></g>"##,
-            Num(x),
-            Num(y),
-            Num(w * 1.5 * k)
-        );
+        if let Some((x, y)) = settle(&mut soil, at, 8.0 * w * 1.5 * k, hw) {
+            let _ = write!(
+                e.front,
+                r##"<g transform="translate({} {}) scale({})"><ellipse cy=".6" rx="8" ry="1.4" fill="{shadow}" opacity=".45"/><use href="#{symbol}"/></g>"##,
+                Num(x),
+                Num(y),
+                Num(w * 1.5 * k)
+            );
+        }
     }
     if b.extras.weekend > 0 {
         // Folded from red washi; the gold crest comes with the second tier.
@@ -522,30 +525,32 @@ pub fn eggs(
             ""
         };
         let at = (CENTER_X - hw * 0.66, SOIL_Y + ry * 0.22);
-        let (x, y) = settle(&mut soil, at, 7.0 * w * 1.25 * k, hw);
-        let _ = write!(
-            e.front,
-            r##"<g transform="translate({} {}) scale({}) rotate(-6)"><ellipse cy=".5" rx="7" ry="1.6" fill="{shadow}" opacity=".45"/><use href="#kabuto" fill="{paper}"/>{crest}</g>"##,
-            Num(x),
-            Num(y),
-            Num(w * 1.25 * k)
-        );
+        if let Some((x, y)) = settle(&mut soil, at, 7.0 * w * 1.25 * k, hw) {
+            let _ = write!(
+                e.front,
+                r##"<g transform="translate({} {}) scale({}) rotate(-6)"><ellipse cy=".5" rx="7" ry="1.6" fill="{shadow}" opacity=".45"/><use href="#kabuto" fill="{paper}"/>{crest}</g>"##,
+                Num(x),
+                Num(y),
+                Num(w * 1.25 * k)
+            );
+        }
     }
     if tier("public-sponsor").is_some() {
         let at = (CENTER_X + hw * 0.16, SOIL_Y + ry * 0.62);
-        let (x, y) = settle(&mut soil, at, 4.4 * w * 1.5 * k, hw);
-        // Frontmost of the soil eggs: on a small pot it stays on the soil,
-        // its shadow (2.2 below its centre) short of the rim's lip.
-        let across = ((x - CENTER_X) / (hw - 4.0).max(1.0)).clamp(-1.0, 1.0);
-        let edge = SOIL_Y + 0.6 + (ry - 2.0).max(1.0) * (1.0 - across * across).sqrt();
-        let y = y.min(edge - 2.2 * w * 1.5 * k);
-        let _ = write!(
-            e.front,
-            r##"<g transform="translate({} {}) scale({})"><ellipse cy=".7" rx="4.4" ry="1.5" fill="{shadow}" opacity=".45"/><use href="#goen"/></g>"##,
-            Num(x),
-            Num(y),
-            Num(w * 1.5 * k)
-        );
+        if let Some((x, y)) = settle(&mut soil, at, 4.4 * w * 1.5 * k, hw) {
+            // Frontmost of the soil eggs: on a small pot it stays on the soil,
+            // its shadow (2.2 below its centre) short of the rim's lip.
+            let across = ((x - CENTER_X) / (hw - 4.0).max(1.0)).clamp(-1.0, 1.0);
+            let edge = SOIL_Y + 0.6 + (ry - 2.0).max(1.0) * (1.0 - across * across).sqrt();
+            let y = y.min(edge - 2.2 * w * 1.5 * k);
+            let _ = write!(
+                e.front,
+                r##"<g transform="translate({} {}) scale({})"><ellipse cy=".7" rx="4.4" ry="1.5" fill="{shadow}" opacity=".45"/><use href="#goen"/></g>"##,
+                Num(x),
+                Num(y),
+                Num(w * 1.5 * k)
+            );
+        }
     }
 
     // ---- branches ----
@@ -559,14 +564,15 @@ pub fn eggs(
         // With nothing to hang from, the paper star lies on the soil.
         let star = if dark { "#f6efd2" } else { "#efe3b8" };
         let at = (CENTER_X + hw * 0.34, SOIL_Y + ry * 0.5);
-        let (x, y) = settle(&mut soil, at, 3.8 * w * 1.25 * k, hw);
-        let _ = write!(
-            e.front,
-            r##"<g transform="translate({} {}) scale({})"><ellipse cy=".9" rx="3.6" ry="1" fill="{shadow}" opacity=".45"/><use href="#star5" transform="scale(1 .55) rotate(14)" fill="{star}" stroke="#b39a5a" stroke-width=".35"/></g>"##,
-            Num(x),
-            Num(y),
-            Num(w * 1.25 * k)
-        );
+        if let Some((x, y)) = settle(&mut soil, at, 3.8 * w * 1.25 * k, hw) {
+            let _ = write!(
+                e.front,
+                r##"<g transform="translate({} {}) scale({})"><ellipse cy=".9" rx="3.6" ry="1" fill="{shadow}" opacity=".45"/><use href="#star5" transform="scale(1 .55) rotate(14)" fill="{star}" stroke="#b39a5a" stroke-width=".35"/></g>"##,
+                Num(x),
+                Num(y),
+                Num(w * 1.25 * k)
+            );
+        }
     }
     if let Some(t) = tier("starstruck")
         && let Some((x, y)) = hang
@@ -883,8 +889,12 @@ mod tests {
             (-40.0, 9.0),
             (20.0, 5.0),
         ] {
-            settle(&mut soil, (CENTER_X + dx, SOIL_Y), r, 70.0);
+            let _ = settle(&mut soil, (CENTER_X + dx, SOIL_Y), r, 70.0);
         }
+        // A pot with no room left lays no egg on another.
+        let mut full = vec![(CENTER_X, SOIL_Y, 60.0)];
+        assert_eq!(settle(&mut full, (CENTER_X, SOIL_Y), 10.0, 70.0), None);
+        assert_eq!(full.len(), 1);
         for (i, a) in soil.iter().enumerate() {
             for b in &soil[i + 1..] {
                 let d = (math::sq(a.0 - b.0) + math::sq(a.1 - b.1)).sqrt();
