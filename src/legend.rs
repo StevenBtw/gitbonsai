@@ -38,7 +38,7 @@ fn legend_leaf_path() -> String {
     ];
     // Lobe length, how far up the lobes join, and the lobe's width near its
     // base and near its tip, in degrees.
-    let (len, web, wide, tip) = (4.8, 0.55, 36.0, 10.0);
+    let (len, web, wide, tip) = (4.8, 0.36, 36.0, 10.0);
     let pt = |deg: f64, r: f64| {
         let a = math::rad(deg - 90.0);
         (math::cos(a) * r, math::sin(a) * r - 0.2)
@@ -181,7 +181,10 @@ fn rows(b: &Bonsai, paints: &Paints, signs: Signs) -> Vec<Row> {
     // Deadwood only for languages whose dead wood the tree actually shows.
     let mut dead = of(LanguageState::Jin);
     dead.retain(|l| b.skeleton.deadwood.contains(l.as_str()));
-    let (alive, resting) = (of(LanguageState::Alive), of(LanguageState::Bare));
+    let (mut alive, resting) = (of(LanguageState::Alive), of(LanguageState::Bare));
+    // Leaves only for languages the crown draws: a language too small for a
+    // cloud of its own has no leaf to point at.
+    alive.retain(|l| b.shows_leaves(l));
 
     let mut rows = vec![Row::heading("Leaves")];
     let shown: Vec<&String> = alive.iter().chain(&resting).copied().collect();
@@ -221,6 +224,15 @@ fn rows(b: &Bonsai, paints: &Paints, signs: Signs) -> Vec<Row> {
         ));
     }
 
+    // A semi-cascade's white trunk is a classic language still at work, not
+    // deadwood: it gets its own row, so nobody reads it as dropped.
+    if let Some(language) = b.white_trunk() {
+        rows.push(Row::sign(
+            Mark::Twig(paints.jin),
+            format!("white trunk: {}, still growing", short(language, 12)),
+        ));
+    }
+
     // Silver leaves, when the tree shows any; a bare tree shows none.
     if !b.dormant()
         && b.skeleton
@@ -236,7 +248,7 @@ fn rows(b: &Bonsai, paints: &Paints, signs: Signs) -> Vec<Row> {
     if b.dormant() {
         rows.push(Row::sign(
             Mark::Twig(paints.bark),
-            "bare for the winter: a year without contributions".into(),
+            "resting for the winter".into(),
         ));
     }
     rows.push(Row::sign(

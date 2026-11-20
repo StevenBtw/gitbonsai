@@ -87,9 +87,11 @@ pub struct Config {
 pub struct TreeConfig {
     /// The bonsai style; unset, the last three years pick it ([`crate::style::Mix`]).
     pub style: Option<Style>,
-    /// The side the tree leans, streams and cascades to; its sprout picks it
-    /// when unset ([`crate::style::side`]).
+    /// The side the tree leans, streams and cascades to, and the light comes
+    /// from the other; its sprout picks it when unset ([`crate::style::side`]).
     pub wind: Option<Wind>,
+    /// The half of the world whose seasons the tree keeps.
+    pub hemisphere: Hemisphere,
 }
 
 /// `[leaves]`
@@ -254,6 +256,18 @@ impl FromStr for Style {
                 ))
             })
     }
+}
+
+/// The half of the world whose seasons a tree keeps: the south's run six
+/// months from the north's.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Hemisphere {
+    /// December to February is winter.
+    #[default]
+    North,
+    /// June to August is winter.
+    South,
 }
 
 /// The side a tree leans, streams and cascades to.
