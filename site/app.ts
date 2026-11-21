@@ -371,14 +371,18 @@ function select(id: string): void {
 function fitCaption(): void {
   if (!FRAMES || !cur) return;
   const c = $("caption");
-  const shown = c.textContent;
-  c.style.minHeight = "";
+  // A hidden twin does the measuring: the caption is a live region, so only what it shows is read out.
+  const m = document.createElement("p");
+  m.className = c.className;
+  m.setAttribute("aria-hidden", "true");
+  m.style.cssText = `position: absolute; visibility: hidden; box-sizing: border-box; width: ${c.getBoundingClientRect().width}px`;
+  c.after(m);
   let h = 0;
   for (const d of new Set(T().frames.map((f) => f.d))) {
-    c.textContent = d;
-    h = Math.max(h, c.getBoundingClientRect().height);
+    m.textContent = d;
+    h = Math.max(h, m.getBoundingClientRect().height);
   }
-  c.textContent = shown;
+  m.remove();
   c.style.minHeight = `${Math.ceil(h)}px`;
 }
 // A new width, or the web font arriving, wraps the captions differently.
