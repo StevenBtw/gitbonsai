@@ -75,8 +75,31 @@ pub struct Eggs {
     pub animated: usize,
 }
 
-/// Branch points in the upper tree, least crowded by leaves first.
-fn branch_spots(scene: &Scene) -> Vec<(usize, f64, f64)> {
+/// Where a string hangs from the wood drawn at canvas `x`: just inside the
+/// underside of the piece (points with their radius) whose line passes
+/// within its radius, and a little, of `(x, y)`. `None` where none does.
+fn underside(pieces: &[&[Vec<(f64, f64, f64)>]], x: f64, y: f64) -> Option<f64> {
+    pieces
+        .iter()
+        .flat_map(|p| p.iter())
+        .flat_map(|w| w.windows(2))
+        .filter(|s| (s[0].0 - x) * (s[1].0 - x) <= 0.0 && s[0].0 != s[1].0)
+        .map(|s| {
+            let t = (x - s[0].0) / (s[1].0 - s[0].0);
+            (
+                s[0].1 + (s[1].1 - s[0].1) * t,
+                s[0].2 + (s[1].2 - s[0].2) * t,
+            )
+        })
+        .filter(|&(c, r)| (c - y).abs() <= r + 6.0)
+        .min_by(|a, b| (a.0 - y).abs().total_cmp(&(b.0 - y).abs()))
+        .map(|(c, r)| c + 0.6 * r)
+}
+
+/// Branch points in the upper tree to hang from, on the wood as drawn
+/// (`wood`), least crowded by leaves first. A point the drawn wood has moved
+/// away from is left out: nothing would hold the string.
+fn branch_spots(scene: &Scene, wood: &[&[Vec<(f64, f64, f64)>]]) -> Vec<(usize, f64, f64)> {
     let leaves: Vec<(f64, f64)> = scene
         .tufts
         .iter()
@@ -100,6 +123,9 @@ fn branch_spots(scene: &Scene) -> Vec<(usize, f64, f64)> {
             if !(50.0..=462.0).contains(&x) || y > SOIL_Y - 40.0 || y < 50.0 {
                 continue;
             }
+            let Some(hang) = underside(wood, x, y) else {
+                continue;
+            };
             let mut crowd = leaves
                 .iter()
                 .filter(|l| math::sq(l.0 - x) + math::sq(l.1 - y) < reach * reach)
@@ -115,10 +141,15 @@ fn branch_spots(scene: &Scene) -> Vec<(usize, f64, f64)> {
                     crowd += COVERED;
                 }
             }
+            // Nor from wood with no leaves over it, where it would stick
+            // out of the crown or hang in a fan of bare twigs.
+            if !leaves.is_empty() && !leaves.iter().any(|l| (l.0 - x).abs() < reach && l.1 < hang) {
+                crowd += COVERED;
+            }
             if y < SOIL_Y - 90.0 {
-                upper.push((crowd, x, y));
+                upper.push((crowd, x, hang));
             } else {
-                lower.push((crowd, x, y));
+                lower.push((crowd, x, hang));
             }
         }
     }
@@ -288,26 +319,62 @@ fn take_spot(
 /// smaller pot they shrink with it.
 const POT_FULL: f64 = 110.0;
 
-/// Places a soil egg of radius `r` at `at` if it is clear of the eggs in
-/// `soil`, else at the nearest clear spot sideways along the soil, within the
-/// pot, and takes that spot. With no clear spot left it gets none: the egg
-/// is left out rather than laid on another.
-fn settle(soil: &mut Vec<(f64, f64, f64)>, at: (f64, f64), r: f64, hw: f64) -> Option<(f64, f64)> {
-    let clear = |x: f64| {
-        soil.iter()
-            .all(|&(a, b, q)| math::sq(a - x) + math::sq(b - at.1) >= math::sq(r + q))
-    };
-    let room = (0.85 * hw - r).max(0.0);
+/// Places a soil egg at `at`, or at the nearest spot sideways along the
+/// soil within the pot, and takes that spot. `(r, down, up)` is how far it
+/// reaches from its centre: to each side, down to its front, and up.
+/// The spot keeps its sides on the soil, its front short of the rim's lip
+/// (one asked for too far forward lies back from it) and clear of the eggs
+/// in `soil`; of those, the nearest that keeps off the wood and roots in
+/// `ground`, else the one that covers least of them. With no spot left it
+/// gets none: the egg is left out rather than laid on another.
+fn settle(
+    soil: &mut Vec<(f64, f64, f64)>,
+    at: (f64, f64),
+    (r, down, up): (f64, f64, f64),
+    pot: &Pot,
+    (wood, roots): (&[Vec<(f64, f64, f64)>], &[Vec<(f64, f64)>]),
+) -> Option<(f64, f64)> {
+    // The soil as drawn, kept 2 inside its edge and the lip.
+    let (sx, sy) = (pot.hw - 6.0, (pot.ry - 4.0).max(1.0));
+    let on_soil =
+        |x: f64, y: f64| math::sq((x - CENTER_X) / sx) + math::sq((y - SOIL_Y - 0.6) / sy) <= 1.0;
+    let room = (0.85 * pot.hw - r).max(0.0);
     let step = (0.5 * r).max(1.0);
-    let x = (0..60)
+    let (_, x, y) = (0..60)
         .map(|i| {
-            let d = step * f64::from((i + 1) / 2);
-            if i % 2 == 1 { at.0 + d } else { at.0 - d }
+            let k = step * f64::from((i + 1) / 2);
+            if i % 2 == 1 { at.0 + k } else { at.0 - k }
         })
         .filter(|x| (x - CENTER_X).abs() <= room)
-        .find(|&x| clear(x))?;
-    soil.push((x, at.1, r));
-    Some((x, at.1))
+        .map(|x| {
+            let across = ((x - CENTER_X) / sx).clamp(-1.0, 1.0);
+            let front = SOIL_Y + 0.6 + sy * (1.0 - across * across).sqrt();
+            (x, at.1.min(front - down))
+        })
+        .filter(|&(x, y)| {
+            on_soil(x - r, y)
+                && on_soil(x + r, y)
+                && soil
+                    .iter()
+                    .all(|&(a, b, q)| math::sq(a - x) + math::sq(b - y) >= math::sq(r + q))
+        })
+        .map(|(x, y)| {
+            let on = [
+                (-r, 0.0),
+                (0.0, 0.0),
+                (r, 0.0),
+                (-0.5 * r, -up),
+                (0.5 * r, -up),
+                (0.0, -up),
+            ]
+            .iter()
+            .filter(|&&(dx, dy)| covered((x + dx, y + dy), wood, roots))
+            .count();
+            (on, x, y)
+        })
+        .min_by_key(|s| s.0)?;
+    soil.push((x, y, r));
+    Some((x, y))
 }
 
 /// A spot a galaxy plant may take, for [`peek`]: where it stands, the
@@ -447,7 +514,7 @@ pub fn eggs(
     let season = season(b);
     let dark = paints.dark;
     let shadow = paints.soil.shift(-0.15, 0.0);
-    let spots = branch_spots(scene);
+    let spots = branch_spots(scene, &[wood, twigs]);
     let mut taken: Vec<(f64, f64)> = Vec::new();
 
     // The soil eggs keep to the pot's size, and each to a spot of its own:
@@ -455,11 +522,18 @@ pub fn eggs(
     // along the soil.
     let k = (hw / POT_FULL).clamp(0.55, 1.0);
     let mut soil: Vec<(f64, f64, f64)> = Vec::new();
+    let ground = (wood, roots);
 
     // ---- back soil ----
     if tier("galaxy-brain") == Some(1) && season == Season::Summer {
         let at = (CENTER_X - hw * 0.45, SOIL_Y + ry * 0.15);
-        if let Some((x, y)) = settle(&mut soil, at, 4.0 * w * 1.1 * k, hw) {
+        if let Some((x, y)) = settle(
+            &mut soil,
+            at,
+            (4.0 * w * 1.1 * k, 1.0 * w * 1.1 * k, 2.0 * w * 1.1 * k),
+            pot,
+            ground,
+        ) {
             let _ = write!(
                 e.back,
                 r##"<g transform="translate({} {}) scale({})"><use href="#glowworm"/></g>"##,
@@ -508,6 +582,36 @@ pub fn eggs(
             Num(w * k)
         );
     }
+    // The kabuto, furthest out, settles first: it has the least room.
+    if b.extras.weekend > 0 {
+        // Folded from red washi; the gold crest comes with the second tier.
+        let paper = if dark {
+            Rgb::hex(0xb8433a).shift(0.05, 0.0)
+        } else {
+            Rgb::hex(0xb8433a)
+        };
+        let crest = if b.extras.weekend >= 2 {
+            r##"<use href="#kuwagata"/>"##
+        } else {
+            ""
+        };
+        let at = (CENTER_X - hw * 0.66, SOIL_Y + ry * 0.22);
+        if let Some((x, y)) = settle(
+            &mut soil,
+            at,
+            (7.0 * w * 1.25 * k, 2.1 * w * 1.25 * k, 6.0 * w * 1.25 * k),
+            pot,
+            ground,
+        ) {
+            let _ = write!(
+                e.front,
+                r##"<g transform="translate({} {}) scale({}) rotate(-6)"><ellipse cy=".5" rx="7" ry="1.6" fill="{shadow}" opacity=".45"/><use href="#kabuto" fill="{paper}"/>{crest}</g>"##,
+                Num(x),
+                Num(y),
+                Num(w * 1.25 * k)
+            );
+        }
+    }
     if let Some(t) = tier("pull-shark") {
         let (symbol, half) = match t {
             1 => ("fish1", 5.5),
@@ -526,7 +630,13 @@ pub fn eggs(
             paints.stone
         };
         let at = (CENTER_X + hw * 0.5, SOIL_Y + ry * 0.35);
-        if let Some((x, y)) = settle(&mut soil, at, half * w * 1.3 * k, hw) {
+        if let Some((x, y)) = settle(
+            &mut soil,
+            at,
+            (half * w * 1.3 * k, 3.0 * w * 1.3 * k, 4.0 * w * 1.3 * k),
+            pot,
+            ground,
+        ) {
             let _ = write!(
                 e.front,
                 r##"<g transform="translate({} {}) scale({})"><ellipse cy="1.4" rx="{}" ry="1.6" fill="{shadow}" opacity=".45"/><use href="#{symbol}" fill="{paint}" stroke="{}" stroke-width=".3"/><path d="M-2-2.2Q.4-3.2 2.6-2.2" fill="none" stroke="#fff" stroke-width=".55" opacity=".45"/><g fill="{}" opacity=".3"><circle cx="-2" cy="-.6" r=".35"/><circle cx="1" cy="-1.4" r=".28"/><circle cx="-.4" cy=".4" r=".3"/></g></g>"##,
@@ -550,7 +660,13 @@ pub fn eggs(
             _ => "cranes",
         };
         let at = (CENTER_X - hw * 0.3, SOIL_Y + ry * 0.45);
-        if let Some((x, y)) = settle(&mut soil, at, 8.0 * w * 1.5 * k, hw) {
+        if let Some((x, y)) = settle(
+            &mut soil,
+            at,
+            (8.0 * w * 1.5 * k, 2.0 * w * 1.5 * k, 4.0 * w * 1.5 * k),
+            pot,
+            ground,
+        ) {
             let _ = write!(
                 e.front,
                 r##"<g transform="translate({} {}) scale({})"><ellipse cy=".6" rx="8" ry="1.4" fill="{shadow}" opacity=".45"/><use href="#{symbol}"/></g>"##,
@@ -560,37 +676,15 @@ pub fn eggs(
             );
         }
     }
-    if b.extras.weekend > 0 {
-        // Folded from red washi; the gold crest comes with the second tier.
-        let paper = if dark {
-            Rgb::hex(0xb8433a).shift(0.05, 0.0)
-        } else {
-            Rgb::hex(0xb8433a)
-        };
-        let crest = if b.extras.weekend >= 2 {
-            r##"<use href="#kuwagata"/>"##
-        } else {
-            ""
-        };
-        let at = (CENTER_X - hw * 0.66, SOIL_Y + ry * 0.22);
-        if let Some((x, y)) = settle(&mut soil, at, 7.0 * w * 1.25 * k, hw) {
-            let _ = write!(
-                e.front,
-                r##"<g transform="translate({} {}) scale({}) rotate(-6)"><ellipse cy=".5" rx="7" ry="1.6" fill="{shadow}" opacity=".45"/><use href="#kabuto" fill="{paper}"/>{crest}</g>"##,
-                Num(x),
-                Num(y),
-                Num(w * 1.25 * k)
-            );
-        }
-    }
     if tier("public-sponsor").is_some() {
         let at = (CENTER_X + hw * 0.16, SOIL_Y + ry * 0.62);
-        if let Some((x, y)) = settle(&mut soil, at, 4.4 * w * 1.5 * k, hw) {
-            // Frontmost of the soil eggs: on a small pot it stays on the soil,
-            // its shadow (2.2 below its centre) short of the rim's lip.
-            let across = ((x - CENTER_X) / (hw - 4.0).max(1.0)).clamp(-1.0, 1.0);
-            let edge = SOIL_Y + 0.6 + (ry - 2.0).max(1.0) * (1.0 - across * across).sqrt();
-            let y = y.min(edge - 2.2 * w * 1.5 * k);
+        if let Some((x, y)) = settle(
+            &mut soil,
+            at,
+            (4.4 * w * 1.5 * k, 2.2 * w * 1.5 * k, 2.2 * w * 1.5 * k),
+            pot,
+            ground,
+        ) {
             let _ = write!(
                 e.front,
                 r##"<g transform="translate({} {}) scale({})"><ellipse cy=".7" rx="4.4" ry="1.5" fill="{shadow}" opacity=".45"/><use href="#goen"/></g>"##,
@@ -612,7 +706,13 @@ pub fn eggs(
         // With nothing to hang from, the paper star lies on the soil.
         let star = if dark { "#f6efd2" } else { "#efe3b8" };
         let at = (CENTER_X + hw * 0.34, SOIL_Y + ry * 0.5);
-        if let Some((x, y)) = settle(&mut soil, at, 3.8 * w * 1.25 * k, hw) {
+        if let Some((x, y)) = settle(
+            &mut soil,
+            at,
+            (3.8 * w * 1.25 * k, 1.9 * w * 1.25 * k, 1.9 * w * 1.25 * k),
+            pot,
+            ground,
+        ) {
             let _ = write!(
                 e.front,
                 r##"<g transform="translate({} {}) scale({})"><ellipse cy=".9" rx="3.6" ry="1" fill="{shadow}" opacity=".45"/><use href="#star5" transform="scale(1 .55) rotate(14)" fill="{star}" stroke="#b39a5a" stroke-width=".35"/></g>"##,
@@ -726,6 +826,12 @@ pub fn eggs(
                 _ => vec![big(), small()],
             };
             let shape = crate::galaxy::footprint(t == 3);
+            // A hairline crossing a plant is no matter; a branch is.
+            let branches: Vec<Vec<(f64, f64, f64)>> = twigs
+                .iter()
+                .filter(|s| s.iter().any(|p| p.2 >= 1.2))
+                .cloned()
+                .collect();
             // Where a plant of this kind stands, and whether it stands clear.
             let find = |&(_, h, rot, size, hidden): &(String, f64, f64, f64, &[(f64, f64)])| {
                 // The petunia's centre always shows; the begonia has none to keep.
@@ -748,7 +854,7 @@ pub fn eggs(
                             seen += 1;
                         }
                         // Wood other than the trunk it peeks from crosses it.
-                        if (hidden || covered(p, twigs, &[])) && !covered(p, trunk, roots) {
+                        if (hidden || covered(p, &branches, &[])) && !covered(p, trunk, roots) {
                             crossed += 1;
                         }
                     }
@@ -804,7 +910,7 @@ pub fn eggs(
                                 // Twigs are drawn in front of it too.
                                 centred: shown.iter().all(|&p| {
                                     let p = on(at, p);
-                                    !covered(p, wood, roots) && !covered(p, twigs, &[])
+                                    !covered(p, wood, roots) && !covered(p, &branches, &[])
                                 }),
                             }
                         })
@@ -1030,6 +1136,14 @@ mod tests {
     /// crowded on a small pot.
     #[test]
     fn soil_eggs_never_touch() {
+        let pot = Pot {
+            hw: 70.0,
+            ry: 12.0,
+            depth: 20.0,
+            bw: 50.0,
+            glaze: Rgb::hex(0),
+        };
+        let ground = (&[][..], &[][..]);
         let mut soil = Vec::new();
         for (dx, r) in [
             (30.0, 12.0),
@@ -1039,14 +1153,30 @@ mod tests {
             (20.0, 5.0),
         ] {
             assert!(
-                settle(&mut soil, (CENTER_X + dx, SOIL_Y), r, 70.0).is_some(),
+                settle(
+                    &mut soil,
+                    (CENTER_X + dx, SOIL_Y),
+                    (r, 0.5 * r, r),
+                    &pot,
+                    ground
+                )
+                .is_some(),
                 "no room for an egg of {r} at {dx}"
             );
         }
         assert_eq!(soil.len(), 5);
         // A pot with no room left lays no egg on another.
         let mut full = vec![(CENTER_X, SOIL_Y, 60.0)];
-        assert_eq!(settle(&mut full, (CENTER_X, SOIL_Y), 10.0, 70.0), None);
+        assert_eq!(
+            settle(
+                &mut full,
+                (CENTER_X, SOIL_Y),
+                (10.0, 5.0, 10.0),
+                &pot,
+                ground
+            ),
+            None
+        );
         assert_eq!(full.len(), 1);
         for (i, a) in soil.iter().enumerate() {
             for b in &soil[i + 1..] {
@@ -1054,6 +1184,45 @@ mod tests {
                 assert!(d >= a.2 + b.2 - 1e-9, "{a:?} touches {b:?}");
             }
         }
+    }
+
+    /// A soil egg lies on open soil: off the trunk's foot, and short of the
+    /// rim's lip at the front.
+    #[test]
+    fn soil_eggs_lie_clear_of_the_trunk_and_the_lip() {
+        let pot = Pot {
+            hw: 120.0,
+            ry: 20.0,
+            depth: 30.0,
+            bw: 90.0,
+            glaze: Rgb::hex(0),
+        };
+        let trunk = [vec![
+            (CENTER_X, SOIL_Y + 12.0, 10.0),
+            (CENTER_X, SOIL_Y - 60.0, 8.0),
+        ]];
+        let ground = (&trunk[..], &[][..]);
+        let (x, _) = settle(
+            &mut Vec::new(),
+            (CENTER_X, SOIL_Y + 6.0),
+            (4.0, 2.0, 4.0),
+            &pot,
+            ground,
+        )
+        .unwrap();
+        assert!((x - CENTER_X).abs() >= 14.0, "on the trunk at {x}");
+        // Asked for at the very front, it lies back from the lip.
+        let (r, d) = (6.0, 3.0);
+        let (x, y) = settle(
+            &mut Vec::new(),
+            (CENTER_X + 30.0, SOIL_Y + 19.0),
+            (r, d, 2.0 * d),
+            &pot,
+            ground,
+        )
+        .unwrap();
+        let lip = SOIL_Y + (pot.ry - 1.2) * (1.0 - math::sq((x - CENTER_X) / pot.hw)).sqrt();
+        assert!(y + d <= lip - 2.0, "on the lip: {y} against {lip}");
     }
 
     /// Each seasonal egg shows in its season only, and the south's seasons
@@ -1105,5 +1274,18 @@ mod tests {
         let clear_low = (40, 240.0, 300.0);
         let ranked = rank(vec![covered_high, clear_high], vec![clear_low]);
         assert_eq!(ranked, vec![clear_high, clear_low, covered_high]);
+    }
+
+    /// A hanging egg's string starts in the wood as drawn, never in the air
+    /// beside it.
+    #[test]
+    fn a_string_hangs_from_the_underside_of_drawn_wood() {
+        let limb = [vec![(0.0, 100.0, 4.0), (50.0, 100.0, 4.0)]];
+        let wood = [&limb[..]];
+        // Just inside the underside, under the point it was asked for.
+        assert_eq!(underside(&wood, 20.0, 98.0), Some(102.4));
+        // Off the wood: in the air above it, or past its end.
+        assert_eq!(underside(&wood, 20.0, 88.0), None);
+        assert_eq!(underside(&wood, 60.0, 100.0), None);
     }
 }

@@ -811,10 +811,7 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
             };
             twig_at[ci] = Some(twigs.len());
             twigs.push((twig, tube(&seg, true, false).as_str().to_string(), *jin));
-            // A hairline crossing a plant is no matter; a branch is.
-            if seg.iter().any(|p| p.2 >= 1.2) {
-                twig_pieces.push(seg);
-            }
+            twig_pieces.push(seg);
             continue;
         }
         let piece = 36;
