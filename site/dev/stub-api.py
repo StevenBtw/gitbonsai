@@ -23,12 +23,14 @@ SEED = [  # the site's plates: login, style, languages
     ("sprout", "chokkan", ["Python"], 2),
     ("newcomer", "chokkan", ["Python", "TypeScript"], 17),
 ]
+EXAMPLES = {"tj", "torvalds", "steipete"}  # seeded as examples, so the tag shows locally
 
 
 def make_handler(args):
     entries = [
         {"login": l, "github_id": i + 1, "style": s, "languages": langs,
-         "added": f"2026-11-{21 - i:02d}T09:00:00Z", "grown": "2026-11-21T09:00:00Z", "stars": i % 3, "age_weeks": w}
+         "added": f"2026-11-{21 - i:02d}T09:00:00Z", "grown": "2026-11-21T09:00:00Z", "stars": i % 3, "age_weeks": w,
+         **({"example": True} if l in EXAMPLES else {})}
         for i, (l, s, langs, w) in enumerate([] if args.empty else SEED)
     ]
     stars = set()  # (client ip, lowercased login) pairs that are starred
@@ -158,7 +160,8 @@ def selftest(args):
     srv, B = run()
     code, _, body = call(B)
     lst = json.loads(body)["entries"]
-    assert code == 200 and len(lst) == 8 and all(len(e) == 8 for e in lst), lst
+    assert code == 200 and len(lst) == 8 and all(len(e) == 8 + ("example" in e) for e in lst), lst
+    assert {e["login"] for e in lst if e.get("example") is True} == EXAMPLES, lst
     before = lst[0]["stars"]
     a = json.loads(call(f"{B}/{lst[0]['login']}/star", "POST")[2])
     assert a["starred"] is True and a["stars"] == before + 1, a

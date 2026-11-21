@@ -32,6 +32,18 @@ test("parseList reads entries and drops malformed ones", () => {
   assert.equal(g.parseList({ entries: [{ ...good, languages: [] }] }).length, 1);
 });
 
+test("parseList marks an example only when the API says true", () => {
+  const good = e("tj");
+  const got = [true, false, undefined, "yes", null].map((example) => {
+    const entry = { ...good, example };
+    if (example === undefined) delete entry.example;
+    return g.parseList({ entries: [entry] });
+  });
+  assert.ok(got.every((list) => list.length === 1), "an example entry passes the other checks");
+  assert.deepEqual(got.map((list) => list[0].example), [true, false, false, false, false]);
+  assert.equal(g.parseList({ entries: [{ ...good, example: true, stars: "3" }] }).length, 0);
+});
+
 test("parseStarred lowercases and tolerates junk", () => {
   assert.deepEqual([...g.parseStarred({ starred: ["StevenBtw"] })], ["stevenbtw"]);
   assert.equal(g.parseStarred({}).size, 0);
