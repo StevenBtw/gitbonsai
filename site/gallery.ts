@@ -131,7 +131,7 @@ async function toggle(login: string): Promise<void> {
 }
 
 /* The grid */
-/** The quiet "Example" tag after the style, for the trees the exhibition starts with. */
+/** The quiet "Example" tag, for the trees the exhibition starts with: on a card's picture, and after the style in the large view. */
 function exampleTag(e: Entry): HTMLElement[] {
   if (!e.example) return [];
   const t = document.createElement("span");
@@ -163,8 +163,8 @@ function card(e: Entry, i: number): HTMLElement {
   const sty = document.createElement("span");
   sty.className = "sty";
   sty.textContent = e.style;
-  label.append(who, sty, ...exampleTag(e), starButton(e));
-  a.append(openBtn, label);
+  label.append(who, sty, starButton(e));
+  a.append(openBtn, ...exampleTag(e), label);
   return a;
 }
 function query(): Query {

@@ -22,8 +22,9 @@ SEED = [  # the site's plates: login, style, languages
     ("showcase", "moyogi", ["Java", "Python", "TypeScript"], 1000),
     ("sprout", "chokkan", ["Python"], 2),
     ("newcomer", "chokkan", ["Python", "TypeScript"], 17),
+    ("sindresorhus", "fukinagashi", ["JavaScript", "TypeScript"], 700),  # a long example login
 ]
-EXAMPLES = {"tj", "torvalds", "steipete"}  # seeded as examples, so the tag shows locally
+EXAMPLES = {"tj", "torvalds", "steipete", "sindresorhus"}  # seeded as examples, so the tag shows locally
 
 
 def make_handler(args):
@@ -160,7 +161,7 @@ def selftest(args):
     srv, B = run()
     code, _, body = call(B)
     lst = json.loads(body)["entries"]
-    assert code == 200 and len(lst) == 8 and all(len(e) == 8 + ("example" in e) for e in lst), lst
+    assert code == 200 and len(lst) == 9 and all(len(e) == 8 + ("example" in e) for e in lst), lst
     assert {e["login"] for e in lst if e.get("example") is True} == EXAMPLES, lst
     before = lst[0]["stars"]
     a = json.loads(call(f"{B}/{lst[0]['login']}/star", "POST")[2])
