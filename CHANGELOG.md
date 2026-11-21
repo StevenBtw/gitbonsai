@@ -4,7 +4,7 @@ All notable changes to gitbonsai, a Japanese maple bonsai grown from GitHub acti
 
 ## [0.5.1] - 2026-11-21
 
-Visual polish release: drawing faults from 0.5.0 are fixed, formal upright trees stand ever so slightly taller, and a timelapse can follow the tree's growth instead of the calendar. Every pot, formal uprights, small trunks, trees with a thick or white trunk or a second trunk, and every tree with fine twigs or dead twigs look a little different. The changes under Changed (taller formal uprights, rows lit as one, bark on small trunks) would make this a minor version; it ships as a patch because they finish the look of 0.5.0.
+Visual polish release: drawing faults from 0.5.0 are fixed, formal upright trees stand ever so slightly taller, and a timelapse can follow the tree's growth instead of the calendar. Every pot, formal uprights, small trunks, trees with a thick or white trunk or a second trunk, and every tree with fine twigs or dead twigs look a little different. The changes under Changed (taller formal uprights, roomier pots, rows lit as one, bark on small trunks) would make this a minor version; it ships as a patch because they finish the look of 0.5.0.
 
 ### Added
 
@@ -13,6 +13,7 @@ Visual polish release: drawing faults from 0.5.0 are fixed, formal upright trees
 ### Changed
 
 - **Formal uprights stand taller**: a chokkan crown is about as wide as it is tall (it was 1.2 times as wide), and its trunk keeps more girth toward the top; an old one such as torvalds stands 10 to 15% taller.
+- **Pots are repotted with room to grow**: at the spring repotting a pot fits the tree a year's growth ahead, and it is as deep as the trunk is wide at its foot, the usual rule, so many trees sit in a pot one size larger and deeper. A pot's depth now changes only at a repotting, as its size does, so a timelapse no longer shows it deepening week by week.
 - **A row has one light**: `gitbonsai row` lights every tree from the upper left, so trees side by side are never lit from opposite sides; a tree on its own is still lit from its open side.
 - **Small trunks show their bark**: a trunk too thin for the full light and shade of an old one gets a lit band and a bark line, so a young tree's trunk no longer looks flat.
 
