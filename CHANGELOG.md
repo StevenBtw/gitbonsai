@@ -13,7 +13,7 @@ Visual polish release: drawing faults from 0.5.0 are fixed, formal upright trees
 
 ### Changed
 
-- **Formal uprights stand taller**: a chokkan crown is about as wide as it is tall (it was 1.2 times as wide), and its trunk keeps more girth toward the top; an old one such as torvalds stands 10 to 15% taller.
+- **Formal uprights stand taller**: a chokkan crown is about as wide as it is tall (it was 1.2 times as wide), and its trunk keeps more girth toward the top; an old one stands 10 to 15% taller.
 - **Pots are repotted with room to grow**: at the spring repotting a pot fits the tree a year's growth ahead, and it is as deep as the trunk is wide at its foot, the usual rule, so many trees sit in a pot one size larger and deeper; a tree in one of the two smallest pots gets no head start. A pot's depth now changes only at a repotting, as its size does, so a timelapse no longer shows it deepening week by week; before a tree's first spring it still follows the trunk, and a cascade's deeper pot also follows its lean.
 - **A row has one light**: `gitbonsai row` lights every tree from the upper left, so trees side by side are never lit from opposite sides; a tree on its own is still lit from its open side.
 - **Small trunks show their bark**: a trunk too thin for the full light and shade of an old one gets a lit band and a bark line, so a young tree's trunk no longer looks flat.
@@ -21,7 +21,7 @@ Visual polish release: drawing faults from 0.5.0 are fixed, formal upright trees
 ### Fixed
 
 - **A tree grows without jumps**: what shapes the tree now moves a little each day instead of stepping on the 1st of a month, and a young branch moves over in a season instead of crossing the crown at once, so a weekly timelapse no longer shows the tree rebuilt from one week to the next. Most trees look a little different today.
-- **The trunk ends at its foot**: it no longer shows as a band on the soil under the roots, as on torvalds and jacobwilliams; a leaning trunk still goes into the soil.
+- **The trunk ends at its foot**: it no longer shows as a band on the soil under the roots; a leaning trunk still goes into the soil.
 - **Crossing twigs lie one over the other**: each twig keeps its outline, drawn back to front, so where two cross only the outline of the one in front shows, instead of both outlines running through each other; a twig grows from behind the twig it comes from.
 - **Dead twigs lie one over the other**: as living twigs do, so their ink outlines no longer meet in small triangles at forks and crossings, and a dead twig passes behind living ones as well as in front of them.
 - **A second trunk stays behind the first**: the shadow along it no longer pokes out beside the main trunk as a jagged wedge near the soil.
@@ -266,7 +266,7 @@ Growth release: every tree is regrown as an exhibition maple, short, wide and fu
 - **Movement follows rhythm**: irregular activity bends trunks and limbs more and steady activity grows straighter. `[tree] style` now nudges this movement (`chokkan` straighter, `shakan` and `fukinagashi` leaning).
 - **Old foliage thins**: a year's leaves count for half after four years; the wood stays.
 - **"History is never erased" replaces "wood never moves"**: the tree is restyled as it matures, but every active year keeps its place and the trunk never thins.
-- **The README**: a generated example with its legend, and five trees at one scale: a simulated newcomer, StevenBtw, tj, torvalds and steipete.
+- **The README**: a generated example with its legend, and five trees at one scale: a simulated newcomer and four real accounts.
 
 ### Removed
 
