@@ -694,9 +694,9 @@ pub fn eggs(
                 };
                 // It peeks from behind the trunk: out along the soil a short
                 // way, the leaf's length or the flower's radius, from where
-                // the trunk meets
-                // the soil, so its stem stands beside it however the trunk
-                // leans, then from the trunk at the plant's own height.
+                // the trunk meets the soil, so its stem stands beside it
+                // however the trunk leans, then from the trunk at the plant's
+                // own height.
                 let reach = if t == 3 {
                     10.0 * s
                 } else {
