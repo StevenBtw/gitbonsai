@@ -268,6 +268,25 @@ pub fn tube_from(
     d
 }
 
+/// The soft groove of shadow a strand lies in, along its piece `seg`: wider
+/// than the strand. On its first piece (`from_start`) it widens from the
+/// strand's own width, so its start stays hidden in the trunk the strand
+/// leaves instead of poking out beside it.
+fn groove(seg: &[(f64, f64, f64)], from_start: bool) -> Vec<(f64, f64, f64)> {
+    let n = seg.len().max(2) as f64;
+    seg.iter()
+        .enumerate()
+        .map(|(i, p)| {
+            let k = if from_start {
+                (2.0 * i as f64 / n).min(1.0)
+            } else {
+                1.0
+            };
+            (p.0, p.1, p.2 * (1.0 + 0.45 * k))
+        })
+        .collect()
+}
+
 /// Dead wood narrows toward its end the more it has bleached, to a point
 /// when white.
 pub fn weather_tip(pts: &mut [(f64, f64, f64, f64)], bleach: f64) {
@@ -735,11 +754,16 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
             } else if strand {
                 // A strand lies in a soft groove of its own shadow: it reads
                 // apart from the trunk without an outline.
-                let wide: Vec<(f64, f64, f64)> =
-                    seg.iter().map(|p| (p.0, p.1, p.2 * 1.45)).collect();
+                let wide = groove(&seg, start == 0);
                 format!(
                     r#"<path d="{}" fill="{}"/><path d="{}" fill="{}"/>"#,
-                    tube(&wide, last, true).as_str(),
+                    tube_from(
+                        &wide,
+                        start == 0 && scene.joins.contains_key(&ci),
+                        last,
+                        true
+                    )
+                    .as_str(),
                     base.shift(-0.1, 0.0),
                     d.as_str(),
                     base.shift(0.03, 0.0)
@@ -2022,6 +2046,18 @@ mod tests {
             let shade = crown_shadow(&pads, at);
             assert!(shade < 0.05, "{why}: {shade}");
         }
+    }
+
+    /// A strand's groove starts as wide as the strand, then widens: at the
+    /// start it never pokes out of the trunk the strand leaves.
+    #[test]
+    fn a_strands_groove_starts_at_its_own_width() {
+        let seg: Vec<(f64, f64, f64)> = (0..20).map(|i| (0.0, -f64::from(i), 4.0)).collect();
+        let g = groove(&seg, true);
+        assert!((g[0].2 - 4.0).abs() < 1e-9, "starts {:.2} wide", g[0].2);
+        assert!((g[19].2 - 5.8).abs() < 1e-9, "ends {:.2} wide", g[19].2);
+        // A later piece is a full groove all along.
+        assert!(groove(&seg, false).iter().all(|p| (p.2 - 5.8).abs() < 1e-9));
     }
 
     #[test]
