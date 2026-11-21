@@ -19,6 +19,7 @@ Fix release: drawing faults from 0.5.0, and formal upright trees stand taller. E
 - **Dead twigs lie one over the other**: as living twigs do, so their ink outlines no longer meet in small triangles at forks and crossings, and a dead twig passes behind living ones as well as in front of them.
 - **A second trunk stays behind the first**: the shadow along it no longer pokes out beside the main trunk as a jagged wedge near the soil.
 - **Shadow bands stay on the wood**: where a trunk or limb bends, as at the trunk's foot, the dark band along it no longer cuts across the bend and shows as a loose line beside the wood or on the soil.
+- **Bare windswept crowns branch out**: a resting windswept tree's bare twigs grow from one another instead of all from one spot on long stems, so its crown no longer reads as a comb of parallel lines.
 - **Pot details stay on the pot**: a crackle glaze line no longer runs under a foot, and the ribs of the plain training pot no longer reach past its bottom.
 - **Achievement tiers carry the day they were reached**: `collect` dates a tier above the first by the pull request merge or accepted answer that GitHub links to it, and repairs a date an earlier run recorded as the day it first saw the tier, so `--as-of` and a timelapse show an older account as it was. A tier with no linked pull request or answer keeps the day it was first seen.
 - **The rim sits on the pot**: a band across the pot's edge that tapers into its sides, shaded in steps with the wall, instead of a stroke whose square ends stuck out at both sides.
