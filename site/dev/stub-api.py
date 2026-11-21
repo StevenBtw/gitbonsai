@@ -98,7 +98,13 @@ def make_handler(args):
             if t:  # "See your own tree", so a sign-in that comes back can grow the tree again
                 e = find(t.group(1)) or {"login": t.group(1), "style": "moyogi"}
                 leg = "-legend" if q.get("legend") == "1" else ""
-                pic = lambda th: open(f"{args.hero}/{e['login'].lower() if find(t.group(1)) else 'showcase'}{leg}-{th}.svg", encoding="utf-8").read()
+                own = e["login"].lower() if find(t.group(1)) else "showcase"
+
+                def pic(th):
+                    try:
+                        return open(f"{args.hero}/{own}{leg}-{th}.svg", encoding="utf-8").read()
+                    except OSError:  # a tree without a plate of its own, as for its gallery picture
+                        return open(f"{args.hero}/showcase{leg}-{th}.svg", encoding="utf-8").read()
                 return self.send(200, {"login": e["login"], "observed_on": "2026-W47", "style": e["style"], "gitbonsai": "stub",
                                        "legend": bool(leg), "light": pic("light"), "dark": pic("dark")})
             m = re.match(r"^/v1/gallery/([^/]+)/(legend-)?(light|dark)\.svg$", u.path)
@@ -174,6 +180,8 @@ def selftest(args):
     assert code == 302 and "gallery=added&login=tj" in h["Location"], (code, dict(h))
     assert call(f"{B}/auth?login=a--b&action=add&legend=0")[0] == 400
     assert call(f"{B}/tj/dark.svg?v=x")[0] == 200 and call(f"{B}/tj/legend-light.svg")[0] == 200
+    tree = B.replace("/v1/gallery", "/v1/tree")
+    assert call(f"{tree}/sindresorhus")[0] == 200 and call(f"{tree}/sindresorhus?legend=1")[0] == 200, "a tree without a plate"
     assert call(f"{B}/nobody/dark.svg")[0] == 404 and call(f"{B}/tj-dark.svg")[0] == 404
     srv.shutdown()
     srv, B = run(["--fail"])
