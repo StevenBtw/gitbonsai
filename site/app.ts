@@ -1,5 +1,6 @@
 // gitbonsai.dev: the theme toggle, the timelapse player, "see your own tree"
 // (api.gitbonsai.dev) and the how-to. Compiled to app.js by build.sh.
+import { API as API_BASE, authUrl, cleanLogin, parseResult, resultText } from "./gallery-core.js";
 
 /** The element with `id`; the page always has it. */
 function $<T extends HTMLElement = HTMLElement>(id: string): T {
@@ -447,7 +448,7 @@ fetch("frames.json")
   );
 
 /* Your tree: grown by api.gitbonsai.dev, shown only as <img> from a blob URL */
-const API = "https://api.gitbonsai.dev/v1/tree/";
+const API = `${API_BASE}/v1/tree/`;
 /** A 200 from the API. */
 interface Tree {
   login: string;
@@ -584,6 +585,74 @@ $("form").addEventListener("submit", (e) => {
 legend.addEventListener("change", () => {
   if (asked) void fetchTree(asked);
 });
+
+/* The exhibition opt-in: a GitHub sign-in proves the tree is the visitor's own */
+const option = $<HTMLInputElement>("option");
+const optionDialog = $<HTMLDialogElement>("option-dialog");
+const optionGo = $<HTMLButtonElement>("option-go");
+const loginInput = $<HTMLInputElement>("login");
+// With a username typed, only its owner can show it; with none, the sign-in says whose tree it is.
+function optionText(): void {
+  const typed = loginInput.value.trim().replace(/^@/, "").trim();
+  const login = cleanLogin(typed);
+  optionGo.disabled = Boolean(typed) && !login;
+  optionGo.textContent = login ? "Sign in with GitHub to show it" : "Sign in with GitHub to show yours";
+  $("option-who").textContent = login
+    ? `Only the owner of @${login} can show this tree. GitHub will ask you to confirm it's you.`
+    : typed
+      ? "That isn't a GitHub username: letters, digits and single hyphens, up to 39 characters."
+      : "Sign in with GitHub and your own tree goes on show. GitHub will ask you to confirm it's you.";
+}
+// Not modal: it covers only the tree's plate, so the username field stays usable beside it.
+function optionClose(): void {
+  option.checked = false;
+  if (optionDialog.open) optionDialog.close();
+}
+option.addEventListener("change", () => {
+  if (!option.checked) return optionClose();
+  optionText();
+  optionDialog.show();
+  optionGo.focus();
+});
+loginInput.addEventListener("input", optionText);
+$("option-no").addEventListener("click", () => {
+  optionClose();
+  option.focus();
+});
+// Escape closes it from anywhere, also while typing the username beside it.
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape" || !optionDialog.open) return;
+  e.preventDefault();
+  const inside = optionDialog.contains(document.activeElement);
+  optionClose();
+  if (inside) option.focus();
+});
+optionGo.addEventListener("click", () => {
+  const typed = loginInput.value.trim();
+  const login = cleanLogin(typed);
+  if (login || !typed) location.assign(authUrl(login ?? "", "add", legend.checked));
+});
+// Back from GitHub: say how it went and grow the tree again, as it was asked for.
+const back = parseResult(location.search, "add");
+if (back) {
+  history.replaceState(null, "", `${location.pathname}#yours`);
+  const line = $("option-result");
+  const text = resultText("add", back.flag, back.login);
+  if (back.flag === "added") {
+    const see = document.createElement("a");
+    see.href = `exhibition.html#${encodeURIComponent(back.login)}`;
+    see.textContent = "See it →";
+    line.append(text.replace(" See it →", " "), see);
+  } else {
+    line.textContent = text;
+  }
+  if (back.login) {
+    loginInput.value = back.login;
+    legend.checked = back.legend;
+    void fetchTree(back.login);
+  }
+  $("yours").scrollIntoView();
+}
 
 /* How-to: the drawn screen plays the three steps in a loop, in step with the list */
 const scenes = [...document.querySelectorAll<HTMLElement>(".scene")];
