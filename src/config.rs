@@ -158,6 +158,12 @@ pub struct RenderConfig {
     pub size: u32,
     /// A legend beside the tree: what the colors and signs mean.
     pub legend: Legend,
+    /// For a row of trees lit as one: every tree is lit as a tree growing
+    /// to this side is, `+1` right (light from the upper left) or `-1` left
+    /// (from the upper right). `None` lights a tree from its own open side.
+    /// Not set from a config file.
+    #[serde(skip)]
+    pub light: Option<f64>,
 }
 
 impl Default for RenderConfig {
@@ -166,6 +172,7 @@ impl Default for RenderConfig {
             animate: true,
             size: 400,
             legend: Legend::Off,
+            light: None,
         }
     }
 }

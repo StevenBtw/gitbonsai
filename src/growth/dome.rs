@@ -1125,8 +1125,8 @@ impl Dome {
     }
 }
 
-/// A formal upright's foliage triangle, heights above the soil: about 1.5
-/// times as wide as the tree is tall, its base a fifth of the way up.
+/// A formal upright's foliage triangle, heights above the soil: about as
+/// wide as the tree is tall ([`CONE_WIDE`]), its base about a third of the way up.
 #[derive(Debug, Clone, Copy)]
 struct Cone {
     /// Half-width at the base.
@@ -1156,8 +1156,9 @@ impl Cone {
     }
 }
 
-/// How much wider than tall a formal upright's triangle stands.
-const CONE_WIDE: f64 = 1.2;
+/// How much wider than tall a formal upright's triangle stands: about as
+/// wide as it is tall, so an old one stands up and never squats as a dome.
+const CONE_WIDE: f64 = 1.05;
 
 /// How much of a formal upright's height its trunk stands bare before the
 /// first limb: the straight trunk shows, the triangle stands on it.
@@ -1168,6 +1169,10 @@ const LIMB_RISE: f64 = 0.6;
 
 /// A formal upright's foliage layers on each side.
 const LAYERS: f64 = 4.0;
+
+/// The share of a formal upright's extra girth laid evenly up its trunk
+/// above the nebari: the trunk tapers less, its top keeps some girth.
+const TRUNK_UP: f64 = 0.25;
 
 /// A crown arm placed: (index into the arms, angle, reach, chain).
 type Placed = (usize, f64, f64, usize);
@@ -3597,29 +3602,38 @@ fn girth(sk: &mut Skeleton, c: &Ctx, wood: &Wood) {
     for n in sk.nodes.iter_mut().filter(|n| !dead(n)) {
         n.own *= k;
     }
-    // A formal upright's girth sits low: the lower trunk swells into a
-    // broad nebari, and above a third of its height it is as before.
     if extra > 0.0 {
-        let main = &chains[0];
-        let m = main.len().max(2) as f64;
-        let low = 0.35;
-        let foot = 0.6;
-        for (i, &n) in main.iter().enumerate() {
-            let u = i as f64 / (m - 1.0);
-            if u < low {
-                sk.nodes[n].own += (1.0 - foot) * extra * 3.0 * math::sq(1.0 - u / low) / (low * m);
-            }
-        }
-        for (k, w) in [(1usize, 0.55), (2, 0.3), (3, 0.15)] {
-            if let Some(&i) = main.get(k) {
-                sk.nodes[i].own += foot * extra * w;
-            }
-        }
+        lay_trunk_extra(sk, &chains[0], extra, wood.tier);
     }
     flare(sk, &chains[0].clone());
     limbs_within_trunk(sk, wood);
     for n in &mut sk.nodes {
         n.own *= f;
+    }
+}
+
+/// Lays a formal upright's `extra` girth along its `main` trunk. Most sits
+/// low: the lower trunk swells into a broad nebari. A share ([`TRUNK_UP`])
+/// runs evenly up the rest, so the trunk tapers less, as far as the tree
+/// stands formal upright now (`tier`): a tree that was once keeps its old
+/// girth low, and its leader stays a leader.
+fn lay_trunk_extra(sk: &mut Skeleton, main: &[usize], extra: f64, tier: f64) {
+    let m = main.len().max(2) as f64;
+    let low = 0.35;
+    let up = TRUNK_UP * tier.clamp(0.0, 1.0);
+    let foot = 0.6 * (1.0 - up);
+    for (i, &n) in main.iter().enumerate() {
+        let u = i as f64 / (m - 1.0);
+        sk.nodes[n].own += if u < low {
+            (1.0 - up - foot) * extra * 3.0 * math::sq(1.0 - u / low) / (low * m)
+        } else {
+            up * extra / ((1.0 - low) * m)
+        };
+    }
+    for (k, w) in [(1usize, 0.55), (2, 0.3), (3, 0.15)] {
+        if let Some(&i) = main.get(k) {
+            sk.nodes[i].own += foot * extra * w;
+        }
     }
 }
 
@@ -3955,6 +3969,61 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// A formal upright's triangle stands about as tall as it is wide, never
+    /// more than 5% wider.
+    #[test]
+    fn a_formal_uprights_crown_is_about_as_tall_as_it_is_wide() {
+        for big_s in [88.0, 119.0, 188.0] {
+            let k = Cone::of(big_s, 40.0, 0.5);
+            assert!(
+                1.05 * k.h_top >= 2.0 * k.w_b - 1e-9,
+                "{big_s}: {:.0} tall, {:.0} wide",
+                k.h_top,
+                2.0 * k.w_b
+            );
+        }
+    }
+
+    /// A formal upright's extra girth is not all in its nebari: a share of
+    /// it runs up the trunk, so the trunk tapers less.
+    #[test]
+    fn a_formal_uprights_girth_runs_up_its_trunk() {
+        let mut sk = root_only();
+        let lang: Lang = Some("C".to_string());
+        let mut main = vec![0];
+        for i in 1..88 {
+            let p = *main.last().unwrap_or(&0);
+            main.push(crate::growth::wood::add(
+                &mut sk,
+                (CENTER_X, SOIL_Y - f64::from(i)),
+                0.0,
+                p,
+                &lang,
+            ));
+        }
+        let laid = |tier: f64| {
+            let mut sk = sk.clone();
+            lay_trunk_extra(&mut sk, &main, 88.0, tier);
+            sk.flows()
+        };
+        let flow = laid(1.0);
+        let total = flow[0];
+        assert!((total - 88.0).abs() < 3.0, "{total:.1} laid of 88");
+        let at = flow[main[53]];
+        assert!(
+            at >= 8.8,
+            "only {at:.1} of 88 carried above 60% of the trunk"
+        );
+        // A tree no longer formal upright keeps its old girth low: none of
+        // it runs up a leader that is not a formal upright's.
+        let flow = laid(0.0);
+        assert!(
+            flow[main[53]] < 1e-9,
+            "{:.1} carried up a tree no longer formal",
+            flow[main[53]]
+        );
     }
 
     /// A language dropped long ago, a small part of its busy years, still

@@ -1931,3 +1931,112 @@ fn the_pot_never_shrinks() {
         }
     }
 }
+
+/// The trunk is cut level at its foot, so nothing of it lies on the soil
+/// under the roots; and each twig is drawn as its own outlined path.
+#[test]
+fn the_trunk_ends_at_its_foot_and_twigs_are_drawn_one_by_one() {
+    let (mut layered, mut dead_layered, mut dead_behind) = (false, false, false);
+    for f in fixtures::all() {
+        let b = Bonsai::grow(&f.snapshot, &Config::default(), None);
+        if b.is_empty() || gitbonsai::sprout::is_sprout(&b) {
+            continue;
+        }
+        let svg = render::svg(&b, &Config::default(), Theme::Light);
+        let clip = svg
+            .split(r#"<clipPath id="soil"><path d=""#)
+            .nth(1)
+            .and_then(|r| r.split('"').next())
+            .unwrap_or_else(|| panic!("{}: no soil clip", f.name));
+        // Cut level at the foot: straight lines only, no arc or curve.
+        assert!(
+            clip.chars()
+                .filter(char::is_ascii_alphabetic)
+                .all(|c| "MmLlHhVvZz".contains(c)),
+            "{}: the soil cut curves",
+            f.name
+        );
+        // Each twig is its own outlined path, so one can hide the outline of
+        // another instead of all merging into one shape. Their order, back
+        // to front, is not checked here.
+        // Dead twigs too, in their own ink, layered with the living ones:
+        // a living twig can lie in front of a dead one.
+        let twigs = svg
+            .split(r#"stroke-width="0.35" stroke-linejoin="round">"#)
+            .nth(1)
+            .unwrap_or("");
+        layered |= twigs
+            .split("<g")
+            .next()
+            .is_some_and(|g| g.matches("<path d=").count() > 1);
+        dead_layered |= twigs.split(r#"stroke-width=".7">"#).skip(1).any(|run| {
+            run.split("</g>")
+                .next()
+                .is_some_and(|g| g.matches("<path d=").count() > 1)
+        });
+        dead_behind |= twigs.split(r#"stroke-width=".7">"#).skip(1).any(|run| {
+            run.split_once("</g>")
+                .is_some_and(|(_, after)| after.starts_with("<path d="))
+        });
+    }
+    assert!(layered, "no tree draws its twigs one by one");
+    assert!(dead_layered, "no tree draws its dead twigs one by one");
+    assert!(dead_behind, "no dead twig lies behind a living one");
+}
+
+/// A row of trees is lit by one light: a left tree under it casts its
+/// shadow the way a right tree does, and it stands exactly as before.
+#[test]
+fn one_light_lights_a_row_from_one_side() {
+    // The pot's middle on the canvas.
+    const CENTER_X: f64 = 256.0;
+    let shadow = |svg: &str| -> f64 {
+        let at = svg
+            .find(r##"ry="4" fill="#3b3226" opacity=".16"/>"##)
+            .expect("a soil shadow");
+        let cx = &svg[..at]
+            .rsplit(r#"<ellipse cx=""#)
+            .next()
+            .expect("its ellipse");
+        cx.split('"')
+            .next()
+            .and_then(|v| v.parse().ok())
+            .expect("its cx")
+    };
+    let soil = |svg: &str| {
+        svg.split(r#"<clipPath id="soil">"#)
+            .nth(1)
+            .map(|r| r.split("</clipPath>").next().unwrap_or("").to_string())
+    };
+    let mut row = Config::default();
+    row.render.light = Some(1.0);
+    let mut left = 0;
+    for f in fixtures::all() {
+        let b = Bonsai::grow(&f.snapshot, &Config::default(), None);
+        if b.is_empty() || gitbonsai::sprout::is_sprout(&b) {
+            continue;
+        }
+        let own = render::svg(&b, &Config::default(), Theme::Light);
+        let lit = render::svg(&b, &row, Theme::Light);
+        assert!(
+            shadow(&lit) > CENTER_X,
+            "{}: the row is not lit from the upper left",
+            f.name
+        );
+        assert_eq!(
+            soil(&own),
+            soil(&lit),
+            "{}: the row's light moved the tree",
+            f.name
+        );
+        if b.leader.side < 0.0 {
+            left += 1;
+            assert!(
+                shadow(&own) < CENTER_X,
+                "{}: a left tree on its own is not lit from its open side, the upper right",
+                f.name
+            );
+        }
+    }
+    assert!(left > 0, "no fixture grows left");
+}
