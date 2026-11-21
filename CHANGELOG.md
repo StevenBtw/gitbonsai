@@ -9,7 +9,7 @@ Fix release: two drawing faults from 0.5.0. Trees with a thick or white trunk, a
 ### Fixed
 
 - **The trunk ends at its foot**: it no longer shows as a band on the soil under the roots, as on torvalds and jacobwilliams; a leaning trunk still goes into the soil.
-- **Twigs are shaded, not outlined**: each twig has a darker underside away from the light instead of a dark line along both edges, so it reads round like the limbs.
+- **Crossing twigs lie one over the other**: each twig keeps its outline, drawn back to front, so where two cross only the outline of the one in front shows, instead of both outlines running through each other; a twig grows from behind the twig it comes from.
 
 ## [0.5.0] - 2026-11-21
 
