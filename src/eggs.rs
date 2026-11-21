@@ -659,7 +659,7 @@ pub fn eggs(
             // clear beside the trunk tries the small one, lower, under the
             // branch in its way.
             let kinds = match (t, slender) {
-                (3, _) => vec![(crate::galaxy::begonia(), 18.0, 28.0, 1.07)],
+                (3, _) => vec![(crate::galaxy::begonia(), 18.0, 28.0, 0.86)],
                 (_, true) => vec![small],
                 _ => vec![big, small],
             };
