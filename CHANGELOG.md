@@ -15,7 +15,7 @@ Fix release: drawing faults from 0.5.0, and formal upright trees stand taller. F
 
 - **The trunk ends at its foot**: it no longer shows as a band on the soil under the roots, as on torvalds and jacobwilliams; a leaning trunk still goes into the soil.
 - **Crossing twigs lie one over the other**: each twig keeps its outline, drawn back to front, so where two cross only the outline of the one in front shows, instead of both outlines running through each other; a twig grows from behind the twig it comes from.
-- **Dead twigs lie one over the other**: as living twigs do, so their ink outlines no longer meet in small triangles at forks and crossings.
+- **Dead twigs lie one over the other**: as living twigs do, so their ink outlines no longer meet in small triangles at forks and crossings, and a dead twig passes behind living ones as well as in front of them.
 - **A second trunk stays behind the first**: the shadow along it no longer pokes out beside the main trunk as a jagged wedge near the soil.
 
 ## [0.5.0] - 2026-11-21
