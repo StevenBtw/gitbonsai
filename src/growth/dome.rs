@@ -3504,6 +3504,7 @@ fn dome_clouds(
                     (1.0 - g) * left,
                 );
                 bleach_from(sk, n0, g);
+                fans.push(at);
             }
         }
         // As the leaves fall, the cloud's place shows a fan of bare twigs,

@@ -1386,7 +1386,7 @@ mod tests {
         s
     }
 
-    /// `Fake` with an achievements page of one starstruck x2, counting the
+    /// `Fake` with an achievements page of a starstruck x2 and a yolo, counting the
     /// detail pages asked for.
     struct Paged {
         fake: Fake,
@@ -1400,7 +1400,7 @@ mod tests {
                 return None;
             }
             Some(
-                r#"<a href="/octo?achievement=starstruck&amp;tab=achievements"><span class="achievement-tier-label--gold">x2</span></a>"#
+                r#"<a href="/octo?achievement=starstruck&amp;tab=achievements"><span class="achievement-tier-label--gold">x2</span></a><a href="/octo?achievement=yolo&amp;tab=achievements"></a>"#
                     .into(),
             )
         }
@@ -1438,6 +1438,11 @@ mod tests {
         assert_eq!(
             s.achievement_dates["starstruck"], previous.achievement_dates["starstruck"],
             "no history found: the recorded dates stay"
+        );
+        assert_eq!(s.achievements["yolo"], 1, "the page lists yolo");
+        assert_eq!(
+            s.achievement_dates["yolo"], previous.achievement_dates["yolo"],
+            "a first tier keeps its date"
         );
     }
 
