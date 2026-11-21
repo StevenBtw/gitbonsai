@@ -20,6 +20,7 @@ Visual polish release: drawing faults from 0.5.0 are fixed, formal upright trees
 
 ### Fixed
 
+- **A tree grows without jumps**: what shapes the tree now moves a little each day instead of stepping on the 1st of a month, and a young branch moves over in a season instead of crossing the crown at once, so a weekly timelapse no longer shows the tree rebuilt from one week to the next. Most trees look a little different today.
 - **The trunk ends at its foot**: it no longer shows as a band on the soil under the roots, as on torvalds and jacobwilliams; a leaning trunk still goes into the soil.
 - **Crossing twigs lie one over the other**: each twig keeps its outline, drawn back to front, so where two cross only the outline of the one in front shows, instead of both outlines running through each other; a twig grows from behind the twig it comes from.
 - **Dead twigs lie one over the other**: as living twigs do, so their ink outlines no longer meet in small triangles at forks and crossings, and a dead twig passes behind living ones as well as in front of them.
