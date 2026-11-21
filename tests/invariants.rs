@@ -1932,6 +1932,44 @@ fn the_pot_never_shrinks() {
     }
 }
 
+/// The pot changes only at a repotting, its depth too: between two springs,
+/// with no repotting in a growth spurt, the pot keeps its width and depth
+/// however much the trunk thickens.
+#[test]
+fn the_pot_keeps_its_depth_between_repottings() {
+    // The pot's foot, from its shadow on the table.
+    let foot = |b: &Bonsai| {
+        let svg = render::svg(b, &Config::default(), Theme::Light);
+        svg.split(r##"" ry="4" fill="#3b3226" opacity=".16""##)
+            .next()
+            .and_then(|s| s.rsplit(r#"cy=""#).next())
+            .and_then(|s| s.split('"').next())
+            .and_then(|s| s.parse::<f64>().ok())
+            .expect("a pot shadow")
+    };
+    let mut held = 0;
+    for name in ["steady", "showcase", "veteran", "comeback", "polyglot"] {
+        let frames: Vec<_> = monthly(name)
+            .into_iter()
+            .filter(|(_, b)| !b.is_empty() && !gitbonsai::sprout::is_sprout(b))
+            .map(|(day, b)| (day, b.pot, foot(&b)))
+            .collect();
+        for pair in frames.windows(2) {
+            let ((_, pot_a, foot_a), (day, pot_b, foot_b)) = (pair[0], pair[1]);
+            // Repotted on the first of March, the start of spring.
+            if pot_a != pot_b || day.ymd().1 == 3 {
+                continue;
+            }
+            held += 1;
+            assert!(
+                (foot_a - foot_b).abs() < 1e-9,
+                "{name} {day}: the pot's foot moved from {foot_a} to {foot_b}"
+            );
+        }
+    }
+    assert!(held > 100, "only {held} months checked");
+}
+
 /// The trunk is cut level at its foot, so nothing of it lies on the soil
 /// under the roots; and each twig is drawn as its own outlined path.
 #[test]

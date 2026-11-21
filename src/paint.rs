@@ -1630,7 +1630,9 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
             .first()
             .and_then(|c| c.0.first())
             .map_or(1.0, |p| p.1);
-    let depth = (base_r * 1.6).clamp(20.0, 56.0);
+    // As deep as the trunk it was repotted for is wide, the usual rule: the
+    // depth changes only at a repotting, as the size does.
+    let depth = (b.pot_girth * 2.0).clamp(20.0, 56.0);
     // A semi-cascade stands in a deeper, narrower pot, its rim inside the
     // point where the trunk spills over it.
     let k = {
