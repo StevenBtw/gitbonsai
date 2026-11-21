@@ -20,6 +20,9 @@ Fix release: drawing faults from 0.5.0, and formal upright trees stand taller. E
 - **A second trunk stays behind the first**: the shadow along it no longer pokes out beside the main trunk as a jagged wedge near the soil.
 - **Shadow bands stay on the wood**: where a trunk or limb bends, as at the trunk's foot, the dark band along it no longer cuts across the bend and shows as a loose line beside the wood or on the soil.
 - **Bare windswept crowns branch out**: a resting windswept tree's bare twigs grow from one another instead of all from one spot on long stems, so its crown no longer reads as a comb of parallel lines.
+- **Dead wood leaves the bark cleanly**: a dead limb runs out of the bark it leaves, without a round end and a line across it, a dead twig starts on the wood it grows from, and dead wood shows no ink line where its pieces meet.
+- **Thin dead whips end in the crown**: a long dead whip with no forks is cut back where the crown no longer reaches over it; a branched dead top stays whole.
+- **Small clouds show no grey patch**: a cloud with few leaves no longer shows its solid backing below them.
 - **Pot details stay on the pot**: a crackle glaze line no longer runs under a foot, and the ribs of the plain training pot no longer reach past its bottom.
 - **Achievement tiers carry the day they were reached**: `collect` dates a tier above the first by the pull request merge or accepted answer that GitHub links to it, and repairs a date an earlier run recorded as the day it first saw the tier, so `--as-of` and a timelapse show an older account as it was. A tier with no linked pull request or answer keeps the day it was first seen.
 - **The rim sits on the pot**: a band across the pot's edge that tapers into its sides, shaded in steps with the wall, instead of a stroke whose square ends stuck out at both sides.
