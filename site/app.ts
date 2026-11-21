@@ -365,7 +365,33 @@ function select(id: string): void {
   if (pick) picks.scrollLeft += pick.getBoundingClientRect().left - picks.getBoundingClientRect().left - 16;
   load(false);
   label(last());
+  fitCaption();
 }
+/** Holds the caption at the height of the chosen tree's longest one, so the page doesn't jump while it plays. */
+function fitCaption(): void {
+  if (!FRAMES || !cur) return;
+  const c = $("caption");
+  // A hidden twin does the measuring: the caption is a live region, so only what it shows is read out.
+  const m = document.createElement("p");
+  m.className = c.className;
+  m.setAttribute("aria-hidden", "true");
+  m.style.cssText = `position: absolute; visibility: hidden; box-sizing: border-box; width: ${c.getBoundingClientRect().width}px`;
+  c.after(m);
+  let h = 0;
+  for (const d of new Set(T().frames.map((f) => f.d))) {
+    m.textContent = d;
+    h = Math.max(h, m.getBoundingClientRect().height);
+  }
+  m.remove();
+  c.style.minHeight = `${Math.ceil(h)}px`;
+}
+// A new width, or the web font arriving, wraps the captions differently.
+void document.fonts.ready.then(fitCaption);
+let fitting = 0;
+addEventListener("resize", () => {
+  cancelAnimationFrame(fitting);
+  fitting = requestAnimationFrame(fitCaption);
+});
 function label(i: number): void {
   const f = T().frames[i];
   if (!f) return;

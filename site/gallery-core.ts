@@ -16,6 +16,8 @@ export interface Entry {
   stars: number;
   /** The tree's age in weeks; -1 when the API didn't say. */
   age_weeks: number;
+  /** One of the example trees the exhibition starts with, not an owner's own. */
+  example: boolean;
 }
 export type Sort = "new" | "stars" | "az";
 /** The page's filters; "" means any. */
@@ -64,7 +66,11 @@ export function parseList(body: unknown): Entry[] {
   if (!Array.isArray(list)) return [];
   return list.filter(isEntry).map((e) => {
     const a = (e as { age_weeks?: unknown }).age_weeks;
-    return { ...e, age_weeks: typeof a === "number" && Number.isFinite(a) && a >= 0 ? Math.floor(a) : -1 };
+    return {
+      ...e,
+      age_weeks: typeof a === "number" && Number.isFinite(a) && a >= 0 ? Math.floor(a) : -1,
+      example: (e as { example?: unknown }).example === true,
+    };
   });
 }
 

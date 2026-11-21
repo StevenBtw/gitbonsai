@@ -114,7 +114,7 @@ section { padding-block: 72px; border-bottom: 1px solid var(--border); }
 input[type="range"] { width: 100%; accent-color: var(--primary); }
 @media (max-width: 760px) {
   .player { grid-template-columns: minmax(0, 1fr); }
-  .picks { border-right: 0; border-bottom: 1px solid var(--border-strong); grid-auto-flow: column; grid-auto-columns: minmax(150px, 1fr); overflow-x: auto; }
+  .picks { border-right: 0; border-bottom: 1px solid var(--border-strong); grid-auto-flow: column; grid-auto-columns: minmax(max-content, 1fr); overflow-x: auto; }
   .pick { border-bottom: 0; border-right: 1px solid var(--border); }
   .pick .s { display: none; }
   .pick[aria-checked="true"]::before { left: 0; right: 0; top: auto; width: auto; height: 2px; }
@@ -270,7 +270,8 @@ footer a { color: var(--muted-foreground); }
 .linklike { all: unset; cursor: pointer; color: var(--foreground); text-decoration: underline; text-underline-offset: 3px; }
 .linklike:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .gallery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
-.card { display: flex; flex-direction: column; min-width: 0; background: var(--background); }
+.card { position: relative; display: flex; flex-direction: column; min-width: 0; background: var(--background); }
+.card > .tag { position: absolute; top: 10px; left: 10px; background: var(--background); pointer-events: none; }
 .card .open { all: unset; box-sizing: border-box; cursor: zoom-in; display: block; aspect-ratio: 5 / 4; padding: 16px; border-radius: var(--radius-box) var(--radius-box) 0 0; }
 .card .open img { display: block; width: 100%; height: 100%; object-fit: contain; object-position: center bottom; }
 .card .open:hover { background: var(--muted); }
@@ -278,7 +279,8 @@ footer a { color: var(--muted-foreground); }
 .card-label { margin-top: auto; display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 6px 0 14px; border-top: 1px solid var(--border-strong); }
 .card-label .who { font: 400 14px var(--font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .sty { font: 500 10px var(--font-mono); letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted-foreground); }
-.star { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 40px; height: 40px; margin-left: auto; padding: 0 8px; border: 0; border-radius: var(--radius-control); background: transparent; color: var(--muted-foreground); font: 500 13px var(--font-mono); font-variant-numeric: tabular-nums; cursor: pointer; }
+.tag { flex: none; font: 500 10px/1 var(--font-mono); letter-spacing: 1.1px; text-transform: uppercase; color: var(--muted-foreground); border: 1px solid var(--border); border-radius: 999px; padding: 3px 7px; white-space: nowrap; }
+.star { flex: none; display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 40px; height: 40px; margin-left: auto; padding: 0 8px; border: 0; border-radius: var(--radius-control); background: transparent; color: var(--muted-foreground); font: 500 13px var(--font-mono); font-variant-numeric: tabular-nums; cursor: pointer; }
 .star svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linejoin: round; }
 .star:hover:enabled { color: var(--foreground); background: var(--muted); }
 .star[aria-pressed="true"] { color: var(--primary); }
@@ -291,6 +293,13 @@ footer a { color: var(--muted-foreground); }
 .gview-head h2 { font: 400 15px var(--font-mono); }
 .gview-head h2 a { color: var(--foreground); }
 .gview-head .icon-btn { margin-left: auto; }
+@media (max-width: 480px) {
+  /* The name and Close on the first row, the style and tag below it, so a long name never pushes Close off. */
+  .gview-head { flex-wrap: wrap; row-gap: 4px; }
+  .gview-head h2 { flex: 1 0 calc(100% - 52px); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .gview-head .icon-btn { order: 1; }
+  .gview-head .sty, .gview-head .tag { order: 2; }
+}
 .gview-art { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 16px; }
 .gview-art img { width: 100%; max-height: calc(100dvh - 220px); object-fit: contain; }
 .gnav[hidden] { visibility: hidden; display: grid; }

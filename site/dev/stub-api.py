@@ -22,13 +22,16 @@ SEED = [  # the site's plates: login, style, languages
     ("showcase", "moyogi", ["Java", "Python", "TypeScript"], 1000),
     ("sprout", "chokkan", ["Python"], 2),
     ("newcomer", "chokkan", ["Python", "TypeScript"], 17),
+    ("sindresorhus", "fukinagashi", ["JavaScript", "TypeScript"], 700),  # a long example login
 ]
+EXAMPLES = {"tj", "torvalds", "steipete", "sindresorhus"}  # seeded as examples, so the tag shows locally
 
 
 def make_handler(args):
     entries = [
         {"login": l, "github_id": i + 1, "style": s, "languages": langs,
-         "added": f"2026-11-{21 - i:02d}T09:00:00Z", "grown": "2026-11-21T09:00:00Z", "stars": i % 3, "age_weeks": w}
+         "added": f"2026-11-{21 - i:02d}T09:00:00Z", "grown": "2026-11-21T09:00:00Z", "stars": i % 3, "age_weeks": w,
+         **({"example": True} if l in EXAMPLES else {})}
         for i, (l, s, langs, w) in enumerate([] if args.empty else SEED)
     ]
     stars = set()  # (client ip, lowercased login) pairs that are starred
@@ -95,7 +98,13 @@ def make_handler(args):
             if t:  # "See your own tree", so a sign-in that comes back can grow the tree again
                 e = find(t.group(1)) or {"login": t.group(1), "style": "moyogi"}
                 leg = "-legend" if q.get("legend") == "1" else ""
-                pic = lambda th: open(f"{args.hero}/{e['login'].lower() if find(t.group(1)) else 'showcase'}{leg}-{th}.svg", encoding="utf-8").read()
+                own = e["login"].lower() if find(t.group(1)) else "showcase"
+
+                def pic(th):
+                    try:
+                        return open(f"{args.hero}/{own}{leg}-{th}.svg", encoding="utf-8").read()
+                    except OSError:  # a tree without a plate of its own, as for its gallery picture
+                        return open(f"{args.hero}/showcase{leg}-{th}.svg", encoding="utf-8").read()
                 return self.send(200, {"login": e["login"], "observed_on": "2026-W47", "style": e["style"], "gitbonsai": "stub",
                                        "legend": bool(leg), "light": pic("light"), "dark": pic("dark")})
             m = re.match(r"^/v1/gallery/([^/]+)/(legend-)?(light|dark)\.svg$", u.path)
@@ -158,7 +167,8 @@ def selftest(args):
     srv, B = run()
     code, _, body = call(B)
     lst = json.loads(body)["entries"]
-    assert code == 200 and len(lst) == 8 and all(len(e) == 8 for e in lst), lst
+    assert code == 200 and len(lst) == 9 and all(len(e) == 8 + ("example" in e) for e in lst), lst
+    assert {e["login"] for e in lst if e.get("example") is True} == EXAMPLES, lst
     before = lst[0]["stars"]
     a = json.loads(call(f"{B}/{lst[0]['login']}/star", "POST")[2])
     assert a["starred"] is True and a["stars"] == before + 1, a
@@ -170,6 +180,8 @@ def selftest(args):
     assert code == 302 and "gallery=added&login=tj" in h["Location"], (code, dict(h))
     assert call(f"{B}/auth?login=a--b&action=add&legend=0")[0] == 400
     assert call(f"{B}/tj/dark.svg?v=x")[0] == 200 and call(f"{B}/tj/legend-light.svg")[0] == 200
+    tree = B.replace("/v1/gallery", "/v1/tree")
+    assert call(f"{tree}/sindresorhus")[0] == 200 and call(f"{tree}/sindresorhus?legend=1")[0] == 200, "a tree without a plate"
     assert call(f"{B}/nobody/dark.svg")[0] == 404 and call(f"{B}/tj-dark.svg")[0] == 404
     srv.shutdown()
     srv, B = run(["--fail"])
