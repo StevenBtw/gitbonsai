@@ -460,15 +460,31 @@ fn cut_near(pts: &mut Vec<(f64, f64, f64, f64)>, near: &[(f64, f64, f64)], reach
 /// Tells how high a shari climbs, up to `top`: it ends where the run of its
 /// points `(x, y, r, t)` (on the strip, `r` the trunk's girth there, `t` how
 /// far up it) that reaches its top begins, when each of them comes within
-/// half that girth of a disc `(x, y, r)` of living wood drawn in front of the
-/// trunk. A strip that ends beside that wood reads as part of it; one that
+/// half that girth of a limb of living wood drawn in front of the trunk, its
+/// points `(x, y, r)`. A strip that ends beside that wood reads as part of it; one that
 /// only passes it, and climbs on, reads as its own. You get `top` when the
 /// strip climbs clear, and the first point's `t` when none of it is clear.
-fn shari_end(at: &[(f64, f64, f64, f64)], front: &[(f64, f64, f64)], top: f64) -> f64 {
+fn shari_end(at: &[(f64, f64, f64, f64)], front: &[&[(f64, f64, f64)]], top: f64) -> f64 {
     let clear = |a: &(f64, f64, f64, f64)| {
-        !front
-            .iter()
-            .any(|q| math::sq(a.0 - q.0) + math::sq(a.1 - q.1) < math::sq(q.2 + 0.5 * a.2))
+        let near = |q: (f64, f64, f64)| {
+            math::sq(a.0 - q.0) + math::sq(a.1 - q.1) < math::sq(q.2 + 0.5 * a.2)
+        };
+        // The wood between a limb's points counts: the nearest point on each
+        // stretch, with its girth there.
+        !front.iter().any(|l| {
+            (l.len() == 1 && near(l[0]))
+                || l.windows(2).any(|w| {
+                    let (p, q) = (w[0], w[1]);
+                    let (dx, dy) = (q.0 - p.0, q.1 - p.1);
+                    let len = dx * dx + dy * dy;
+                    let u = if len > 0.0 {
+                        (((a.0 - p.0) * dx + (a.1 - p.1) * dy) / len).clamp(0.0, 1.0)
+                    } else {
+                        0.0
+                    };
+                    near((p.0 + dx * u, p.1 + dy * u, p.2 + (q.2 - p.2) * u))
+                })
+        })
     };
     let from = at.iter().rposition(clear).map_or(0, |k| k + 1);
     at.get(from).map_or(top, |a| a.3.min(top))
@@ -1112,7 +1128,8 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
             if thick || seg.iter().any(|p| p.2 > 1.2) {
                 // The shadow falls on whichever side faces away from the light.
                 let m = seg.len();
-                let away = |i: usize| {
+                let away = |seg: &[(f64, f64, f64)], i: usize| {
+                    let m = seg.len();
                     let (nb, pb) = (seg[(i + 1).min(m - 1)], seg[i.saturating_sub(1)]);
                     let t = norm((nb.0 - pb.0, nb.1 - pb.1));
                     let n = (-t.1, t.0);
@@ -1124,7 +1141,7 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                 };
                 let strip = |from: f64, to: f64| {
                     let offset = |i: usize, k: f64| {
-                        let n = away(i);
+                        let n = away(&seg, i);
                         (seg[i].0 + n.0 * seg[i].2 * k, seg[i].1 + n.1 * seg[i].2 * k)
                     };
                     // How far the line from point `a` to point `b` passes
@@ -1190,11 +1207,19 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                         base.shift(-0.1, 0.0)
                     );
                 }
-                if let Some(g) = scene.shari.filter(|_| ci == 0) {
+                if let Some(g) = scene.shari.filter(|_| ci == 0 && start == 0) {
                     // A shari: the founding language's dead wood, a strip up
                     // the living trunk that narrows to a point as it climbs and
-                    // reaches higher as it bleaches.
+                    // reaches higher as it bleaches. It is measured along the
+                    // whole trunk and drawn once, with its first piece.
                     let top = 0.2 + 0.25 * g;
+                    let mut seg: Vec<(f64, f64, f64)> =
+                        fine.iter().map(|p| (p.0, p.1, p.2)).collect();
+                    if !scene.joins.contains_key(&ci) {
+                        let (x, y, r) = seg[0];
+                        seg.splice(0..0, [(x, y + 2.0 * r, r), (x, y + r, r)]);
+                    }
+                    let m = seg.len();
                     // How far along the trunk, 0 at the foot to 1 at the
                     // tip: by length, so a trunk that cascades below its
                     // foot measures the same way.
@@ -1218,7 +1243,7 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                             let t = (walked + len * u) / total;
                             if t <= top {
                                 let (x, y) = (p.0 + (q.0 - p.0) * u, p.1 + (q.1 - p.1) * u);
-                                at.push((x, y, p.2 + (q.2 - p.2) * u, away(i), t));
+                                at.push((x, y, p.2 + (q.2 - p.2) * u, away(&seg, i), t));
                             }
                         }
                         walked += len;
@@ -1325,10 +1350,10 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
             .iter()
             .map(|&(x, y, r, n, t)| (x + n.0 * r * wander(t), y + n.1 * r * wander(t), r, t))
             .collect();
-        let front: Vec<(f64, f64, f64)> = living
+        let front: Vec<&[(f64, f64, f64)]> = living
             .iter()
             .filter(|l| items[l.0].0 > items[item].0)
-            .flat_map(|l| l.1.iter().copied())
+            .map(|l| l.1.as_slice())
             .collect();
         let end = shari_end(&mid, &front, top);
         let at: Vec<_> = at.into_iter().filter(|a| a.4 <= end).collect();
@@ -2425,12 +2450,16 @@ mod tests {
             .collect();
         assert_eq!(shari_end(&strip, &[], 0.8), 0.8);
         let far = [(30.0, -50.0, 3.0)];
-        assert_eq!(shari_end(&strip, &far, 0.8), 0.8);
+        assert_eq!(shari_end(&strip, &[&far], 0.8), 0.8);
         let beside: Vec<(f64, f64, f64)> =
             (5..=10).map(|i| (6.0, -10.0 * f64::from(i), 3.0)).collect();
-        assert_eq!(shari_end(&strip, &beside, 0.8), 0.5);
+        assert_eq!(shari_end(&strip, &[&beside], 0.8), 0.5);
         let passed = [(6.0, -20.0, 3.0)];
-        assert_eq!(shari_end(&strip, &passed, 0.8), 0.8);
+        assert_eq!(shari_end(&strip, &[&passed], 0.8), 0.8);
+        // A straight limb is simplified to its two ends: the wood between
+        // them counts too.
+        let straight = [(6.0, -50.0, 3.0), (6.0, -100.0, 3.0)];
+        assert_eq!(shari_end(&strip, &[&straight], 0.8), 0.5);
     }
 
     /// A dead whip ends before it rises above the crown or leaves its sides;
