@@ -1933,7 +1933,7 @@ fn the_pot_never_shrinks() {
 }
 
 /// The trunk is cut level at its foot, so nothing of it lies on the soil
-/// under the roots; and the twigs are shaded, not outlined.
+/// under the roots; and each twig is drawn as its own outlined path.
 #[test]
 fn the_trunk_ends_at_its_foot_and_twigs_are_drawn_one_by_one() {
     let (mut layered, mut dead_layered) = (false, false);
@@ -2011,7 +2011,7 @@ fn one_light_lights_a_row_from_one_side() {
         let lit = render::svg(&b, &row, Theme::Light);
         assert!(
             shadow(&lit) > CENTER_X,
-            "{}: lit from the left in the row",
+            "{}: the row is not lit from the upper left",
             f.name
         );
         assert_eq!(
@@ -2024,7 +2024,7 @@ fn one_light_lights_a_row_from_one_side() {
             left += 1;
             assert!(
                 shadow(&own) < CENTER_X,
-                "{}: a left tree on its own is lit from the left",
+                "{}: a left tree on its own is not lit from its open side, the upper right",
                 f.name
             );
         }

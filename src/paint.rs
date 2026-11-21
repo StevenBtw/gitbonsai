@@ -1319,7 +1319,9 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
         }
     }
     // The eggs keep their places on a right tree; a left tree's are their
-    // mirror image, drawings and all, as its light is.
+    // mirror image, drawings and all, as its own light is. In a row lit as
+    // one they stay so: where they sit follows the tree's shape, not the
+    // row's light.
     let left = b.leader.side < 0.0;
     let flip = |f: &mut Frame| f.0 = 2.0 * CENTER_X - f.0 - f.2;
     // The roots, before the eggs: what peeks out behind the trunk keeps

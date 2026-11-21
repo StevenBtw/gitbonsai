@@ -315,7 +315,8 @@ fn run(cli: Cli) -> Result<()> {
                 grown.push((name, Bonsai::grow(&snapshot, &config, day)));
             }
             // Side by side, trees lit from both sides read as a mistake:
-            // the row has one light, from the right, where a tree grows.
+            // the row has one light, from the upper left, as a tree growing
+            // right is lit.
             config.render.light = Some(1.0);
             for theme in Theme::ALL {
                 let svgs: Vec<(String, String)> = grown
