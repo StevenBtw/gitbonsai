@@ -504,11 +504,10 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
     let mut low = SOIL_Y;
 
     // ---- wood, in pieces so leaves can pass in front of and behind it ----
-    // Dead twigs share one path; living ones are drawn one by one, back to
-    // front, each with its depth.
-    let mut jin_twigs = String::new();
-    let mut twigs: Vec<(f64, String)> = Vec::new();
-    // Each living twig's depth, by chain.
+    // Thin twigs, living then dead, each with its depth: they are drawn one
+    // by one, back to front.
+    let mut twigs: [Vec<(f64, String)>; 2] = [Vec::new(), Vec::new()];
+    // Each twig's depth, by chain.
     let mut twig_z = vec![None; scene.chains.len()];
     // Each chain's line as drawn, by index.
     let mut lines: Vec<Vec<(f64, f64)>> = Vec::with_capacity(scene.chains.len());
@@ -639,20 +638,16 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
         // Thin twigs are drawn behind the leaves.
         if !thick && !strand {
             let seg: Vec<(f64, f64, f64)> = fine.iter().map(|p| (p.0, p.1, p.2)).collect();
-            if *jin {
-                jin_twigs.push_str(tube(&seg, true, false).as_str());
-            } else {
-                // A twig comes out from behind the twig it grows from, so its
-                // flat start never draws a line across it.
-                let z = fine.iter().map(|p| p.3).sum::<f64>() / fine.len().max(1) as f64;
-                let z = scene
-                    .joins
-                    .get(&ci)
-                    .and_then(|r| twig_z[r.2])
-                    .map_or(z, |parent: f64| z.min(parent - 0.01));
-                twig_z[ci] = Some(z);
-                twigs.push((z, tube(&seg, true, false).as_str().to_string()));
-            }
+            // A twig comes out from behind the twig it grows from, so its
+            // flat start never draws a line across it.
+            let z = fine.iter().map(|p| p.3).sum::<f64>() / fine.len().max(1) as f64;
+            let z = scene
+                .joins
+                .get(&ci)
+                .and_then(|r| twig_z[r.2])
+                .map_or(z, |parent: f64| z.min(parent - 0.01));
+            twig_z[ci] = Some(z);
+            twigs[usize::from(*jin)].push((z, tube(&seg, true, false).as_str().to_string()));
             // A hairline crossing a plant is no matter; a branch is.
             if seg.iter().any(|p| p.2 >= 1.2) {
                 twig_pieces.push(seg);
@@ -1009,31 +1004,28 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
         items[*live].0 = behind;
     }
 
-    if !twigs.is_empty() {
-        // A faint darker outline on each twig, drawn back to front: the twig
-        // in front hides the one behind it, its outline too, so crossing
-        // twigs read as one over the other, not one flat shape.
+    // Each twig outlined, drawn back to front: the twig in front hides the
+    // one behind it, its outline too, so crossing twigs read as one over the
+    // other, not one flat shape. Living twigs get a faint darker outline;
+    // dead ones their ink, or they vanish on a white page.
+    for (k, twigs) in twigs.iter_mut().enumerate() {
+        if twigs.is_empty() {
+            continue;
+        }
         twigs.sort_by(|a, c| a.0.total_cmp(&c.0));
+        let (fill, ink, width) = if k == 1 {
+            (paints.jin, paints.jin_ink, "0.7")
+        } else {
+            (paints.bark, paints.bark.shift(-0.08, 0.0), "0.35")
+        };
         let mut s = format!(
-            r#"<g fill="{}" stroke="{}" stroke-width="0.35" stroke-linejoin="round">"#,
-            paints.bark,
-            paints.bark.shift(-0.08, 0.0)
+            r#"<g fill="{fill}" stroke="{ink}" stroke-width="{width}" stroke-linejoin="round">"#
         );
-        for (_, d) in &twigs {
+        for (_, d) in twigs.iter() {
             let _ = write!(s, r#"<path d="{d}"/>"#);
         }
         s.push_str("</g>");
         items.push((f64::MIN, s));
-    }
-    if !jin_twigs.is_empty() {
-        // Ink the deadwood twigs too, or they vanish on a white page.
-        items.push((
-            f64::MIN,
-            format!(
-                r#"<path d="{jin_twigs}" fill="{}" stroke="{}" stroke-width="0.7" stroke-linejoin="round"/>"#,
-                paints.jin, paints.jin_ink
-            ),
-        ));
     }
 
     // ---- leaves: each pad lit as one smooth ball in three soft tones, the

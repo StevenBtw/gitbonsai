@@ -1936,7 +1936,7 @@ fn the_pot_never_shrinks() {
 /// under the roots; and the twigs are shaded, not outlined.
 #[test]
 fn the_trunk_ends_at_its_foot_and_twigs_overlap_in_depth() {
-    let mut layered = false;
+    let (mut layered, mut dead_layered) = (false, false);
     for f in fixtures::all() {
         let b = Bonsai::grow(&f.snapshot, &Config::default(), None);
         if b.is_empty() || gitbonsai::sprout::is_sprout(&b) {
@@ -1955,13 +1955,18 @@ fn the_trunk_ends_at_its_foot_and_twigs_overlap_in_depth() {
         );
         // Each twig is its own outlined path, so the one in front hides the
         // outline of the one behind it instead of all merging into one shape.
-        if let Some(g) = svg
-            .split(r#"stroke-width="0.35" stroke-linejoin="round">"#)
+        // Dead twigs too, in their own ink.
+        let group = |width: &str| {
+            svg.split(&format!(
+                r#"stroke-width="{width}" stroke-linejoin="round">"#
+            ))
             .nth(1)
             .and_then(|r| r.split("</g>").next())
-        {
-            layered |= g.matches("<path d=").count() > 1;
-        }
+            .map_or(0, |g| g.matches("<path d=").count())
+        };
+        layered |= group("0.35") > 1;
+        dead_layered |= group("0.7") > 1;
     }
     assert!(layered, "no tree draws its twigs one by one");
+    assert!(dead_layered, "no tree draws its dead twigs one by one");
 }
