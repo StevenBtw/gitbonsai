@@ -3603,7 +3603,7 @@ fn girth(sk: &mut Skeleton, c: &Ctx, wood: &Wood) {
         n.own *= k;
     }
     if extra > 0.0 {
-        lay_trunk_extra(sk, &chains[0], extra);
+        lay_trunk_extra(sk, &chains[0], extra, wood.tier);
     }
     flare(sk, &chains[0].clone());
     limbs_within_trunk(sk, wood);
@@ -3613,18 +3613,21 @@ fn girth(sk: &mut Skeleton, c: &Ctx, wood: &Wood) {
 }
 
 /// Lays a formal upright's `extra` girth along its `main` trunk. Most sits
-/// low: the lower trunk swells into a broad nebari. A share
-/// ([`TRUNK_UP`]) runs evenly up the rest, so the trunk tapers less.
-fn lay_trunk_extra(sk: &mut Skeleton, main: &[usize], extra: f64) {
+/// low: the lower trunk swells into a broad nebari. A share ([`TRUNK_UP`])
+/// runs evenly up the rest, so the trunk tapers less, as far as the tree
+/// stands formal upright now (`tier`): a tree that was once keeps its old
+/// girth low, and its leader stays a leader.
+fn lay_trunk_extra(sk: &mut Skeleton, main: &[usize], extra: f64, tier: f64) {
     let m = main.len().max(2) as f64;
     let low = 0.35;
-    let foot = 0.6 * (1.0 - TRUNK_UP);
+    let up = TRUNK_UP * tier.clamp(0.0, 1.0);
+    let foot = 0.6 * (1.0 - up);
     for (i, &n) in main.iter().enumerate() {
         let u = i as f64 / (m - 1.0);
         sk.nodes[n].own += if u < low {
-            (1.0 - TRUNK_UP - foot) * extra * 3.0 * math::sq(1.0 - u / low) / (low * m)
+            (1.0 - up - foot) * extra * 3.0 * math::sq(1.0 - u / low) / (low * m)
         } else {
-            TRUNK_UP * extra / ((1.0 - low) * m)
+            up * extra / ((1.0 - low) * m)
         };
     }
     for (k, w) in [(1usize, 0.55), (2, 0.3), (3, 0.15)] {
@@ -4000,14 +4003,26 @@ mod tests {
                 &lang,
             ));
         }
-        lay_trunk_extra(&mut sk, &main, 100.0);
-        let flow = sk.flows();
+        let laid = |tier: f64| {
+            let mut sk = sk.clone();
+            lay_trunk_extra(&mut sk, &main, 100.0, tier);
+            sk.flows()
+        };
+        let flow = laid(1.0);
         let total = flow[0];
         assert!((total - 100.0).abs() < 3.0, "{total:.1} laid of 100");
         let at = flow[main[30]];
         assert!(
             at >= 10.0,
             "only {at:.1} of 100 carried above 60% of the trunk"
+        );
+        // A tree no longer formal upright keeps its old girth low: none of
+        // it runs up a leader that is not a formal upright's.
+        let flow = laid(0.0);
+        assert!(
+            flow[main[30]] < 1e-9,
+            "{:.1} carried up a tree no longer formal",
+            flow[main[30]]
         );
     }
 
