@@ -1931,3 +1931,33 @@ fn the_pot_never_shrinks() {
         }
     }
 }
+
+/// The trunk is cut level at its foot, so nothing of it lies on the soil
+/// under the roots; and the twigs are shaded, not outlined.
+#[test]
+fn the_trunk_ends_at_its_foot_and_twigs_are_shaded() {
+    for f in fixtures::all() {
+        let b = Bonsai::grow(&f.snapshot, &Config::default(), None);
+        if b.is_empty() || gitbonsai::sprout::is_sprout(&b) {
+            continue;
+        }
+        let svg = render::svg(&b, &Config::default(), Theme::Light);
+        let clip = svg
+            .split(r#"<clipPath id="soil"><path d=""#)
+            .nth(1)
+            .and_then(|r| r.split('"').next())
+            .unwrap_or_else(|| panic!("{}: no soil clip", f.name));
+        assert!(
+            !clip.contains('A'),
+            "{}: the soil cut follows an arc",
+            f.name
+        );
+        if svg.contains(r##"href="#tw""##) {
+            assert!(
+                !svg.contains(r#"stroke-width="0.35""#),
+                "{}: outlined twigs",
+                f.name
+            );
+        }
+    }
+}

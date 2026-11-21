@@ -477,6 +477,9 @@ pub fn maple_leaf_path() -> String {
     d.as_str().to_string()
 }
 
+/// How far a twig's shaded underside shows below its lit fill, on the canvas.
+const TWIG_SHADE: f64 = 0.45;
+
 /// Paints the tree, back to front.
 pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
     let paints = Paints::of(theme);
@@ -1001,11 +1004,16 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                     paints.jin_ink
                 )
             } else {
-                // A faint darker outline on each twig: in one shared fill,
-                // crossing twigs would merge into one flat shape.
+                // Shaded as the limbs are, not outlined: each twig shows a
+                // darker underside, its shadow side away from the light, so
+                // it reads round, and crossing twigs part where one's shade
+                // runs over the other.
+                let (dx, dy) = (-ls.0 * TWIG_SHADE, -ls.1 * TWIG_SHADE);
                 format!(
-                    r#"<path d="{d}" fill="{color}" stroke="{}" stroke-width="0.35" stroke-linejoin="round"/>"#,
-                    color.shift(-0.08, 0.0)
+                    r##"<defs><path id="tw" d="{d}"/></defs><use href="#tw" fill="{}" transform="translate({} {})"/><use href="#tw" fill="{color}"/>"##,
+                    color.shift(-0.12, 0.0),
+                    Num(dx),
+                    Num(dy)
                 )
             };
             items.push((f64::MIN, s));
@@ -1387,8 +1395,9 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
     body.push_str(&egg.back);
 
     body.push_str(&roots_back);
-    // The trunk goes into the soil: nothing of it shows below the front edge
-    // of its footprint, so no flare or strand end sticks out under the roots.
+    // The trunk goes into the soil: across its footprint nothing of it shows
+    // below its foot, so no flare, strand end or wood run down into the soil
+    // lies on the soil under the roots.
     let (fx, fy) = scene
         .chains
         .first()
@@ -1397,14 +1406,14 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
             let (x, y, _) = project(p.0);
             (x, y)
         });
-    let (fr, tilt) = (base_r * 1.5, pot.ry / pot.hw);
+    let fr = base_r * 1.5;
     let mut cut = PathData::coarse();
     cut.m((fx - 4000.0, fy - 4000.0))
         .l((fx + 4000.0, fy - 4000.0))
         .l((fx + 4000.0, fy + 4000.0))
         .l((fx + fr, fy + 4000.0))
         .l((fx + fr, fy))
-        .a(fr, fr * tilt, true, (fx - fr, fy))
+        .l((fx - fr, fy))
         .l((fx - fr, fy + 4000.0))
         .l((fx - 4000.0, fy + 4000.0))
         .z();
