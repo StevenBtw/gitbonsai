@@ -28,6 +28,10 @@ Visual polish release: drawing faults from 0.5.0 are fixed, and formal upright t
 - **Achievement tiers carry the day they were reached**: `collect` dates a tier above the first by the pull request merge or accepted answer that GitHub links to it, and repairs a date an earlier run recorded as the day it first saw the tier, so `--as-of` and a timelapse show an older account as it was. A tier with no linked pull request or answer keeps the day it was first seen.
 - **The rim sits on the pot**: a band across the pot's edge that tapers into its sides, shaded in steps with the wall, instead of a stroke whose square ends stuck out at both sides.
 
+### Dependencies
+
+- **toml 1.2.2** (was 1.2.1).
+
 ## [0.5.0] - 2026-11-21
 
 Visual polish release: every language the crown draws shows, a left tree is lit from its open side, and the legend names only what the tree draws. Most trees change a little from 0.4.0: formal uprights, windswept trees, cascades, left trees and trees with private work the most.
