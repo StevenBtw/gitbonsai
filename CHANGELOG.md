@@ -4,7 +4,7 @@ All notable changes to gitbonsai, a Japanese maple bonsai grown from GitHub acti
 
 ## [0.5.1] - 2026-11-21
 
-Fix release: drawing faults from 0.5.0, and formal upright trees stand taller. Every pot, formal uprights, small trunks, trees with a thick or white trunk or a second trunk, and every tree with fine twigs or dead twigs look a little different. Taller formal uprights and rows lit as one would make this a minor version; it ships as a patch because both finish the look of 0.5.0.
+Fix release: drawing faults from 0.5.0, and formal upright trees stand taller. Every pot, formal uprights, small trunks, trees with a thick or white trunk or a second trunk, and every tree with fine twigs or dead twigs look a little different. The changes under Changed (taller formal uprights, rows lit as one, bark on small trunks) would make this a minor version; it ships as a patch because they finish the look of 0.5.0.
 
 ### Changed
 
@@ -20,7 +20,7 @@ Fix release: drawing faults from 0.5.0, and formal upright trees stand taller. E
 - **A second trunk stays behind the first**: the shadow along it no longer pokes out beside the main trunk as a jagged wedge near the soil.
 - **Shadow bands stay on the wood**: where a trunk or limb bends, as at the trunk's foot, the dark band along it no longer cuts across the bend and shows as a loose line beside the wood or on the soil.
 - **Pot details stay on the pot**: a crackle glaze line no longer runs under a foot, and the ribs of the plain training pot no longer reach past its bottom.
-- **Achievement tiers carry the day they were reached**: `collect` dates a tier above the first by the pull request merge or accepted answer that reached it, instead of the day it first saw the tier, so `--as-of` and a timelapse show an older account as it was.
+- **Achievement tiers carry the day they were reached**: `collect` dates a tier above the first by the pull request merge or accepted answer that GitHub links to it, and repairs a date an earlier run recorded as the day it first saw the tier, so `--as-of` and a timelapse show an older account as it was. A tier with no linked pull request or answer keeps the day it was first seen.
 - **The rim sits on the pot**: a band across the pot's edge that tapers into its sides, shaded in steps with the wall, instead of a stroke whose square ends stuck out at both sides.
 
 ## [0.5.0] - 2026-11-21
