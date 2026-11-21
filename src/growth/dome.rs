@@ -714,24 +714,29 @@ impl Recent {
     /// The average of `all`; a strand missing in a month counts as not yet
     /// there.
     pub fn mean(all: &[Self]) -> Option<Self> {
-        if all.is_empty() {
+        Self::weighted(&all.iter().map(|r| (r, 1.0)).collect::<Vec<_>>())
+    }
+
+    /// The average of `all`, each month by its weight.
+    pub fn weighted(all: &[(&Self, f64)]) -> Option<Self> {
+        let n: f64 = all.iter().map(|a| a.1).sum();
+        if n <= 0.0 {
             return None;
         }
-        let n = all.len() as f64;
         let mut out = Self::default();
-        for r in all {
+        for &(r, w) in all {
             for (o, v) in out.frame.iter_mut().zip(r.frame) {
-                *o += v / n;
+                *o += v * w / n;
             }
-            out.irr += r.irr / n;
+            out.irr += r.irr * w / n;
             for (l, v) in &r.strands {
                 let o = out.strands.entry(l.clone()).or_default();
                 for (o, v) in o.iter_mut().zip(v) {
-                    *o += v / n;
+                    *o += v * w / n;
                 }
             }
             for (l, v) in &r.sector {
-                *out.sector.entry(l.clone()).or_default() += v / n;
+                *out.sector.entry(l.clone()).or_default() += v * w / n;
             }
         }
         Some(out)
@@ -3013,11 +3018,14 @@ fn place_arms(c: &Ctx, wood: &Wood, arms: &[Arm], sectors: &Sectors) -> (Vec<Pla
         };
         // Oldest at 0, a complete newest year (half a year ago) at 1; the
         // year growing now stays at 1, so each arm moves a little each day.
+        // The span is at least a season: an only arm turning half a year old
+        // walks over in three months, never across at once.
+        let span = oldest - 0.5;
         let t_of = |ag: f64| {
-            if oldest > 0.5 {
-                ((oldest - ag) / (oldest - 0.5)).clamp(0.0, 1.0)
+            if span >= 0.25 {
+                ((oldest - ag) / span).clamp(0.0, 1.0)
             } else {
-                1.0
+                ((0.75 - ag) / 0.25).clamp(0.0, 1.0)
             }
         };
         let k = if ui == 0 { 0 } else { wood.chain_on(-s_a) };

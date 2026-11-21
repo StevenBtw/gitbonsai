@@ -175,12 +175,19 @@ pub fn strands(life: &Life) -> (Option<String>, Vec<Strand>) {
                 claimed.push((l, 0.0, 0.0, 0.0, *no));
             }
         }
-        // Each month a strand comes away as far as its language worked,
-        // and leans under the share it gained in six months; young wood
+        // Each month a strand comes away as far as its language worked (the
+        // month under way as far as it has gone, so not a month's step on its
+        // 1st), and leans under the share it gained in six months; young wood
         // straightens slowly once the load stops growing.
+        let done = if *no == now {
+            let (_, _, day) = life.observed().ymd();
+            f64::from(day) / f64::from(life.observed().month_days())
+        } else {
+            1.0
+        };
         for c in &mut claimed {
             let r = recent.get(c.0).copied().unwrap_or(0.0) / recent_total;
-            c.1 = (c.1 + 0.35 * r).min(1.0);
+            c.1 = (c.1 + 0.35 * r * done).min(1.0);
             let now_share = share.get(c.0).copied().unwrap_or(0.0);
             let before = history
                 .iter()

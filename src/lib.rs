@@ -540,6 +540,7 @@ fn past_reach(
     // The month before's style too: a trunk thickened over a month in one
     // style keeps that girth as the next month starts in another.
     let mut chokkan_before = 0.0_f64;
+    let mut newest = first;
     for no in (y * 12 + m.cast_signed())..i32::MAX {
         let Some(day) = Date::from_ymd(no / 12, (no % 12 + 1).cast_unsigned(), 1) else {
             break;
@@ -584,14 +585,31 @@ fn past_reach(
             let before = Recent::mean(&months[months.len().saturating_sub(3)..]);
             out = out.max(before.map_or(r, |b| r.settled(&b)));
             months.push(recent);
+            newest = day;
         }
         leaves.push(leaf);
     }
-    let last = months.len().saturating_sub(3);
+    // The newest month fades in over its month as the oldest of the last
+    // three fades out: the average moves a little each day, not a step on
+    // the 2nd.
+    let fade = (f64::from(snapshot.observed_on.days_since(newest))
+        / f64::from(newest.month_days()))
+    .min(1.0);
+    let n = months.len();
+    let recent: Vec<(&Recent, f64)> = months
+        .iter()
+        .enumerate()
+        .skip(n.saturating_sub(4))
+        .map(|(i, r)| match n - i {
+            4 => (r, 1.0 - fade),
+            1 => (r, fade),
+            _ => (r, 1.0),
+        })
+        .collect();
     let last_leaves = leaves.len().saturating_sub(2);
     (
         out,
-        Recent::mean(&months[last..]),
+        Recent::weighted(&recent),
         mean_leaves(&leaves[last_leaves..]),
     )
 }
