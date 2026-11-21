@@ -457,6 +457,23 @@ fn cut_near(pts: &mut Vec<(f64, f64, f64, f64)>, near: &[(f64, f64, f64)], reach
     }
 }
 
+/// Tells how high a shari climbs, up to `top`: it ends where the run of its
+/// points `(x, y, r, t)` (on the strip, `r` the trunk's girth there, `t` how
+/// far up it) that reaches its top begins, when each of them comes within
+/// half that girth of a disc `(x, y, r)` of living wood drawn in front of the
+/// trunk. A strip that ends beside that wood reads as part of it; one that
+/// only passes it, and climbs on, reads as its own. You get `top` when the
+/// strip climbs clear, and the first point's `t` when none of it is clear.
+fn shari_end(at: &[(f64, f64, f64, f64)], front: &[(f64, f64, f64)], top: f64) -> f64 {
+    let clear = |a: &(f64, f64, f64, f64)| {
+        !front
+            .iter()
+            .any(|q| math::sq(a.0 - q.0) + math::sq(a.1 - q.1) < math::sq(q.2 + 0.5 * a.2))
+    };
+    let from = at.iter().rposition(clear).map_or(0, |k| k + 1);
+    at.get(from).map_or(top, |a| a.3.min(top))
+}
+
 /// How long, in world units, a fork's side may be and still count as a stub
 /// rather than a branch.
 const STUB: f64 = 4.0;
@@ -765,6 +782,18 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
     // Trunk pieces as drawn: (item, outline points, dead). A dead main trunk,
     // or one with a shari, always shows: a strand crossing it passes behind.
     let mut trunk_pieces: Vec<(usize, Vec<(f64, f64, f64)>, bool)> = Vec::new();
+    // Each shari as measured on the trunk: (item, where in its paint, strip
+    // points, how high it reaches, fill and ink).
+    let mut sharis: Vec<(
+        usize,
+        usize,
+        Vec<(f64, f64, f64, (f64, f64), f64)>,
+        f64,
+        String,
+    )> = Vec::new();
+    // Living limbs and strands as drawn, (item, outline): a shari ends below
+    // those in front of the trunk.
+    let mut living: Vec<(usize, Vec<(f64, f64, f64)>)> = Vec::new();
     // Every thick piece of wood as drawn, and every twig, for what peeks out
     // from behind them.
     let mut wood_pieces: Vec<Vec<(f64, f64, f64)>> = Vec::new();
@@ -1194,36 +1223,21 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                         }
                         walked += len;
                     }
-                    if at.len() > 2 {
-                        // It wanders with the grain, and its edges are torn.
-                        let edge = |&(x, y, r, n, t): &(f64, f64, f64, (f64, f64), f64),
-                                    side: f64| {
-                            let w = 0.26
-                                * (1.0 - t / top).max(0.0).sqrt()
-                                * (1.0 + 0.3 * math::sin(t * 90.0 + 2.0 * side));
-                            let k = 0.1 + 0.22 * math::sin(t / top * 5.0) + side * w;
-                            (x + n.0 * r * k, y + n.1 * r * k)
-                        };
-                        let there: Vec<(f64, f64)> = at.iter().map(|a| edge(a, -1.0)).collect();
-                        let back: Vec<(f64, f64)> = at.iter().rev().map(|a| edge(a, 1.0)).collect();
-                        let mut d = PathData::coarse();
-                        d.m(there[0]);
-                        smooth_through(&mut d, &there);
-                        d.l(back[0]);
-                        smooth_through(&mut d, &back);
-                        d.z();
-                        let ink = if g >= 0.5 {
-                            format!(r#" stroke="{}" stroke-width=".6""#, paints.jin_ink)
-                        } else {
-                            String::new()
-                        };
-                        let _ = write!(
-                            s,
-                            r#"<path d="{}" fill="{}"{ink}/>"#,
-                            d.as_str(),
-                            haze(paints.bark.mix(paints.jin, 0.8 * g), depth).shift(0.04, 0.0)
-                        );
-                    }
+                    // Drawn once every piece of wood has its depth, here in
+                    // the trunk's paint: it ends below living wood in front.
+                    let ink = if g >= 0.5 {
+                        format!(r#" stroke="{}" stroke-width=".6""#, paints.jin_ink)
+                    } else {
+                        String::new()
+                    };
+                    let fill = haze(paints.bark.mix(paints.jin, 0.8 * g), depth).shift(0.04, 0.0);
+                    sharis.push((
+                        items.len(),
+                        s.len(),
+                        at,
+                        top,
+                        format!(r#"fill="{fill}"{ink}"#),
+                    ));
                 }
                 if ci == 0 && seg.iter().any(|p| p.2 > 3.2) {
                     // Bark on the trunk: a long line that follows the wood.
@@ -1280,6 +1294,9 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                 let dead = ci == 0 && (dead.is_some() || scene.shari.is_some());
                 trunk_pieces.push((items.len(), outline.clone(), dead));
             }
+            if ci != 0 && dead.is_none() {
+                living.push((items.len(), outline.clone()));
+            }
             wood_pieces.push(outline);
             items.push((depth, s));
             start = end;
@@ -1299,6 +1316,43 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
             .map(|t| items[t.0].0 - 1.0)
             .fold(items[*live].0, f64::min);
         items[*live].0 = behind;
+    }
+    // Beside living wood in front of the trunk the pale strip would read as
+    // part of that wood: the shari narrows to its point below it.
+    for (item, at_byte, at, top, paint) in sharis {
+        let wander = |t: f64| 0.1 + 0.22 * math::sin(t / top * 5.0);
+        let mid: Vec<(f64, f64, f64, f64)> = at
+            .iter()
+            .map(|&(x, y, r, n, t)| (x + n.0 * r * wander(t), y + n.1 * r * wander(t), r, t))
+            .collect();
+        let front: Vec<(f64, f64, f64)> = living
+            .iter()
+            .filter(|l| items[l.0].0 > items[item].0)
+            .flat_map(|l| l.1.iter().copied())
+            .collect();
+        let end = shari_end(&mid, &front, top);
+        let at: Vec<_> = at.into_iter().filter(|a| a.4 <= end).collect();
+        if at.len() > 2 {
+            // It wanders with the grain, and its edges are torn.
+            let edge = |&(x, y, r, n, t): &(f64, f64, f64, (f64, f64), f64), side: f64| {
+                let w = 0.26
+                    * (1.0 - t / end).max(0.0).sqrt()
+                    * (1.0 + 0.3 * math::sin(t * 90.0 + 2.0 * side));
+                let k = wander(t) + side * w;
+                (x + n.0 * r * k, y + n.1 * r * k)
+            };
+            let there: Vec<(f64, f64)> = at.iter().map(|a| edge(a, -1.0)).collect();
+            let back: Vec<(f64, f64)> = at.iter().rev().map(|a| edge(a, 1.0)).collect();
+            let mut d = PathData::coarse();
+            d.m(there[0]);
+            smooth_through(&mut d, &there);
+            d.l(back[0]);
+            smooth_through(&mut d, &back);
+            d.z();
+            items[item]
+                .1
+                .insert_str(at_byte, &format!(r#"<path d="{}" {paint}/>"#, d.as_str()));
+        }
     }
 
     // Each twig outlined, drawn back to front: the twig in front hides the
@@ -2359,6 +2413,24 @@ mod tests {
         point_start(&mut limb, 6.0);
         assert_eq!(limb.len(), 3);
         assert_eq!(limb[0], (4.0, 0.0, 0.0, 1.0));
+    }
+
+    /// A shari climbs to its top unless living wood in front of the trunk
+    /// lies over or beside it up to there; then it ends below that wood.
+    /// Wood it only passes keeps it whole.
+    #[test]
+    fn a_shari_ends_below_living_wood_in_front() {
+        let strip: Vec<(f64, f64, f64, f64)> = (0..=10)
+            .map(|i| (0.0, -10.0 * f64::from(i), 8.0, f64::from(i) / 10.0))
+            .collect();
+        assert_eq!(shari_end(&strip, &[], 0.8), 0.8);
+        let far = [(30.0, -50.0, 3.0)];
+        assert_eq!(shari_end(&strip, &far, 0.8), 0.8);
+        let beside: Vec<(f64, f64, f64)> =
+            (5..=10).map(|i| (6.0, -10.0 * f64::from(i), 3.0)).collect();
+        assert_eq!(shari_end(&strip, &beside, 0.8), 0.5);
+        let passed = [(6.0, -20.0, 3.0)];
+        assert_eq!(shari_end(&strip, &passed, 0.8), 0.8);
     }
 
     /// A dead whip ends before it rises above the crown or leaves its sides;
