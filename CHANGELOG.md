@@ -4,7 +4,7 @@ All notable changes to gitbonsai, a Japanese maple bonsai grown from GitHub acti
 
 ## [0.5.1] - 2026-11-22
 
-Visual polish release: drawing faults from 0.5.0 are fixed, formal upright trees stand ever so slightly taller, and a timelapse can follow the tree's growth instead of the calendar. Every pot, formal uprights, small trunks, trees with a thick or white trunk or a second trunk, and every tree with fine twigs or dead twigs look a little different. The changes under Changed (taller formal uprights, roomier pots, rows lit as one, bark on small trunks) would make this a minor version; it ships as a patch because they finish the look of 0.5.0.
+Visual polish release: drawing faults from 0.5.0 are fixed, formal upright trees stand ever so slightly taller, and a timelapse can follow the tree's growth instead of the calendar. Most trees look a little different, pots, formal uprights and trees with fine or dead twigs the most. The additions and the changes under Changed (taller formal uprights, roomier pots, rows lit as one, bark on small trunks) would make this a minor version; it ships as a patch because they finish the look of 0.5.0.
 
 ### Added
 
@@ -123,7 +123,7 @@ Wood release: limbs stay in proportion to their trunk, dropped languages keep vi
 - **Roots grip the soil**: surface roots are rounded ridges lying on the soil that widen into the trunk and flatten toward a blunt tip; the trunk ends where it enters the soil, and moss grows over the roots in front. A tree has 3 to 7 roots by age (was 5 to 9), longer and thicker the older it is, and a new root no longer moves the others.
 - **No limb outgrows its trunk**: a limb is at most a third of the trunk's radius where it leaves, and what it gives up thickens the lower trunk, so a tree whose busy early years dwarf its crown no longer rises as a thin trunk out of a lump of limbs.
 - **Dropped languages stay visible**: each era's two biggest dropped languages leave a dead twig, even when they were a small part of their years, and a weathered dead twig keeps 70% of its length and a few bare twigs.
-- **The wind chime's clapper hangs inside the bell**: at the lip, where it strikes the rim, under the glass or the metal.
+- **A hidden surprise hangs as it should**.
 - **SVGs may reach 230 KB** (was 220 KB): the heaviest crowns keep more of their leaves.
 
 ### Fixed
@@ -198,7 +198,7 @@ Maintenance release: a release created in the GitHub UI gets its binaries again 
 
 ### Fixed
 
-- **Kintsugi runs under the pot's bands and seal**: the gold seams of archived repositories no longer cross the carved bands and maker's seal of an antique pot.
+- **A hidden surprise stays clear of the pot's carvings**: on an antique pot it no longer crosses the carved bands and maker's seal.
 - **Small trees with a dropped trunk language stand the right way round**: dead wood takes at most 35% of a tree's girth, so the living trunk carries the bark. An account of about 330 contributions drew its dead snag as the trunk.
 - **A misspelled login gets a plain message**: `collect` says there is no such GitHub user instead of printing GitHub's raw error.
 - **The size is limited to 4096 px**: `--size` and `[render] size` above 4096 (or 0) are a config error; `--size 99999` wrote a 72 MB PNG.
