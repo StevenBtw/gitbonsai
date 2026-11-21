@@ -948,6 +948,9 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                 let _ = write!(s, r#"<path d="{}" fill="{base}"{ink}/>"#, d.as_str());
             }
             let thick = seg.iter().any(|p| p.2 > 6.5);
+            // A young tree is framed close, so its trunk is drawn as large as
+            // an old one: it keeps a lit side, though its shadow stays soft.
+            let young = !thick && ci == 0 && seg.iter().any(|p| p.2 > 3.2);
             if thick || seg.iter().any(|p| p.2 > 1.2) {
                 // The shadow falls on whichever side faces away from the light.
                 let m = seg.len();
@@ -966,6 +969,13 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                         let n = away(i);
                         (seg[i].0 + n.0 * seg[i].2 * k, seg[i].1 + n.1 * seg[i].2 * k)
                     };
+                    // How far the line from point `a` to point `b` passes
+                    // from point `i`.
+                    let off = |a: usize, b: usize, i: usize| {
+                        let (p, q, s) = (seg[a], seg[b], seg[i]);
+                        let t = norm((q.0 - p.0, q.1 - p.1));
+                        ((s.0 - p.0) * t.1 - (s.1 - p.1) * t.0).abs()
+                    };
                     // Strips are soft bands inside the wood: a point every
                     // dozen units or so carries them on a smooth curve.
                     let mut idx = vec![0];
@@ -974,7 +984,10 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                         run += (math::sq(seg[i].0 - seg[i - 1].0)
                             + math::sq(seg[i].1 - seg[i - 1].1))
                         .sqrt();
-                        if run >= 14.0 || i == m - 1 {
+                        // A bend the band would cut across, out of thin wood,
+                        // keeps its point.
+                        let bend = i + 1 < m && off(idx[idx.len() - 1], i + 1, i) > 0.5 * seg[i].2;
+                        if run >= 14.0 || i == m - 1 || bend {
                             idx.push(i);
                             run = 0.0;
                         }
@@ -1001,6 +1014,8 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                         r#"<path d="{}" fill="{shade}"/>"#,
                         strip(0.05, 0.98).as_str(),
                     );
+                }
+                if thick || young {
                     let _ = write!(
                         s,
                         r#"<path d="{}" fill="{lit}"/>"#,
@@ -1096,7 +1111,7 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                         Num::coarse((r * 0.4).max(0.9))
                     );
                 }
-                if ci == 0 && seg.iter().any(|p| p.2 > 6.0) {
+                if ci == 0 && seg.iter().any(|p| p.2 > 3.2) {
                     // Bark on the trunk: a long line that follows the wood.
                     let mut grain = PathData::coarse();
                     for off in [-0.2] {
@@ -1658,15 +1673,8 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
     // The maker's seal sits on the pot's shaded half: mirrored with it.
     let marks = pot_marks(b, &pot);
     body.push_str(&if lit < 0.0 { mirror(&marks) } else { marks });
-    let mut rim = PathData::new();
-    rim.m((CENTER_X - hw, SOIL_Y))
-        .a(hw, pot.ry, false, (CENTER_X + hw, SOIL_Y));
-    let _ = write!(
-        body,
-        r#"<path d="{}" fill="none" stroke="{}" stroke-width="2.4"/>"#,
-        rim.as_str(),
-        pot.glaze.shift(0.08, 0.0)
-    );
+    let rim = pot_rim(&pot);
+    body.push_str(&if lit < 0.0 { mirror(&rim) } else { rim });
     body.push_str(&egg.top);
     let signs = crate::legend::Signs {
         fresh: (sprout.is_none() || crate::sprout::handover(crate::sprout::count(b)) > 0.5)
@@ -2015,18 +2023,29 @@ fn pot_front(b: &Bonsai, pot: &Pot) -> String {
         .a(bw, ry, true, (CENTER_X - bw, bottom))
         .z();
     let _ = write!(s, r#"<path d="{}" fill="{glaze}"/>"#, wall.as_str());
-    let mut shade = PathData::new();
-    shade
-        .m((CENTER_X + hw * 0.35, SOIL_Y + ry * 0.93))
-        .a(hw, ry, false, (CENTER_X + hw, SOIL_Y))
-        .l((CENTER_X + bw, bottom))
-        .a(bw, ry, true, (CENTER_X + bw * 0.35, bottom + ry * 0.93))
-        .z();
+    for (f, tone) in SHADE {
+        // On the rim and foot ellipses exactly, so the rim's steps meet these.
+        let k = (1.0 - f * f).sqrt();
+        let mut shade = PathData::new();
+        shade
+            .m((CENTER_X + hw * f, SOIL_Y + ry * k))
+            .a(hw, ry, false, (CENTER_X + hw, SOIL_Y))
+            .l((CENTER_X + bw, bottom))
+            .a(bw, ry, true, (CENTER_X + bw * f, bottom + ry * k))
+            .z();
+        let _ = write!(
+            s,
+            r#"<path d="{}" fill="{}"/>"#,
+            shade.as_str(),
+            glaze.shift(tone, 0.0)
+        );
+    }
+    // The tier's details stay on the wall: a random walk or a band's end
+    // would otherwise run off it.
     let _ = write!(
         s,
-        r#"<path d="{}" fill="{}"/>"#,
-        shade.as_str(),
-        glaze.shift(-0.07, 0.0)
+        r#"<clipPath id="pw"><path d="{}"/></clipPath><g clip-path="url(#pw)">"#,
+        wall.as_str()
     );
     let mut rng = Rng::keyed(b.account_id, "pot");
     match tier {
@@ -2099,6 +2118,37 @@ fn pot_front(b: &Bonsai, pot: &Pot) -> String {
         }
         s.push_str("</g>");
     }
+    s.push_str("</g>");
+    s
+}
+
+/// Where the pot turns from the light, as shares of its half-width right of
+/// center, and how much darker it is from there: two steps, no gradient.
+const SHADE: [(f64, f64); 2] = [(0.2, -0.035), (0.38, -0.07)];
+
+/// Draws the rim's lip: a band astride the rim's front edge, 2.4 deep at
+/// the front and tapering to nothing at the sides, stepped into shade where
+/// the wall is, edge to edge with it. Lit from the left: mirror it for a
+/// left tree.
+fn pot_rim(pot: &Pot) -> String {
+    let Pot { hw, ry, glaze, .. } = *pot;
+    // Half over the soil's edge, half down the wall, as thick as a rim reads.
+    let (top, lip) = (ry - 1.2, ry + 1.2);
+    let mut s = String::new();
+    for (f, tone) in [(-1.0, 0.0)].into_iter().chain(SHADE) {
+        let k = (1.0 - f * f).sqrt();
+        let mut d = PathData::new();
+        d.m((CENTER_X + hw * f, SOIL_Y + top * k))
+            .a(hw, top, false, (CENTER_X + hw, SOIL_Y))
+            .a(hw, lip, true, (CENTER_X + hw * f, SOIL_Y + lip * k))
+            .z();
+        let _ = write!(
+            s,
+            r#"<path d="{}" fill="{}"/>"#,
+            d.as_str(),
+            glaze.shift(0.08 + tone, 0.0)
+        );
+    }
     s
 }
 
@@ -2140,7 +2190,11 @@ fn pot_marks(b: &Bonsai, pot: &Pot) -> String {
             Num(sy + 1.5)
         );
     }
-    s
+    if s.is_empty() {
+        return s;
+    }
+    // On the wall, as clipped in [`pot_front`]: a band's ends curve out past it.
+    format!(r#"<g clip-path="url(#pw)">{s}</g>"#)
 }
 
 /// Level 11: a timer box on the rim, an emitter under every pad, and drops
