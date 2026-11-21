@@ -268,6 +268,123 @@ pub fn tube_from(
     d
 }
 
+/// A thin twig, for the order twigs are drawn in: its centre line on the
+/// canvas with depth, `(x, y, z)`, its mean depth, its widest radius, and
+/// the twig it grows from, by index, when that is a twig too.
+#[derive(Debug, Clone)]
+struct Twig {
+    line: Vec<(f64, f64, f64)>,
+    z: f64,
+    w: f64,
+    parent: Option<usize>,
+}
+
+/// The order to draw `twigs` in, back to front. Where two cross, the one
+/// in front at the crossing comes later, so the right outline shows there
+/// even when a long twig is in front on average; a twig comes before the
+/// twig it grows from, so it comes out from behind it. Otherwise, and to
+/// break the rare cycle, the one further back on average comes first.
+fn layer(twigs: &[Twig]) -> Vec<usize> {
+    let n = twigs.len();
+    // `later[i]`: the twigs that must be drawn after twig `i`.
+    let mut later: Vec<Vec<usize>> = vec![Vec::new(); n];
+    let mut waits = vec![0usize; n];
+    let mut must = |before: usize, after: usize| {
+        later[before].push(after);
+        waits[after] += 1;
+    };
+    for (i, t) in twigs.iter().enumerate() {
+        if let Some(p) = t.parent.filter(|&p| p < n) {
+            must(i, p);
+        }
+    }
+    let boxes: Vec<(f64, f64, f64, f64)> = twigs
+        .iter()
+        .map(|t| {
+            t.line
+                .iter()
+                .fold((f64::MAX, f64::MAX, f64::MIN, f64::MIN), |b, p| {
+                    (b.0.min(p.0), b.1.min(p.1), b.2.max(p.0), b.3.max(p.1))
+                })
+        })
+        .collect();
+    for i in 0..n {
+        for j in i + 1..n {
+            let (a, b) = (boxes[i], boxes[j]);
+            let related = twigs[i].parent == Some(j) || twigs[j].parent == Some(i);
+            if related || a.2 < b.0 || b.2 < a.0 || a.3 < b.1 || b.3 < a.1 {
+                continue;
+            }
+            // Where a twig starts it is still coming out of wood, maybe the
+            // other's: no crossing there.
+            let near = 1.5 * (twigs[i].w + twigs[j].w) + 1.0;
+            let starting = |t: &Twig, (x, y): (f64, f64)| {
+                t.line
+                    .first()
+                    .is_some_and(|s| math::sq(s.0 - x) + math::sq(s.1 - y) < near * near)
+            };
+            if let Some((at, zi, zj)) = crossing(&twigs[i].line, &twigs[j].line) {
+                if starting(&twigs[i], at) || starting(&twigs[j], at) {
+                    continue;
+                }
+                if zi > zj {
+                    must(j, i);
+                } else {
+                    must(i, j);
+                }
+            }
+        }
+    }
+    // Back to front: of the twigs free to go, the one furthest back; when
+    // none is free, a cycle, the one furthest back of those left.
+    let mut order = Vec::with_capacity(n);
+    let mut done = vec![false; n];
+    let back = |a: &usize, b: &usize| twigs[*a].z.total_cmp(&twigs[*b].z).then(a.cmp(b));
+    while order.len() < n {
+        let next = (0..n)
+            .filter(|&i| !done[i] && waits[i] == 0)
+            .min_by(back)
+            .or_else(|| (0..n).filter(|&i| !done[i]).min_by(back));
+        let Some(i) = next else { break };
+        done[i] = true;
+        order.push(i);
+        for &k in &later[i] {
+            waits[k] = waits[k].saturating_sub(1);
+        }
+    }
+    order
+}
+
+/// Where the centre lines `a` and `b` first cross, and each one's depth
+/// there. Lines meeting at less than about 20 degrees lie along each other
+/// rather than cross, and don't count.
+fn crossing(a: &[(f64, f64, f64)], b: &[(f64, f64, f64)]) -> Option<((f64, f64), f64, f64)> {
+    for s in a.windows(2) {
+        for t in b.windows(2) {
+            let (p, r) = ((s[0].0, s[0].1), (s[1].0 - s[0].0, s[1].1 - s[0].1));
+            let (q, w) = ((t[0].0, t[0].1), (t[1].0 - t[0].0, t[1].1 - t[0].1));
+            let den = r.0 * w.1 - r.1 * w.0;
+            // The sine of the angle they meet at.
+            let len =
+                (math::sq(r.0) + math::sq(r.1)).sqrt() * (math::sq(w.0) + math::sq(w.1)).sqrt();
+            if den.abs() < 0.34 * len || len < 1e-12 {
+                continue;
+            }
+            let (dx, dy) = (q.0 - p.0, q.1 - p.1);
+            let u = (dx * w.1 - dy * w.0) / den;
+            let v = (dx * r.1 - dy * r.0) / den;
+            if (0.0..=1.0).contains(&u) && (0.0..=1.0).contains(&v) {
+                return Some((
+                    (p.0 + u * r.0, p.1 + u * r.1),
+                    s[0].2 + u * (s[1].2 - s[0].2),
+                    t[0].2 + v * (t[1].2 - t[0].2),
+                ));
+            }
+        }
+    }
+    None
+}
+
 /// The soft groove of shadow a strand lies in, along its piece `seg`: wider
 /// than the strand. On its first piece (`from_start`) it widens from the
 /// strand's own width, so its start stays hidden in the trunk the strand
@@ -527,9 +644,9 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
     // ---- wood, in pieces so leaves can pass in front of and behind it ----
     // Thin twigs, living then dead, each with its depth: they are drawn one
     // by one, back to front.
-    let mut twigs: [Vec<(f64, String)>; 2] = [Vec::new(), Vec::new()];
-    // Each twig's depth, by chain.
-    let mut twig_z = vec![None; scene.chains.len()];
+    let mut twigs: [Vec<(Twig, String)>; 2] = [Vec::new(), Vec::new()];
+    // Where each chain's twig is, by chain: its kind and its index there.
+    let mut twig_at: Vec<Option<(usize, usize)>> = vec![None; scene.chains.len()];
     // Each chain's line as drawn, by index.
     let mut lines: Vec<Vec<(f64, f64)>> = Vec::with_capacity(scene.chains.len());
     // Each chain's drawn line with its radius, for what must touch it.
@@ -659,16 +776,24 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
         // Thin twigs are drawn behind the leaves.
         if !thick && !strand {
             let seg: Vec<(f64, f64, f64)> = fine.iter().map(|p| (p.0, p.1, p.2)).collect();
-            // A twig comes out from behind the twig it grows from, so its
+            // Its place among the twigs is set when they are drawn
+            // ([`layer`]): by depth, and behind the twig it grows from, so its
             // flat start never draws a line across it.
-            let z = fine.iter().map(|p| p.3).sum::<f64>() / fine.len().max(1) as f64;
-            let z = scene
+            let kind = usize::from(*jin);
+            let parent = scene
                 .joins
                 .get(&ci)
-                .and_then(|r| twig_z[r.2])
-                .map_or(z, |parent: f64| z.min(parent - 0.01));
-            twig_z[ci] = Some(z);
-            twigs[usize::from(*jin)].push((z, tube(&seg, true, false).as_str().to_string()));
+                .and_then(|r| twig_at[r.2])
+                .filter(|&(k, _)| k == kind)
+                .map(|(_, i)| i);
+            let twig = Twig {
+                line: fine.iter().map(|p| (p.0, p.1, p.3)).collect(),
+                z: fine.iter().map(|p| p.3).sum::<f64>() / fine.len().max(1) as f64,
+                w: fine.iter().map(|p| p.2).fold(0.0, f64::max),
+                parent,
+            };
+            twig_at[ci] = Some((kind, twigs[kind].len()));
+            twigs[kind].push((twig, tube(&seg, true, false).as_str().to_string()));
             // A hairline crossing a plant is no matter; a branch is.
             if seg.iter().any(|p| p.2 >= 1.2) {
                 twig_pieces.push(seg);
@@ -1034,11 +1159,11 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
     // one behind it, its outline too, so crossing twigs read as one over the
     // other, not one flat shape. Living twigs get a faint darker outline;
     // dead ones their ink, or they vanish on a white page.
-    for (k, twigs) in twigs.iter_mut().enumerate() {
+    for (k, twigs) in twigs.iter().enumerate() {
         if twigs.is_empty() {
             continue;
         }
-        twigs.sort_by(|a, c| a.0.total_cmp(&c.0));
+        let shapes: Vec<Twig> = twigs.iter().map(|t| t.0.clone()).collect();
         let (fill, ink, width) = if k == 1 {
             (paints.jin, paints.jin_ink, "0.7")
         } else {
@@ -1047,8 +1172,8 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
         let mut s = format!(
             r#"<g fill="{fill}" stroke="{ink}" stroke-width="{width}" stroke-linejoin="round">"#
         );
-        for (_, d) in twigs.iter() {
-            let _ = write!(s, r#"<path d="{d}"/>"#);
+        for i in layer(&shapes) {
+            let _ = write!(s, r#"<path d="{}"/>"#, twigs[i].1);
         }
         s.push_str("</g>");
         items.push((f64::MIN, s));
@@ -2054,6 +2179,75 @@ mod tests {
         assert!((g[19].2 - 5.8).abs() < 1e-9, "ends {:.2} wide", g[19].2);
         // A later piece is a full groove all along.
         assert!(groove(&seg, false).iter().all(|p| (p.2 - 5.8).abs() < 1e-9));
+    }
+
+    /// Where two twigs cross, the one in front there is drawn later, even
+    /// when the other is in front on average.
+    #[test]
+    fn crossing_twigs_layer_by_their_depth_where_they_cross() {
+        // A runs left to right, coming toward the viewer: in front on
+        // average, but far behind where B crosses it, near its right end.
+        let a = Twig {
+            line: vec![(0.0, 0.0, 5.0), (10.0, 0.0, -5.0)],
+            z: 0.0,
+            w: 0.6,
+            parent: None,
+        };
+        let b = Twig {
+            line: vec![(8.0, -5.0, -1.0), (8.0, 5.0, -1.0)],
+            z: -1.0,
+            w: 0.6,
+            parent: None,
+        };
+        assert_eq!(layer(&[a.clone(), b]), vec![0, 1]);
+        // A twig coming out of another's wood, where it starts, does not
+        // cross it there: it stays behind, as its depth on average says.
+        let out = Twig {
+            line: vec![(6.0, 0.5, 4.0), (6.0, -8.0, -6.0)],
+            z: -1.0,
+            w: 0.6,
+            parent: None,
+        };
+        assert_eq!(layer(&[a.clone(), out]), vec![1, 0]);
+        // Twigs lying nearly along each other do not cross: by average.
+        let along = Twig {
+            // In front of A where it meets it, behind it on average.
+            line: vec![(1.0, -1.0, 0.0), (9.0, 0.6, 0.0)],
+            z: -1.0,
+            w: 0.6,
+            parent: None,
+        };
+        assert_eq!(layer(&[a, along]), vec![1, 0]);
+    }
+
+    /// A twig comes out from behind the twig it grows from, wherever it
+    /// lies on average.
+    #[test]
+    fn a_twig_is_drawn_before_the_twig_it_grows_from() {
+        let parent = Twig {
+            line: vec![(0.0, 0.0, -2.0), (10.0, 0.0, -2.0)],
+            z: -2.0,
+            w: 0.6,
+            parent: None,
+        };
+        let child = Twig {
+            line: vec![(5.0, 0.0, 3.0), (5.0, -6.0, 3.0)],
+            z: 3.0,
+            w: 0.6,
+            parent: Some(0),
+        };
+        assert_eq!(layer(&[parent, child]), vec![1, 0]);
+        // Apart, twigs keep their order by depth.
+        let far = |x: f64, z: f64| Twig {
+            line: vec![(x, 0.0, z), (x, -5.0, z)],
+            z,
+            w: 0.6,
+            parent: None,
+        };
+        assert_eq!(
+            layer(&[far(0.0, 2.0), far(20.0, -1.0), far(40.0, 0.5)]),
+            vec![1, 2, 0]
+        );
     }
 
     #[test]
