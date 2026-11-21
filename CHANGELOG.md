@@ -4,12 +4,13 @@ All notable changes to gitbonsai, a Japanese maple bonsai grown from GitHub acti
 
 ## [0.5.1] - 2026-11-21
 
-Fix release: drawing faults from 0.5.0, and formal upright trees stand taller. Formal uprights, trees with a thick or white trunk or a second trunk, and every tree with fine twigs or dead twigs look a little different. Taller formal uprights and rows lit as one would make this a minor version; it ships as a patch because both finish the look of 0.5.0.
+Visual polish release: drawing faults from 0.5.0 are fixed, and formal upright trees stand ever so slightly taller. Every pot, formal uprights, small trunks, trees with a thick or white trunk or a second trunk, and every tree with fine twigs or dead twigs look a little different. The changes under Changed (taller formal uprights, rows lit as one, bark on small trunks) would make this a minor version; it ships as a patch because they finish the look of 0.5.0.
 
 ### Changed
 
 - **Formal uprights stand taller**: a chokkan crown is about as wide as it is tall (it was 1.2 times as wide), and its trunk keeps more girth toward the top; an old one such as torvalds stands 10 to 15% taller.
 - **A row has one light**: `gitbonsai row` lights every tree from the upper left, so trees side by side are never lit from opposite sides; a tree on its own is still lit from its open side.
+- **Small trunks show their bark**: a trunk too thin for the full light and shade of an old one gets a lit band and a bark line, so a young tree's trunk no longer looks flat.
 
 ### Fixed
 
@@ -17,6 +18,15 @@ Fix release: drawing faults from 0.5.0, and formal upright trees stand taller. F
 - **Crossing twigs lie one over the other**: each twig keeps its outline, drawn back to front, so where two cross only the outline of the one in front shows, instead of both outlines running through each other; a twig grows from behind the twig it comes from.
 - **Dead twigs lie one over the other**: as living twigs do, so their ink outlines no longer meet in small triangles at forks and crossings, and a dead twig passes behind living ones as well as in front of them.
 - **A second trunk stays behind the first**: the shadow along it no longer pokes out beside the main trunk as a jagged wedge near the soil.
+- **Shadow bands stay on the wood**: where a trunk or limb bends, as at the trunk's foot, the dark band along it no longer cuts across the bend and shows as a loose line beside the wood or on the soil.
+- **Bare windswept crowns branch out**: a resting windswept tree's bare twigs grow from one another instead of all from one spot on long stems, so its crown no longer reads as a comb of parallel lines.
+- **Dead wood leaves the bark cleanly**: a dead limb runs out of the bark it leaves, without a round end and a line across it, a dead twig starts on the wood it grows from, and dead wood shows no ink line where its pieces meet.
+- **A shari stays clear of the limbs in front**: the bleached strip up a trunk stops below a living limb drawn in front of the trunk, instead of running on as a pale line along the limb's edge.
+- **Thin dead whips end in the crown**: a long dead whip with no forks is cut back where the crown no longer reaches over it; a branched dead top stays whole.
+- **Small clouds show no grey patch**: a cloud with few leaves no longer shows its solid backing below them.
+- **Pot details stay on the pot**: a crackle glaze line no longer runs under a foot, and the ribs of the plain training pot no longer reach past its bottom.
+- **Achievement tiers carry the day they were reached**: `collect` dates a tier above the first by the pull request merge or accepted answer that GitHub links to it, and repairs a date an earlier run recorded as the day it first saw the tier, so `--as-of` and a timelapse show an older account as it was. A tier with no linked pull request or answer keeps the day it was first seen.
+- **The rim sits on the pot**: a band across the pot's edge that tapers into its sides, shaded in steps with the wall, instead of a stroke whose square ends stuck out at both sides.
 
 ## [0.5.0] - 2026-11-21
 
