@@ -8,12 +8,13 @@ Visual polish release: drawing faults from 0.5.0 are fixed, formal upright trees
 
 ### Added
 
+- **gitbonsai.dev has an exhibition**: a page of the trees whose owners chose to show them by signing in with GitHub, with stars and filters, linked from the site's top bar.
 - **A timelapse can be paced by change**: `gitbonsai timelapse --by change` checks the tree every week and keeps a frame at least every nine weeks, plus about `--frames` (default 120) more where it changes most, so growth spurts get more frames and quiet years fewer. `--by time` with `--every` stays the default; the timelapses on gitbonsai.dev are paced by change.
 
 ### Changed
 
 - **Formal uprights stand taller**: a chokkan crown is about as wide as it is tall (it was 1.2 times as wide), and its trunk keeps more girth toward the top; an old one such as torvalds stands 10 to 15% taller.
-- **Pots are repotted with room to grow**: at the spring repotting a pot fits the tree a year's growth ahead, and it is as deep as the trunk is wide at its foot, the usual rule, so many trees sit in a pot one size larger and deeper. A pot's depth now changes only at a repotting, as its size does, so a timelapse no longer shows it deepening week by week.
+- **Pots are repotted with room to grow**: at the spring repotting a pot fits the tree a year's growth ahead, and it is as deep as the trunk is wide at its foot, the usual rule, so many trees sit in a pot one size larger and deeper; a tree in one of the two smallest pots gets no head start. A pot's depth now changes only at a repotting, as its size does, so a timelapse no longer shows it deepening week by week.
 - **A row has one light**: `gitbonsai row` lights every tree from the upper left, so trees side by side are never lit from opposite sides; a tree on its own is still lit from its open side.
 - **Small trunks show their bark**: a trunk too thin for the full light and shade of an old one gets a lit band and a bark line, so a young tree's trunk no longer looks flat.
 
