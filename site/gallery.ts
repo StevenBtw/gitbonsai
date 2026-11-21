@@ -131,14 +131,6 @@ async function toggle(login: string): Promise<void> {
 }
 
 /* The grid */
-/** The quiet "Example" tag, for the trees the exhibition starts with: on a card's picture, and after the style in the large view. */
-function exampleTag(e: Entry): HTMLElement[] {
-  if (!e.example) return [];
-  const t = document.createElement("span");
-  t.className = "tag";
-  t.textContent = "Example";
-  return [t];
-}
 function card(e: Entry, i: number): HTMLElement {
   const a = document.createElement("article");
   a.className = "card plate";
@@ -146,7 +138,7 @@ function card(e: Entry, i: number): HTMLElement {
   const openBtn = document.createElement("button");
   openBtn.type = "button";
   openBtn.className = "open";
-  openBtn.setAttribute("aria-label", `Open @${e.login}'s tree, ${e.style}${e.example ? ", example" : ""}`);
+  openBtn.setAttribute("aria-label", `Open @${e.login}'s tree, ${e.style}`);
   const img = document.createElement("img");
   img.loading = "lazy";
   img.decoding = "async";
@@ -164,7 +156,7 @@ function card(e: Entry, i: number): HTMLElement {
   sty.className = "sty";
   sty.textContent = e.style;
   label.append(who, sty, starButton(e));
-  a.append(openBtn, ...exampleTag(e), label);
+  a.append(openBtn, label);
   return a;
 }
 function query(): Query {
@@ -229,7 +221,7 @@ function showView(): void {
   close.setAttribute("aria-label", "Close");
   close.textContent = "✕";
   close.addEventListener("click", () => dlg.close());
-  head.append(title, sty, ...exampleTag(e), close);
+  head.append(title, sty, close);
   const img = document.createElement("img");
   img.src = svgUrl(e, theme(), legendOn);
   img.alt = `The bonsai grown from the public activity of @${e.login}, ${e.style}`;
