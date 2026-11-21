@@ -139,7 +139,8 @@ pub const POTS: [f64; 9] = [80.0, 100.0, 125.0, 156.0, 195.0, 244.0, 305.0, 381.
 const FULL_POT: f64 = 1.6;
 
 /// The room a repotting leaves to grow: about a year's growth of most trees,
-/// so the pot still fits when the next spring comes.
+/// so the pot still fits when the next spring comes. A tree in one of the two
+/// smallest pots gets none: a size up it would look like a seedling in a tray.
 const AHEAD: f64 = 1.15;
 
 /// The smallest pot that holds `need`, or the largest.
@@ -155,7 +156,12 @@ fn pot_for(need: f64) -> f64 {
 /// in a growth spurt, once it outgrows that pot by two sizes; merely
 /// pot-bound, it waits for spring.
 fn pot_size(now: f64, then: Option<f64>) -> f64 {
-    let potted = pot_for(then.unwrap_or(now) * AHEAD);
+    let need = then.unwrap_or(now);
+    let potted = if pot_for(need) < POTS[2] {
+        pot_for(need)
+    } else {
+        pot_for(need * AHEAD)
+    };
     if now > potted * 1.25 * 1.25 {
         potted.max(pot_for(now))
     } else {
@@ -190,7 +196,8 @@ impl Bonsai {
         let then = (spring < b.observed_on && spring >= snapshot.range.from)
             .then(|| Self::grow_at(snapshot, config, Some(spring)));
         b.pot = pot_size(b.pot_need(), then.as_ref().map(Self::pot_need));
-        b.pot_girth = then.as_ref().unwrap_or(&b).foot_girth() * AHEAD;
+        let ahead = if b.pot < POTS[2] { 1.0 } else { AHEAD };
+        b.pot_girth = then.as_ref().unwrap_or(&b).foot_girth() * ahead;
         b
     }
 
