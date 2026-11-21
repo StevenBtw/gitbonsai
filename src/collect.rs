@@ -239,8 +239,10 @@ pub fn collect(
         .iter()
         .map(|(slug, &tier)| {
             let before = seen.and_then(|p| p.achievement_dates.get(slug));
-            // A tier date never changes: the detail is fetched only for a new tier.
-            let detail = (before.map_or(0, Vec::len) < usize::from(tier))
+            // The detail is fetched for a new tier, and for any tier above the
+            // first: its history repairs a date an older run took as the day
+            // it saw it.
+            let detail = (before.map_or(0, Vec::len) < usize::from(tier) || tier > 1)
                 .then(|| {
                     api.fetch_page(&format!(
                         "https://github.com/users/{login}/achievements/{slug}/detail"
@@ -393,10 +395,12 @@ fn reached_on(api: &dyn GraphQl, link: &str) -> Option<Date> {
         .ok()
 }
 
-/// The day each tier up to `tier` was reached: tier 1 on `first` (or as an
-/// earlier run recorded it), each higher tier as an earlier run recorded it,
-/// else on the day its `linked` pull request or answer reached it, else
-/// `observed_on`, the first run that saw it. Undated without tier 1.
+/// Gives the day each tier up to `tier` was reached: tier 1 on `first` (or
+/// as an earlier run recorded it), each higher tier on the earlier of the
+/// day an earlier run recorded and the day its `linked` pull request or
+/// answer reached it, else `observed_on`, the first run that saw it. A
+/// recorded day can only be late (an older run used the day it saw the
+/// tier), so a linked day repairs it. You get nothing without tier 1.
 pub fn tier_dates(
     tier: u8,
     first: Option<Date>,
@@ -410,11 +414,9 @@ pub fn tier_dates(
     };
     std::iter::once(first)
         .chain((1..usize::from(tier)).map(|i| {
-            previous
-                .get(i)
-                .copied()
-                .or_else(|| linked.get(i).copied().flatten())
-                .unwrap_or(observed_on)
+            // The earliest known: a recorded date can only be late.
+            let known = [previous.get(i).copied(), linked.get(i).copied().flatten()];
+            known.into_iter().flatten().min().unwrap_or(observed_on)
         }))
         .collect()
 }
@@ -1064,6 +1066,15 @@ mod tests {
             [d("2024-12-13"), d("2025-06-01"), d("2025-03-19")],
             "a linked merge dates a new tier"
         );
+        // A run before history links were read dated a tier on the day it
+        // saw it, always on or after the real day: a linked date repairs it.
+        let seen_late = [d("2024-12-13"), d("2026-11-17")];
+        let linked = [None, Some(d("2025-03-19"))];
+        assert_eq!(
+            tier_dates(2, first, Some(&seen_late), &linked, today),
+            [d("2024-12-13"), d("2025-03-19")],
+            "an earlier linked date replaces a recorded one"
+        );
     }
 
     /// A detail fragment's history as GitHub serves it: one item per tier.
@@ -1400,7 +1411,7 @@ mod tests {
     }
 
     #[test]
-    fn a_known_first_unlock_is_not_fetched_again() {
+    fn only_tiers_above_the_first_are_checked_again() {
         let api = Paged {
             fake: Fake {
                 split_above: 1000,
@@ -1408,7 +1419,12 @@ mod tests {
             },
             details: RefCell::new(0),
         };
-        let previous = with_eggs();
+        // Starstruck x2 has a tier to check; YOLO has only its first.
+        let mut previous = with_eggs();
+        previous.achievements.insert("yolo".into(), 1);
+        previous
+            .achievement_dates
+            .insert("yolo".into(), vec![d("2025-03-19")]);
         let s = collect(
             &api,
             "octo",
@@ -1418,8 +1434,11 @@ mod tests {
             &mut |_| {},
         )
         .unwrap();
-        assert_eq!(*api.details.borrow(), 0, "the date was known");
-        assert_eq!(s.achievement_dates, previous.achievement_dates);
+        assert_eq!(*api.details.borrow(), 1, "only starstruck's history");
+        assert_eq!(
+            s.achievement_dates["starstruck"], previous.achievement_dates["starstruck"],
+            "no history found: the recorded dates stay"
+        );
     }
 
     #[test]

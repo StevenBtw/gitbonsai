@@ -334,8 +334,9 @@ const PEEK: f64 = 0.8;
 /// A plant peeks when its stem is behind the trunk, its centre shows, and
 /// between seven tenths and nearly all of it shows: most, never all. Clear, no other wood crosses it;
 /// of those, the one closest to [`PEEK`]. Failing that, the peeking spot
-/// other wood crosses least, then any with its stem tucked away. You get no
-/// spot at all only when the stem shows everywhere.
+/// other wood crosses least, then any with its stem tucked away and its
+/// centre in view, then any with its stem tucked away. You get no spot at
+/// all only when the stem shows everywhere.
 fn peek(spots: &[Spot]) -> (Option<(f64, f64)>, Option<(f64, f64)>) {
     let peeking = |s: &&Spot| s.tucked && s.centred && (0.7..=0.94).contains(&s.seen);
     let near = |a: &Spot, b: &Spot| (a.seen - PEEK).abs().total_cmp(&(b.seen - PEEK).abs());
@@ -349,6 +350,12 @@ fn peek(spots: &[Spot]) -> (Option<(f64, f64)>, Option<(f64, f64)>) {
         .iter()
         .filter(peeking)
         .min_by(|a, b| a.crossed.total_cmp(&b.crossed).then(near(a, b)))
+        .or_else(|| {
+            spots
+                .iter()
+                .filter(|s| s.tucked && s.centred)
+                .min_by(|a, b| near(a, b))
+        })
         .or_else(|| spots.iter().filter(|s| s.tucked).min_by(|a, b| near(a, b)))
         .map(|s| s.at);
     (clear, fallback)
@@ -782,7 +789,7 @@ pub fn eggs(
                             let lifted = up > h + 0.5;
                             let tucked = hidden.iter().all(|&p| covered(on(at, p), trunk, roots))
                                 && (!lifted
-                                    || [0.35, 0.7].iter().all(|&u| {
+                                    || [0.2, 0.4, 0.6, 0.8].iter().all(|&u| {
                                         let p = (
                                             from.0 + (down.0 - from.0) * u,
                                             from.1 + (down.1 - from.1) * u,
@@ -794,7 +801,11 @@ pub fn eggs(
                                 seen,
                                 crossed,
                                 tucked,
-                                centred: shown.iter().all(|&p| !covered(on(at, p), wood, roots)),
+                                // Twigs are drawn in front of it too.
+                                centred: shown.iter().all(|&p| {
+                                    let p = on(at, p);
+                                    !covered(p, wood, roots) && !covered(p, twigs, &[])
+                                }),
                             }
                         })
                         .collect();
@@ -1008,6 +1019,11 @@ mod tests {
         crossed[1].crossed = 0.3;
         crossed[2].crossed = 0.1;
         assert_eq!(peek(&crossed), (None, Some((88.0, 319.0))));
+        // Nothing peeks: of the spots with the stem tucked, one that keeps
+        // the centre in view wins over one closer to [`PEEK`].
+        let mut last = [spot(3.0, 0.55, true), spot(19.0, 0.3, true)];
+        last[0].centred = false;
+        assert_eq!(peek(&last), (None, Some((19.0, 319.0))));
     }
 
     /// Soil eggs never touch: each settles clear of those before it, even
