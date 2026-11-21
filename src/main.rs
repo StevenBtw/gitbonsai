@@ -303,7 +303,7 @@ fn run(cli: Cli) -> Result<()> {
             output_dir,
             tight,
         } => {
-            let config = config_file(config.as_deref(), &mut |s| status(s))?;
+            let mut config = config_file(config.as_deref(), &mut |s| status(s))?;
             let mut grown = Vec::new();
             for text in &trees {
                 let (name, source, day) = gitbonsai::row::spec(text)?;
@@ -314,6 +314,9 @@ fn run(cli: Cli) -> Result<()> {
                 }
                 grown.push((name, Bonsai::grow(&snapshot, &config, day)));
             }
+            // Side by side, trees lit from both sides read as a mistake:
+            // the row has one light, from the right, where a tree grows.
+            config.render.light = Some(1.0);
             for theme in Theme::ALL {
                 let svgs: Vec<(String, String)> = grown
                     .iter()

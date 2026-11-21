@@ -1970,3 +1970,60 @@ fn the_trunk_ends_at_its_foot_and_twigs_overlap_in_depth() {
     assert!(layered, "no tree draws its twigs one by one");
     assert!(dead_layered, "no tree draws its dead twigs one by one");
 }
+
+/// A row of trees is lit by one light: a left tree under it casts its
+/// shadow the way a right tree does, and it stands exactly as before.
+#[test]
+fn one_light_lights_a_row_from_one_side() {
+    // The pot's middle on the canvas.
+    const CENTER_X: f64 = 256.0;
+    let shadow = |svg: &str| -> f64 {
+        let at = svg
+            .find(r##"ry="4" fill="#3b3226" opacity=".16"/>"##)
+            .expect("a soil shadow");
+        let cx = &svg[..at]
+            .rsplit(r#"<ellipse cx=""#)
+            .next()
+            .expect("its ellipse");
+        cx.split('"')
+            .next()
+            .and_then(|v| v.parse().ok())
+            .expect("its cx")
+    };
+    let soil = |svg: &str| {
+        svg.split(r#"<clipPath id="soil">"#)
+            .nth(1)
+            .map(|r| r.split("</clipPath>").next().unwrap_or("").to_string())
+    };
+    let mut row = Config::default();
+    row.render.light = Some(1.0);
+    let mut left = 0;
+    for f in fixtures::all() {
+        let b = Bonsai::grow(&f.snapshot, &Config::default(), None);
+        if b.is_empty() || gitbonsai::sprout::is_sprout(&b) {
+            continue;
+        }
+        let own = render::svg(&b, &Config::default(), Theme::Light);
+        let lit = render::svg(&b, &row, Theme::Light);
+        assert!(
+            shadow(&lit) > CENTER_X,
+            "{}: lit from the left in the row",
+            f.name
+        );
+        assert_eq!(
+            soil(&own),
+            soil(&lit),
+            "{}: the row's light moved the tree",
+            f.name
+        );
+        if b.leader.side < 0.0 {
+            left += 1;
+            assert!(
+                shadow(&own) < CENTER_X,
+                "{}: a left tree on its own is lit from the left",
+                f.name
+            );
+        }
+    }
+    assert!(left > 0, "no fixture grows left");
+}

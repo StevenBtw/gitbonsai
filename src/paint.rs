@@ -502,7 +502,9 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
     let scene = Scene::build(b);
     let animate = config.render.animate;
     let seed = b.account_id;
-    let light = v_norm(light(b.leader.side));
+    // A tree is lit from its open side; a row of trees by one light.
+    let lit = config.render.light.unwrap_or(b.leader.side);
+    let light = v_norm(light(lit));
     // The light's direction on screen, for which side of a branch is lit.
     let (lx, ly, _) = project(v_scale(light, 100.0));
     let ls = norm((lx - CENTER_X, ly - SOIL_Y));
@@ -1387,10 +1389,10 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
     let _ = write!(
         body,
         r#"<ellipse cx="{}" cy="{}" rx="{}" ry="4" fill="{shade}" opacity=".16"/><ellipse cx="{}" cy="{}" rx="{}" ry="2.4" fill="{shade}" opacity=".26"/>"#,
-        Num(CENTER_X + 5.0 * b.leader.side),
+        Num(CENTER_X + 5.0 * lit),
         Num(foot + 1.2),
         Num(pot.bw * 1.18),
-        Num(CENTER_X + 3.5 * b.leader.side),
+        Num(CENTER_X + 3.5 * lit),
         Num(foot + 0.8),
         Num(pot.bw * 1.02),
     );
@@ -1490,21 +1492,13 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
         out.animated += usize::from(animate);
         body.push_str(&drip_ends(&scene, &paints, &pot, animate));
     }
-    // The pot is lit from the tree's open side too.
+    // The pot is lit as the tree is.
     let front = pot_front(b, &pot);
-    body.push_str(&if b.leader.side < 0.0 {
-        mirror(&front)
-    } else {
-        front
-    });
+    body.push_str(&if lit < 0.0 { mirror(&front) } else { front });
     body.push_str(&eggs::kintsugi(&b.archived, seed, &pot));
     // The maker's seal sits on the pot's shaded half: mirrored with it.
     let marks = pot_marks(b, &pot);
-    body.push_str(&if b.leader.side < 0.0 {
-        mirror(&marks)
-    } else {
-        marks
-    });
+    body.push_str(&if lit < 0.0 { mirror(&marks) } else { marks });
     let mut rim = PathData::new();
     rim.m((CENTER_X - hw, SOIL_Y))
         .a(hw, pot.ry, false, (CENTER_X + hw, SOIL_Y));
