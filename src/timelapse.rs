@@ -56,10 +56,11 @@ pub fn shape(b: &Bonsai) -> Vec<f64> {
             cl.patches
                 .iter()
                 .map(|p| {
+                    // As the renderer thins it: private work and unlisted
+                    // languages fade with the account.
                     let f = match p.2.as_deref() {
                         Some(JIN) => 0.0,
-                        Some(l) => b.fullness.get(l).copied().unwrap_or(1.0),
-                        None => 1.0,
+                        lang => b.fullness(lang),
                     };
                     p.3 * f
                 })
@@ -116,7 +117,7 @@ pub fn pick(change: &[f64], frames: usize, gap: usize) -> Vec<usize> {
         }
         kept
     };
-    let budget = keep(f64::INFINITY).len() + frames;
+    let budget = keep(f64::INFINITY).len().saturating_add(frames);
     if n <= budget {
         return (0..n).collect();
     }
@@ -137,6 +138,13 @@ pub fn pick(change: &[f64], frames: usize, gap: usize) -> Vec<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Any number of extra frames is taken, up to every candidate.
+    #[test]
+    fn a_huge_frame_budget_keeps_every_candidate() {
+        let change = vec![1.0; 30];
+        assert_eq!(pick(&change, usize::MAX, 9), (0..30).collect::<Vec<_>>());
+    }
 
     /// Busy weeks get most of the frames; quiet ones never go more than
     /// the longest gap without one.

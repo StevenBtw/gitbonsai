@@ -1947,7 +1947,7 @@ fn the_pot_keeps_its_depth_between_repottings() {
             .and_then(|s| s.parse::<f64>().ok())
             .expect("a pot shadow")
     };
-    let mut held = 0;
+    let (mut held, mut spurts) = (0, 0);
     for name in ["steady", "showcase", "veteran", "comeback", "polyglot"] {
         let frames: Vec<_> = monthly(name)
             .into_iter()
@@ -1957,7 +1957,17 @@ fn the_pot_keeps_its_depth_between_repottings() {
         for pair in frames.windows(2) {
             let ((_, pot_a, foot_a), (day, pot_b, foot_b)) = (pair[0], pair[1]);
             // Repotted on the first of March, the start of spring.
-            if pot_a != pot_b || day.ymd().1 == 3 {
+            if day.ymd().1 == 3 {
+                continue;
+            }
+            // Out of season, in a growth spurt: deeper with its width, unless
+            // it is already as deep as a pot gets.
+            if pot_b > pot_a {
+                spurts += 1;
+                assert!(
+                    foot_b > foot_a || foot_a - 405.2 > 55.9,
+                    "{name} {day}: repotted from {pot_a} to {pot_b}, the foot stays at {foot_a}"
+                );
                 continue;
             }
             held += 1;
@@ -1968,6 +1978,7 @@ fn the_pot_keeps_its_depth_between_repottings() {
         }
     }
     assert!(held > 100, "only {held} months checked");
+    eprintln!("{spurts} out-of-season repottings checked");
 }
 
 /// The trunk is cut level at its foot, so nothing of it lies on the soil

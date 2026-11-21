@@ -11,7 +11,7 @@ description of every frame, for the player). Needs cairosvg, pillow, ffmpeg.
 Frames are rasterized on every CPU core and the videos encoded side by side.
 MKVIDEO_NVENC=1 encodes on an NVIDIA GPU (h264_nvenc) instead of libx264.
 """
-import glob, io, json, os, re, subprocess, sys
+import glob, io, json, math, os, re, subprocess, sys
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 
 import cairosvg
@@ -66,7 +66,7 @@ def main():
         trees.append((tree, meta, ux, uy, ux2 - ux, uy2 - uy))
     # One scale for every tree, so their sizes compare: the widest tree fills the width.
     k = W / max(t[4] for t in trees)
-    H = int(max(t[5] for t in trees) * k + 1) // 2 * 2
+    H = math.ceil(max(t[5] for t in trees) * k / 2) * 2  # even, and never below the tallest tree
     for tree, meta, ux, uy, uw, uh in trees:
         left, drop = round((W - uw * k) / 2), round(H - uh * k)  # centred, on the bottom edge
         for theme in BG:

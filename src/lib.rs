@@ -195,9 +195,13 @@ impl Bonsai {
         let spring = last_spring(b.observed_on, b.hemisphere);
         let then = (spring < b.observed_on && spring >= snapshot.range.from)
             .then(|| Self::grow_at(snapshot, config, Some(spring)));
-        b.pot = pot_size(b.pot_need(), then.as_ref().map(Self::pot_need));
+        let need = then.as_ref().map(Self::pot_need);
+        b.pot = pot_size(b.pot_need(), need);
         let ahead = if b.pot < POTS[2] { 1.0 } else { AHEAD };
-        b.pot_girth = then.as_ref().unwrap_or(&b).foot_girth() * ahead;
+        // Repotted out of season in a growth spurt, the pot deepens in step
+        // with its width.
+        let spring_pot = need.map_or(b.pot, |n| pot_size(n, Some(n)));
+        b.pot_girth = then.as_ref().unwrap_or(&b).foot_girth() * ahead * b.pot / spring_pot;
         b
     }
 
