@@ -12,7 +12,6 @@
 )]
 
 use crate::Bonsai;
-use crate::config::Hemisphere;
 use crate::growth::JIN;
 use crate::scene::radius;
 use crate::style::{CENTER_X, SOIL_Y};
@@ -92,51 +91,41 @@ pub fn change(a: &[f64], b: &[f64]) -> f64 {
     a.iter().zip(b).map(|(x, y)| (x - y).abs()).sum()
 }
 
-/// Whether month `m` (1 to 12) has the tree in full leaf.
-pub fn leafy(m: u32, hemisphere: Hemisphere) -> bool {
-    m == match hemisphere {
-        Hemisphere::North => 7,
-        Hemisphere::South => 1,
-    }
-}
-
-/// The frames to keep, by index, from candidates a month apart: `change[i]`
+/// The frames to keep, by index, from candidates a week apart: `change[i]`
 /// is how far candidate `i` differs from the one before it (the first's is
-/// unused), `leafy[i]` whether it shows the tree in full leaf. A frame is
-/// kept once enough change has gathered, the threshold set so about
-/// `frames` are kept; in a slow month only in full leaf. In a quiet stretch
-/// a frame in full leaf is kept when none was for `floor` candidates, so a
-/// pause still shows. The first and
-/// the last are always kept.
-pub fn pick(change: &[f64], leafy: &[bool], frames: usize, floor: usize) -> Vec<usize> {
+/// unused). A frame is kept at least every `gap` candidates, so the film
+/// never jumps far, and besides those about `frames` more where change
+/// gathers: the threshold is set so about that many are added. The first
+/// and the last are always kept.
+pub fn pick(change: &[f64], frames: usize, gap: usize) -> Vec<usize> {
     let n = change.len();
-    if n <= frames.max(2) {
-        return (0..n).collect();
-    }
     let keep = |t: f64| {
         let mut kept = vec![0];
         let (mut gathered, mut since) = (0.0, 0);
-        for i in 1..n - 1 {
-            gathered += change[i];
+        for (i, c) in change.iter().enumerate().take(n.saturating_sub(1)).skip(1) {
+            gathered += c;
             since += 1;
-            // In a slow month the frame waits for full leaf, so quiet years
-            // show the same season and don't flicker.
-            let due = gathered >= t && (leafy[i] || change[i] >= 0.25 * t);
-            if due || (since >= floor && leafy[i]) {
+            if gathered >= t || since >= gap {
                 kept.push(i);
                 gathered = 0.0;
                 since = 0;
             }
         }
-        kept.push(n - 1);
+        if n > 1 {
+            kept.push(n - 1);
+        }
         kept
     };
-    // The lowest threshold that keeps no more than asked: more change, fewer
+    let budget = keep(f64::INFINITY).len() + frames;
+    if n <= budget {
+        return (0..n).collect();
+    }
+    // The lowest threshold that keeps no more than that: more change, fewer
     // frames.
     let (mut lo, mut hi) = (0.0, change.iter().sum::<f64>() + 1.0);
     for _ in 0..60 {
         let mid = f64::midpoint(lo, hi);
-        if keep(mid).len() > frames {
+        if keep(mid).len() > budget {
             lo = mid;
         } else {
             hi = mid;
@@ -149,38 +138,34 @@ pub fn pick(change: &[f64], leafy: &[bool], frames: usize, floor: usize) -> Vec<
 mod tests {
     use super::*;
 
-    /// Quiet years pass in a frame or so a year; a burst of change gets
-    /// most of the frames.
+    /// Busy weeks get most of the frames; quiet ones never go more than
+    /// the longest gap without one.
     #[test]
-    fn frames_follow_change_not_time() {
-        // Ten years a month apart: a busy first two, then quiet.
-        let n = 120;
-        let change: Vec<f64> = (0..n).map(|i| if i < 24 { 10.0 } else { 0.1 }).collect();
-        let leafy: Vec<bool> = (0..n).map(|i| i % 12 == 6).collect();
-        let kept = pick(&change, &leafy, 40, 9);
-        assert!(kept.len() <= 40, "{} frames", kept.len());
+    fn frames_follow_change_within_a_longest_gap() {
+        // Ten years a week apart: a busy first two, then quiet.
+        let n = 520;
+        let change: Vec<f64> = (0..n).map(|i| if i < 104 { 10.0 } else { 0.1 }).collect();
+        let kept = pick(&change, 60, 9);
         assert_eq!(kept.first(), Some(&0));
         assert_eq!(kept.last(), Some(&(n - 1)));
-        let busy = kept.iter().filter(|&&i| i < 24).count();
+        let gaps = kept.windows(2).map(|w| w[1] - w[0]).max().unwrap_or(0);
+        assert!(gaps <= 9, "a gap of {gaps} weeks");
+        // The floor alone keeps about one frame in nine; change adds about 60.
+        let floor = n.div_ceil(9);
+        assert!(kept.len() <= floor + 62, "{} frames", kept.len());
+        let busy = kept.iter().filter(|&&i| i < 104).count();
+        // The floor alone would give the busy years about 12.
         assert!(
-            busy >= 20,
+            busy >= 45,
             "only {busy} of {} frames in the busy years",
             kept.len()
         );
-        // The quiet years still show, about once a year, in full leaf.
-        let quiet: Vec<usize> = kept
-            .iter()
-            .copied()
-            .filter(|&i| (24..n - 1).contains(&i))
-            .collect();
-        assert!(quiet.len() >= 6, "quiet years in {} frames", quiet.len());
-        assert!(quiet.iter().all(|&i| leafy[i]), "{quiet:?}");
     }
 
-    /// A short life keeps every month.
+    /// A short life keeps every candidate.
     #[test]
     fn a_short_life_keeps_every_frame() {
-        let kept = pick(&[0.0, 1.0, 2.0], &[false; 3], 120, 9);
+        let kept = pick(&[0.0, 1.0, 2.0], 120, 9);
         assert_eq!(kept, vec![0, 1, 2]);
     }
 

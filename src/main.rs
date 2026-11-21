@@ -112,11 +112,12 @@ enum Command {
         every: String,
 
         /// Pace the frames by `time` (one every `--every`) or by `change`
-        /// (about `--frames` of them, each showing as much growth)
+        /// (weekly candidates: one at least every two months, and about
+        /// `--frames` more where the tree changes most)
         #[arg(long, default_value = "time")]
         by: Pace,
 
-        /// How many frames a timelapse by change has, about
+        /// How many frames a timelapse by change adds where it changes, about
         #[arg(long, default_value_t = 120)]
         frames: usize,
 
@@ -259,10 +260,10 @@ fn run(cli: Cli) -> Result<()> {
         } => {
             let snapshot = load_snapshot(&snapshot)?;
             let config = load_config(&tree, &snapshot, &status)?;
-            // By change, the candidates are a month apart.
+            // By change, the candidates are a week apart.
             let step = match by {
                 Pace::Time => parse_interval(&every)?,
-                Pace::Change => Interval::Months(1),
+                Pace::Change => Interval::Days(7),
             };
             let end = as_of(&tree)?
                 .unwrap_or(snapshot.observed_on)
@@ -276,7 +277,7 @@ fn run(cli: Cli) -> Result<()> {
             // the shared camera, then each frame grown again and written.
             let grow = |day: Date| Bonsai::grow(&snapshot, &config, Some(day));
             let mut boxes = Vec::with_capacity(days.len());
-            let (mut change, mut leafy) = (Vec::new(), Vec::new());
+            let mut change = Vec::new();
             let mut before: Option<Vec<f64>> = None;
             for &day in &days {
                 let bonsai = grow(day);
@@ -288,13 +289,12 @@ fn run(cli: Cli) -> Result<()> {
                             .as_ref()
                             .map_or(0.0, |b| timelapse::change(b, &shape)),
                     );
-                    leafy.push(timelapse::leafy(day.ymd().1, bonsai.hemisphere));
                     before = Some(shape);
                 }
             }
             if by == Pace::Change {
-                // About a frame a year in full leaf through a quiet stretch.
-                let kept = timelapse::pick(&change, &leafy, budget, 9);
+                // Never more than about two months (nine weeks) apart.
+                let kept = timelapse::pick(&change, budget, 9);
                 days = kept.iter().map(|&i| days[i]).collect();
                 boxes = kept.iter().map(|&i| boxes[i]).collect();
             }
