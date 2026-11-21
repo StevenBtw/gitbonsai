@@ -55,7 +55,7 @@
             <div><span class="k">Plate</span><span class="v tnum" id="herono">03</span></div>
             <div><span class="k">Grown for</span><span class="v" id="herofor">Showcase</span></div>
             <div><span class="k">Style</span><span class="v" id="herostyle">moyogi</span></div>
-            <div><span class="k">Observed</span><span class="v tnum" id="heroweek">this week</span></div>
+            <div class="legendcell"><label class="k" for="herolegend">Legend</label><span class="v"><input type="checkbox" class="tick" id="herolegend" disabled></span></div>
           </figcaption>
           <div class="gallery" id="gallery" role="radiogroup" aria-label="Plates" hidden></div>
         </figure>
@@ -94,38 +94,73 @@
       <div class="sec-head">
         <p class="eyebrow">Reading a tree</p>
         <h2>What every part shows</h2>
+        <p class="lede">The main signs first. Open a card for the rest, or see each one on a tree above.</p>
       </div>
-      <dl class="legend">
-        <div><dt>The trunk</dt><dd>Your first language; it only grows</dd></div>
-        <div><dt>Leaf color</dt><dd>The language, on the Japanese maple palette</dd></div>
-        <div><dt>Strands</dt><dd>Each language with at least 10% of your work; it comes away from the trunk the more you use it</dd></div>
-        <div><dt>Silver leaves</dt><dd>Private work, when your profile shares it; their tips take your public languages' colors</dd></div>
-        <div><dt>Girth</dt><dd>Every contribution ever, and your age</dd></div>
-        <div><dt>Fullness</dt><dd>How busy your recent years were; old leaves thin out</dd></div>
-        <div><dt>The crown</dt><dd>Your last three to six years, a sector per language with a real share of them</dd></div>
-        <div><dt>Bronze tips</dt><dd>New growth from last week</dd></div>
-        <div><dt>Low limbs</dt><dd>Earlier eras, oldest lowest</dd></div>
-        <div><dt>Bleached deadwood</dt><dd>A language you stopped using while you kept working; it dies in place and weathers over the years</dd></div>
-        <div><dt>A gap of bare trunk</dt><dd>A long pause before your recent years</dd></div>
-        <div><dt>A bleached strip</dt><dd>The language your tree started with, dropped</dd></div>
-        <div><dt>A bare tree</dt><dd>A year without contributions: resting for the winter</dd></div>
-        <div><dt>Winged seeds</dt><dd>Your lifetime level</dd></div>
-        <div><dt>Moss</dt><dd>Your current weekly streak</dd></div>
-        <div><dt>Falling leaves</dt><dd>You crossed a level this week</dd></div>
-        <div><dt>The pot</dt><dd>Your longest streak</dd></div>
-      </dl>
-      <div class="sec-head shapes-head">
-        <p class="eyebrow">Shapes</p>
-        <h3>Your last three years pick the shape</h3>
-        <p class="lede">The tree eases from one shape into the next as your work changes.</p>
+      <div class="themes">
+        <article class="theme">
+          <h3>What it's made of</h3>
+          <dl class="legend">
+            <div><dt>The trunk</dt><dd>Your first language; it only grows</dd></div>
+            <div><dt>Leaf color</dt><dd>The language, on the Japanese maple palette</dd></div>
+          </dl>
+          <dl class="legend extra">
+            <div><dt>Strands</dt><dd>Each language with at least 10% of your work; it comes away from the trunk the more you use it</dd></div>
+            <div><dt>Silver leaves</dt><dd>Private work, when your profile shares it; their tips take your public languages' colors</dd></div>
+            <div><dt>A white trunk</dt><dd>A classic language such as COBOL or Fortran, still growing: the rarest shape's honor</dd></div>
+          </dl>
+          <a class="seeit" href="#herocanvas" data-plate="stevenbtw">See three languages' leaves on @StevenBtw</a>
+        </article>
+        <article class="theme">
+          <h3>Time and growth</h3>
+          <dl class="legend">
+            <div><dt>Girth</dt><dd>Every contribution ever, and your age</dd></div>
+            <div><dt>The crown</dt><dd>Your last three to six years, a sector per language with a real share of them</dd></div>
+          </dl>
+          <dl class="legend extra">
+            <div><dt>Fullness</dt><dd>How busy your recent years were; old leaves thin out</dd></div>
+            <div><dt>Low limbs</dt><dd>Earlier eras, oldest lowest</dd></div>
+            <div><dt>Bronze tips</dt><dd>New growth from last week</dd></div>
+          </dl>
+          <a class="seeit" href="#herocanvas" data-plate="torvalds">See 15 years of girth on @torvalds</a>
+        </article>
+        <article class="theme">
+          <h3>Pauses and changes</h3>
+          <dl class="legend">
+            <div><dt>Bleached deadwood</dt><dd>A language you stopped using while you kept working; it dies in place and weathers over the years</dd></div>
+            <div><dt>A bare tree</dt><dd>A year without contributions: resting for the winter</dd></div>
+          </dl>
+          <dl class="legend extra">
+            <div><dt>A gap of bare trunk</dt><dd>A long pause before your recent years</dd></div>
+            <div><dt>A bleached strip</dt><dd>The language your tree started with, dropped</dd></div>
+          </dl>
+          <a class="seeit" href="#herocanvas" data-plate="tj">See a bare tree resting for the winter on @tj</a>
+        </article>
+        <article class="theme">
+          <h3>Milestones</h3>
+          <dl class="legend">
+            <div><dt>The pot</dt><dd>Your longest streak</dd></div>
+            <div><dt>Moss</dt><dd>Your current weekly streak</dd></div>
+          </dl>
+          <dl class="legend extra">
+            <div><dt>Winged seeds</dt><dd>Your lifetime level</dd></div>
+            <div><dt>Falling leaves</dt><dd>You crossed a level this week</dd></div>
+          </dl>
+          <a class="seeit" href="#herocanvas" data-plate="steipete">See a long streak's pot and moss on @steipete</a>
+        </article>
+        <article class="theme shapes">
+          <h3>Shapes</h3>
+          <p class="lede">Your last three years mostly pick the shape; the tree eases from one into the next as your work changes.</p>
+          <dl class="legend">
+            <div><dt>Chokkan, formal upright</dt><dd>Steady work in one main language: straight, thick and symmetric <a class="seeit" href="#herocanvas" data-plate="torvalds">@torvalds</a></dd></div>
+            <div><dt>Moyogi, informal upright</dt><dd>Steady work with new languages coming in: the trunk bends <a class="seeit" href="#herocanvas" data-plate="showcase">Showcase</a></dd></div>
+          </dl>
+          <dl class="legend extra">
+            <div><dt>Shakan, slanting</dt><dd>Pauses, then work again, in one main language: the tree leans <a class="seeit" href="#herocanvas" data-plate="tj">@tj</a></dd></div>
+            <div><dt>Fukinagashi, windswept</dt><dd>Pauses, with work across languages: everything streams to one side <a class="seeit" href="#herocanvas" data-plate="stevenbtw">@StevenBtw</a></dd></div>
+            <div><dt>Han-kengai, semi-cascade</dt><dd>Steady work in a classic language such as COBOL or Fortran: the tree spills over the rim, its trunk white and still growing <a class="seeit" href="#herocanvas" data-plate="jacobwilliams">@jacobwilliams</a></dd></div>
+          </dl>
+        </article>
       </div>
-      <dl class="legend">
-        <div><dt>Chokkan, formal upright</dt><dd>Steady work in one main language: straight, thick and symmetric</dd></div>
-        <div><dt>Moyogi, informal upright</dt><dd>Steady work with new languages coming in: the trunk bends</dd></div>
-        <div><dt>Shakan, slanting</dt><dd>Pauses, then work again, in one main language: the tree leans</dd></div>
-        <div><dt>Fukinagashi, windswept</dt><dd>Pauses, with work across languages: everything streams to one side</dd></div>
-        <div><dt>Kengai, cascade</dt><dd>Steady work in a legacy language such as COBOL or Fortran: the tree spills over the rim</dd></div>
-      </dl>
       <div class="eggs">
         <p class="eyebrow">Look closely</p>
         <p class="egg-line">A tree may hide a few small surprises of its own. <em>Can you spot them?</em></p>
@@ -146,8 +181,8 @@
             <div class="at"><span>@</span><input id="login" name="login" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="your-username" required maxlength="39" pattern="[A-Za-z0-9](-?[A-Za-z0-9])*"></div>
             <button class="btn btn-primary" type="submit" id="grow">Grow</button>
           </div>
-          <label class="check"><input type="checkbox" id="legend"> Show the legend</label>
-          <p class="hint">Public activity only; private work shows as silver leaves once the Action runs on your own profile. Trees grown here, with the public activity they were grown from, are kept to help improve gitbonsai until removal is asked; to have one removed, email <a href="mailto:privacy@gitbonsai.dev">privacy@gitbonsai.dev</a>.</p>
+          <label class="check"><input type="checkbox" class="tick" id="legend"> Show the legend</label>
+          <p class="hint">Public activity only; private work shows as silver leaves once the Action runs on your own profile.</p>
         </form>
       </div>
       <figure class="plate result" aria-live="polite">
@@ -218,7 +253,7 @@
 <footer>
   <div class="wrap">
     <span><span class="mono">git</span><em class="serif">bonsai</em> @VERSION@ · MIT or Apache-2.0</span>
-    <a href="https://github.com/StevenBtw/gitbonsai">Source on GitHub</a>
+    <a href="https://github.com/StevenBtw/gitbonsai">If you like this project, give it a star on GitHub</a>
   </div>
 </footer>
 </body>

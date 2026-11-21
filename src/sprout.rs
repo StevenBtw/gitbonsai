@@ -37,9 +37,12 @@ const STEM: Rgb = Rgb::hex(0x6f8f3a);
 /// A yellowing seed leaf.
 const OLD: Rgb = Rgb::hex(0xd2c06a);
 /// When each pair of true leaves opens, in lifetime contributions.
-const BORN: [f64; 8] = [4.0, 6.0, 9.0, 12.0, 16.0, 21.0, 27.0, 33.0];
+const BORN: [f64; 8] = [4.0, 10.0, 18.0, 26.0, 33.0, 38.0, 43.0, 48.0];
 /// When each pair drops: the lowest first, the last at the hand-over.
 const DROP: [f64; 8] = [35.0, 40.0, 44.0, 47.0, 50.0, 53.0, 56.0, SPROUT_UNTIL];
+/// The least a pair stands below the next, as a share of the stem for each
+/// unit of leaf size: about a leaf's height.
+const PAIR_GAP: f64 = 0.2;
 /// Pairs from this one gather into the top tuft; the two below stay low.
 const TUFT: usize = 5;
 
@@ -330,20 +333,36 @@ pub fn draw(
     } else {
         -1.0
     };
+    // A pair stays where the stem's tip was when it opened: the stem grows
+    // on above it, so older pairs stand lower and spaced out, the newest at
+    // the top. The stem's growth slows, so a pair keeps the height of the
+    // larger leaves below the next, easing in as that one grows to its size:
+    // a grown pair's leaves never reach into a new one.
+    let open = BORN.iter().take_while(|&&born| n >= born).count();
+    let full = |i: usize| 1.25 - 0.05 * i as f64;
+    let size = |i: usize| (0.3 + (n - BORN[i]) / 0.6 / 16.0).min(1.0) * full(i);
+    let mut at_h: Vec<f64> = (0..open)
+        .map(|i| {
+            let young = 0.5 + 0.45 * (i + 1) as f64 / BORN.len() as f64;
+            (height(BORN[i]) / h).min(0.95).max(young - 0.15)
+        })
+        .collect();
+    for i in (0..open.saturating_sub(1)).rev() {
+        let gap = size(i).max(size(i + 1)) * size(i + 1) / full(i + 1);
+        at_h[i] = at_h[i].min(at_h[i + 1] - PAIR_GAP * gap);
+    }
     let mut leaf = 0usize;
-    for (i, born) in BORN.iter().enumerate() {
-        if n < *born {
-            break;
-        }
+    for (i, born) in BORN.iter().enumerate().take(open) {
         let age = (n - born) / 0.6;
-        let young = 0.5 + 0.45 * (i + 1) as f64 / BORN.len() as f64;
         let tuft = i >= TUFT;
+        let grown = at_h[i];
         let f = if tuft {
-            young + (0.88 + 0.025 * (i - TUFT) as f64 - young) * gather
+            grown + (0.88 + 0.025 * (i - TUFT) as f64 - grown) * gather
         } else {
-            young - 0.15 * gather
+            grown - 0.15 * gather
         };
-        let mut s = (0.4 + age / 12.0).min(1.0) * (1.45 - 0.05 * i as f64);
+        // It opens small and grows to its size over about a dozen more.
+        let mut s = (0.3 + age / 16.0).min(1.0) * (1.25 - 0.05 * i as f64);
         let mut spread = if i % 2 == 0 {
             62.0 - 3.0 * i as f64
         } else {
@@ -370,9 +389,14 @@ pub fn draw(
             pair.swap(0, 1);
         }
         for (side, lang) in [-1.0, 1.0].into_iter().zip(pair) {
-            // The light comes from the left: the right leaf a shade darker.
+            // The light comes from the tree's open side: the leaf away from
+            // it a shade darker.
             let c = lang.map_or(MAPLE_GREEN.shift(shift, 0.0), color);
-            let c = if side > 0.0 { c.shift(-0.03, 0.0) } else { c };
+            let c = if side * b.leader.side > 0.0 {
+                c.shift(-0.03, 0.0)
+            } else {
+                c
+            };
             blade(&mut out, (x, y), side * spread, s, c, green, sway());
         }
     }

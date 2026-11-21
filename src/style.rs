@@ -21,6 +21,13 @@ const WINDOW_MONTHS: i32 = 36;
 
 /// Languages that cascade a tree over the rim: kengai. GitHub's names, and
 /// a few spellings of the same.
+/// Checks whether `language` is one of the classic languages in `LEGACY`,
+/// ignoring case: the work that grows a semi-cascade.
+#[must_use]
+pub fn is_legacy(language: &str) -> bool {
+    LEGACY.iter().any(|x| x.eq_ignore_ascii_case(language))
+}
+
 const LEGACY: [&str; 23] = [
     "COBOL",
     "Fortran",
@@ -231,8 +238,9 @@ pub struct Mix {
 
 impl Mix {
     /// The mix of `snapshot`'s complete months, the recent ones counting
-    /// most: a month's weight halves every `HALF_LIFE_MONTHS`, so the last
-    /// three years hold almost all of it. A resting account keeps its mix of
+    /// most: a month's weight halves every `HALF_LIFE_MONTHS`, so on a long
+    /// account the last three years hold about two thirds of it (older months
+    /// keep 0.5^(36/22), about 32%). A resting account keeps its mix of
     /// languages, while its rest reads as uneven work.
     pub fn of(snapshot: &Snapshot) -> Self {
         let month = |d: crate::date::Date| {
@@ -296,7 +304,7 @@ impl Mix {
         };
         let old: f64 = langs
             .iter()
-            .filter(|(l, _)| LEGACY.iter().any(|x| x.eq_ignore_ascii_case(l)))
+            .filter(|(l, _)| is_legacy(l))
             .map(|(_, v)| v)
             .sum();
         let legacy = if all > 0.0 {

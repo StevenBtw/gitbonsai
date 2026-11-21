@@ -26,7 +26,7 @@ use crate::math;
 use crate::noise::hash01;
 use crate::render::{Num, PathData, Theme};
 use crate::rng::Rng;
-use crate::scene::{LIGHT, Scene, TILT, V3, WORLD, project, v_add, v_dot, v_norm, v_scale};
+use crate::scene::{Scene, TILT, V3, WORLD, light, project, v_add, v_dot, v_norm, v_scale};
 use crate::style::{CENTER_X, SOIL_Y};
 
 /// The colors that don't come from the data.
@@ -483,7 +483,7 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
     let scene = Scene::build(b);
     let animate = config.render.animate;
     let seed = b.account_id;
-    let light = v_norm(LIGHT);
+    let light = v_norm(light(b.leader.side));
     // The light's direction on screen, for which side of a branch is lit.
     let (lx, ly, _) = project(v_scale(light, 100.0));
     let ls = norm((lx - CENTER_X, ly - SOIL_Y));
@@ -507,6 +507,17 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
     let mut twigs = [String::new(), String::new()];
     // Each chain's line as drawn, by index.
     let mut lines: Vec<Vec<(f64, f64)>> = Vec::with_capacity(scene.chains.len());
+    // Each chain's drawn line with its radius, for what must touch it.
+    let mut drawn: Vec<Vec<(f64, f64, f64)>> = Vec::with_capacity(scene.chains.len());
+    // Dead wood left out, by chain: what grows from it is left out too.
+    let mut dropped = vec![false; scene.chains.len()];
+    // Trunk pieces as drawn: (item, outline points, dead). A dead main trunk,
+    // or one with a shari, always shows: a strand crossing it passes behind.
+    let mut trunk_pieces: Vec<(usize, Vec<(f64, f64, f64)>, bool)> = Vec::new();
+    // Every thick piece of wood as drawn, and every twig, for what peeks out
+    // from behind them.
+    let mut wood_pieces: Vec<Vec<(f64, f64, f64)>> = Vec::new();
+    let mut twig_pieces: Vec<Vec<(f64, f64, f64)>> = Vec::new();
     // A cascade's wood is slender.
     let slim = {
         let w = b.leader.cascade.abs();
@@ -553,6 +564,7 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
             follow(&mut fine, (dx, dy));
         }
         lines.push(fine.iter().map(|p| (p.0, p.1)).collect());
+        drawn.push(fine.iter().map(|p| (p.0, p.1, p.2)).collect());
         // A limb flares where it leaves its parent, a collar that runs the two
         // woods together instead of one cutting into the other.
         if let Some((r, (x0, y0, ..))) = scene
@@ -582,6 +594,35 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                 p.2 = p.2.max((own * (1.0 + 0.7 * k * k)).min(0.9 * r));
             }
         }
+        let strand = scene.strands.contains(&ci);
+        // What grows from dead wood left out goes with it: no twig hangs in
+        // the air. A chain always comes after the chain it grows from.
+        if scene.joins.get(&ci).is_some_and(|r| dropped[r.2]) {
+            dropped[ci] = true;
+            continue;
+        }
+        // A thin dead strand winds behind the trunk and shows only as a stray
+        // spike beside it: it is left out.
+        if *jin && strand && !thick && pts.iter().all(|p| p.2 < 1.2) {
+            dropped[ci] = true;
+            continue;
+        }
+        // A dead twig that has come away from the wood it grew from would
+        // float in the air, a spike with nothing under it: it is left out.
+        if *jin && !thick && !strand {
+            let off = scene.joins.get(&ci).zip(fine.first()).and_then(|(r, p)| {
+                drawn
+                    .get(r.2)?
+                    .iter()
+                    .map(|q| (math::sq(q.0 - p.0) + math::sq(q.1 - p.1)).sqrt() - q.2)
+                    .reduce(f64::min)
+            });
+            if off.is_some_and(|d| d > 6.0) {
+                dropped[ci] = true;
+                continue;
+            }
+        }
+        // Only wood that is drawn sets the frame.
         for p in &fine {
             extent = (
                 extent.0.min(p.0 - p.2),
@@ -590,11 +631,14 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
             );
             low = low.max(p.1 + p.2);
         }
-        let strand = scene.strands.contains(&ci);
         // Thin twigs all share one path per color, drawn behind the leaves.
         if !thick && !strand {
             let seg: Vec<(f64, f64, f64)> = fine.iter().map(|p| (p.0, p.1, p.2)).collect();
             twigs[usize::from(*jin)].push_str(tube(&seg, true, false).as_str());
+            // A hairline crossing a plant is no matter; a branch is.
+            if seg.iter().any(|p| p.2 >= 1.2) {
+                twig_pieces.push(seg);
+            }
             continue;
         }
         let piece = 36;
@@ -627,14 +671,21 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
             } else {
                 (end + 2).min(fine.len() - 1)
             };
-            let seg: Vec<(f64, f64, f64)> = fine[start..=reach]
+            let mut seg: Vec<(f64, f64, f64)> = fine[start..=reach]
                 .iter()
                 .map(|p| (p.0, p.1, p.2))
                 .collect();
+            // Wood from the foot runs straight down into the soil: cut square
+            // across a steep lean, one corner of the cut would stand above it.
+            if start == 0 && !scene.joins.contains_key(&ci) {
+                let (x, y, r) = seg[0];
+                seg.splice(0..0, [(x, y + 2.0 * r, r), (x, y + r, r)]);
+            }
             let depth = join.map_or(
                 fine[start..=end].iter().map(|p| p.3).sum::<f64>() / (end - start + 1) as f64,
                 |j| j.1,
             );
+
             // Living wood under the crown lies in its shadow, so limbs that
             // cross there read apart from each other and from the lit trunk.
             let shade = if dead.is_some() {
@@ -776,13 +827,13 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                     );
                 }
                 if !*jin {
-                    // Every branch has a dark underside, so branches crossing
-                    // in one bark color still read one by one.
+                    // Every branch has a soft shadow underneath, so branches
+                    // crossing in one bark color still read one by one.
                     let _ = write!(
                         s,
                         r#"<path d="{}" fill="{}"/>"#,
-                        strip(0.62, 0.98).as_str(),
-                        base.shift(-0.17, 0.0)
+                        strip(0.7, 0.97).as_str(),
+                        base.shift(-0.1, 0.0)
                     );
                 }
                 if let Some(g) = scene.shari.filter(|_| ci == 0) {
@@ -911,9 +962,33 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                     );
                 }
             }
+            let outline: Vec<(f64, f64, f64)> =
+                fine[start..=end].iter().map(|p| (p.0, p.1, p.2)).collect();
+            if ci == 0 || strand {
+                // Only the main trunk's dead wood comes to the front: a dead
+                // strand keeps winding round the trunk, behind it as it turns.
+                let dead = ci == 0 && (dead.is_some() || scene.shari.is_some());
+                trunk_pieces.push((items.len(), outline.clone(), dead));
+            }
+            wood_pieces.push(outline);
             items.push((depth, s));
             start = end;
         }
+    }
+    for (live, outline, _) in trunk_pieces.iter().filter(|t| !t.2) {
+        let crosses = |other: &Vec<(f64, f64, f64)>| {
+            outline.iter().any(|p| {
+                other
+                    .iter()
+                    .any(|q| math::sq(p.0 - q.0) + math::sq(p.1 - q.1) < math::sq(p.2 + q.2))
+            })
+        };
+        let behind = trunk_pieces
+            .iter()
+            .filter(|t| t.2 && crosses(&t.1))
+            .map(|t| items[t.0].0 - 1.0)
+            .fold(items[*live].0, f64::min);
+        items[*live].0 = behind;
     }
 
     for (k, d) in twigs.iter().enumerate() {
@@ -926,11 +1001,11 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                     paints.jin_ink
                 )
             } else {
-                // A fine darker outline on each twig: in one shared fill,
+                // A faint darker outline on each twig: in one shared fill,
                 // crossing twigs would merge into one flat shape.
                 format!(
-                    r#"<path d="{d}" fill="{color}" stroke="{}" stroke-width="0.5" stroke-linejoin="round"/>"#,
-                    color.shift(-0.16, 0.0)
+                    r#"<path d="{d}" fill="{color}" stroke="{}" stroke-width="0.35" stroke-linejoin="round"/>"#,
+                    color.shift(-0.08, 0.0)
                 )
             };
             items.push((f64::MIN, s));
@@ -951,8 +1026,12 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
         // Light from the pad's ball normal and height in the pad, then a
         // ramp: cool shadow, the leaf color, warm light, with soft steps.
         let s = 0.62 * diffuse + 0.38 * t.q;
-        let back = (-t.p[2] / 70.0).clamp(0.0, 1.0);
-        let front = (t.p[2] / 70.0).clamp(0.0, 1.0);
+        // A lifted leaf is colored for where it is drawn: in front, not
+        // faded into the air behind.
+        let z = t.p[2] + t.lift;
+        let back = (-z / 70.0).clamp(0.0, 1.0);
+        let front = (z / 70.0).clamp(0.0, 1.0);
+        let seen = depth + t.lift;
         let lighting = |base: Rgb| {
             let dark = base.shift(-0.15, -0.01).mix(Rgb::hex(0x2f3d63), 0.28);
             let lit = base.shift(0.09, -0.005).mix(Rgb::hex(0xfff0c2), 0.22);
@@ -963,7 +1042,7 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                 // Japanese maples flush bronze-red before the leaves settle.
                 c = c.mix(Rgb::hex(0xc8553d), 0.45).shift(0.06, 0.0);
             }
-            haze(c, depth)
+            haze(c, seen)
                 .mix(air, 0.34 * back)
                 .shift(-0.04 * front, 0.0)
         };
@@ -1025,7 +1104,7 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                 Num(WORLD * (1.15 + 0.3 * h))
             );
         }
-        items.push((depth + 0.5, s));
+        items.push((seen + 0.5, s));
         if animate
             && b.extras.bloom.is_some()
             && fallen.len() < 9
@@ -1135,7 +1214,8 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
     }
 
     // ---- the pot, sized to the tree, seen from a little above ----
-    let size = ((SOIL_Y - extent.2).max(extent.1 - extent.0) * 0.62).clamp(80.0, 400.0);
+    // Repotted in steps as the tree grows ([`Bonsai::grow`]).
+    let size = b.pot;
     let hw = size / 2.0;
     let base_r = WORLD
         * scene
@@ -1171,6 +1251,20 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
         bw: hw * (0.88 + 0.09 * k),
         glaze: pot_glaze(b.extras.pot_tier, config, &paints),
     };
+    // A sprout stands centered in its frame: the seedling to come sizes it,
+    // but its sides even out around the pot until the hand-over, so the
+    // little plant never sits in a corner of empty sky.
+    let extent = if sprout.is_some() {
+        let even = 1.0 - crate::sprout::handover(crate::sprout::count(b));
+        let half = (CENTER_X - extent.0).max(extent.1 - CENTER_X);
+        (
+            extent.0 - even * (extent.0 - (CENTER_X - half)),
+            extent.1 + even * ((CENTER_X + half) - extent.1),
+            extent.2,
+        )
+    } else {
+        extent
+    };
     out.frame = frame(extent, &pot);
     // Room below the pot for what hangs there, kept no taller than wide.
     let bottom = ((low + 10.0) / 8.0).ceil() * 8.0;
@@ -1182,14 +1276,68 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
             out.frame.2 += 2.0 * pad;
         }
     }
-    let egg = eggs::eggs(
+    // The eggs keep their places on a right tree; a left tree's are their
+    // mirror image, drawings and all, as its light is.
+    let left = b.leader.side < 0.0;
+    let flip = |f: &mut Frame| f.0 = 2.0 * CENTER_X - f.0 - f.2;
+    // The roots, before the eggs: what peeks out behind the trunk keeps
+    // clear of them.
+    let (roots_back, roots_front, root_hulls) = nebari(
         b,
-        &scene,
         &paints,
+        base_r,
         &pot,
-        &mut out.frame,
-        config.render.legend,
+        scene.chains.first().map_or(&[][..], |c| &c.0[..]),
+        ls,
     );
+    let flip_x = |x: f64| if left { 2.0 * CENTER_X - x } else { x };
+    let canonical =
+        |pieces: &mut dyn Iterator<Item = &Vec<(f64, f64, f64)>>| -> Vec<Vec<(f64, f64, f64)>> {
+            pieces
+                .map(|t| t.iter().map(|&(x, y, r)| (flip_x(x), y, r)).collect())
+                .collect()
+        };
+    let trunk = canonical(&mut trunk_pieces.iter().map(|t| &t.1));
+    let wood = canonical(&mut wood_pieces.iter());
+    let twiggy = canonical(&mut twig_pieces.iter());
+    let roots: Vec<Vec<(f64, f64)>> = root_hulls
+        .iter()
+        .map(|h| h.iter().map(|&(x, y)| (flip_x(x), y)).collect())
+        .collect();
+    // Eggs hang only from living branches that are drawn: a strand winds
+    // round the trunk and dead wood weathers, so neither is drawn where
+    // its points lie.
+    let mut shown = scene.clone();
+    for (ci, (chain, gone)) in shown.chains.iter_mut().zip(&dropped).enumerate() {
+        if *gone || chain.1.is_some() || scene.strands.contains(&ci) {
+            chain.0.clear();
+        }
+    }
+    let egg = if left {
+        flip(&mut out.frame);
+        let mut e = eggs::eggs(
+            b,
+            &shown.mirrored(),
+            &paints,
+            &pot,
+            &out.frame,
+            (&trunk, &wood, &twiggy, &roots),
+        );
+        flip(&mut out.frame);
+        for layer in [&mut e.behind, &mut e.back, &mut e.front, &mut e.top] {
+            *layer = mirror(layer);
+        }
+        e
+    } else {
+        eggs::eggs(
+            b,
+            &shown,
+            &paints,
+            &pot,
+            &out.frame,
+            (&trunk, &wood, &twiggy, &roots),
+        )
+    };
 
     let body = &mut out.body;
     // The pot's own shadow on the table, soft-edged, the light from the upper
@@ -1199,10 +1347,10 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
     let _ = write!(
         body,
         r#"<ellipse cx="{}" cy="{}" rx="{}" ry="4" fill="{shade}" opacity=".16"/><ellipse cx="{}" cy="{}" rx="{}" ry="2.4" fill="{shade}" opacity=".26"/>"#,
-        Num(CENTER_X + 5.0),
+        Num(CENTER_X + 5.0 * b.leader.side),
         Num(foot + 1.2),
         Num(pot.bw * 1.18),
-        Num(CENTER_X + 3.5),
+        Num(CENTER_X + 3.5 * b.leader.side),
         Num(foot + 0.8),
         Num(pot.bw * 1.02),
     );
@@ -1237,14 +1385,7 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
     let (moss_back, moss_front) = moss(b, &paints, &pot);
     body.push_str(&moss_back);
     body.push_str(&egg.back);
-    let (roots_back, roots_front) = nebari(
-        b,
-        &paints,
-        base_r,
-        &pot,
-        scene.chains.first().map_or(&[][..], |c| &c.0[..]),
-        ls,
-    );
+
     body.push_str(&roots_back);
     // The trunk goes into the soil: nothing of it shows below the front edge
     // of its footprint, so no flare or strand end sticks out under the roots.
@@ -1308,9 +1449,21 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
         out.animated += usize::from(animate);
         body.push_str(&drip_ends(&scene, &paints, &pot, animate));
     }
-    body.push_str(&pot_front(b, &pot));
+    // The pot is lit from the tree's open side too.
+    let front = pot_front(b, &pot);
+    body.push_str(&if b.leader.side < 0.0 {
+        mirror(&front)
+    } else {
+        front
+    });
     body.push_str(&eggs::kintsugi(&b.archived, seed, &pot));
-    body.push_str(&pot_marks(b, &pot));
+    // The maker's seal sits on the pot's shaded half: mirrored with it.
+    let marks = pot_marks(b, &pot);
+    body.push_str(&if b.leader.side < 0.0 {
+        mirror(&marks)
+    } else {
+        marks
+    });
     let mut rim = PathData::new();
     rim.m((CENTER_X - hw, SOIL_Y))
         .a(hw, pot.ry, false, (CENTER_X + hw, SOIL_Y));
@@ -1426,7 +1579,7 @@ fn nebari(
     pot: &Pot,
     trunk: &[(V3, f64)],
     ls: (f64, f64),
-) -> (String, String) {
+) -> (String, String, Vec<Vec<(f64, f64)>>) {
     let bark = paints.bark;
     let n = b.extras.roots.max(3);
     let age = b.extras.nebari.clamp(0.0, 1.0);
@@ -1437,6 +1590,7 @@ fn nebari(
     let tilt = pot.ry / pot.hw;
     let lit = if ls.0 < 0.0 { -1.0 } else { 1.0 };
     let mut roots: Vec<(f64, String)> = Vec::new();
+    let mut hulls = Vec::new();
     for i in 0..n {
         let mut r = Rng::keyed(b.account_id, &format!("root/{i}"));
         let az = mirror_az(
@@ -1536,6 +1690,7 @@ fn nebari(
             rw = Num(ww * 0.18),
         );
         roots.push((math::sin(az), s));
+        hulls.push(h);
     }
     roots.sort_by(|a, b| a.0.total_cmp(&b.0));
     // Deep shade where the roots leave the trunk: the valleys between them.
@@ -1555,7 +1710,7 @@ fn nebari(
             back.push_str(&s);
         }
     }
-    (back, front)
+    (back, front, hulls)
 }
 
 /// Moss on the soil while a weekly streak runs.
@@ -1608,7 +1763,19 @@ fn moss(b: &Bonsai, paints: &Paints, pot: &Pot) -> (String, String) {
     (group(0), group(1))
 }
 
-/// The pot's front wall, lit from the left, with its tier's details.
+/// `svg` mirrored about the pot's center line; empty stays empty.
+fn mirror(svg: &str) -> String {
+    if svg.is_empty() {
+        return String::new();
+    }
+    format!(
+        r#"<g transform="matrix(-1 0 0 1 {} 0)">{svg}</g>"#,
+        Num(2.0 * CENTER_X)
+    )
+}
+
+/// The pot's front wall, lit from the left, with its tier's details: a left
+/// tree's is mirrored.
 fn pot_front(b: &Bonsai, pot: &Pot) -> String {
     let Pot {
         hw,

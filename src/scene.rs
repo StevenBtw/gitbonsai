@@ -45,8 +45,14 @@ pub fn v_norm(a: V3) -> V3 {
     v_scale(a, 1.0 / v_dot(a, a).sqrt().max(1e-9))
 }
 
-/// The light: upper left, slightly toward the viewer.
+/// The light on a right tree: upper left, slightly toward the viewer.
 pub const LIGHT: V3 = [-0.55, 0.75, 0.38];
+
+/// The light on a tree leaning to `side`: from its open side, so a left
+/// tree is lit as the right one's mirror image.
+pub fn light(side: f64) -> V3 {
+    [LIGHT[0] * side, LIGHT[1], LIGHT[2]]
+}
 /// The camera looks down a little, so pad tops and the pot rim show.
 pub const TILT: f64 = 0.32;
 /// One fixed scale from world units to the canvas: big enough to fill a
@@ -63,6 +69,43 @@ pub fn project(p: V3) -> (f64, f64, f64) {
         p[2] * c + p[1] * s,
     )
 }
+
+/// What each node carries as drawn: the work flowing through it, or the
+/// foliage beyond it if that weighs more, [`LEAF_LOAD`] for each unit of a
+/// cloud's area at the node it hangs from, as full as its leaves are. A cloud
+/// may hang from an earlier cloud's twigs, which carry no work: without the
+/// foliage's weight a crown could sit up high on hairlines, as if it floated.
+/// The trunk's work far outweighs its leaves, so it keeps its girth.
+fn carried(b: &Bonsai) -> Vec<f64> {
+    let sk = &b.skeleton;
+    let n = sk.nodes.len();
+    let mut load = vec![0.0; n];
+    for cl in &sk.clouds {
+        let gap =
+            |i: usize| math::sq(sk.nodes[i].p.0 - cl.c.0) + math::sq(sk.nodes[i].p.1 - cl.c.1);
+        if let Some(h) = (1..n).min_by(|&a, &b| gap(a).total_cmp(&gap(b))) {
+            let lang = cl
+                .patches
+                .iter()
+                .max_by(|x, y| x.3.total_cmp(&y.3))
+                .and_then(|p| p.2.as_deref());
+            load[h] += LEAF_LOAD * cl.rx * cl.ry * b.fullness(lang);
+        }
+    }
+    for i in (0..n).rev() {
+        if let Some(p) = sk.nodes[i].parent {
+            load[p] += load[i];
+        }
+    }
+    sk.flows()
+        .into_iter()
+        .zip(load)
+        .map(|(f, l)| f.max(l))
+        .collect()
+}
+
+/// The flow a unit of foliage area weighs, in contributions.
+const LEAF_LOAD: f64 = 0.1;
 
 /// Branch radius for a flow of contributions. Murray's law: `r^3` is additive
 /// at every fork, so girth follows the cube root of what a branch carries,
@@ -92,6 +135,9 @@ pub struct Tuft {
     pub private: bool,
     /// A grey leaf's tip in a public language's color.
     pub tip: Option<Rgb>,
+    /// How far in front of where it lies the leaf is drawn: a small
+    /// language's leaves come forward, so a big one never buries it.
+    pub lift: f64,
 }
 
 /// A chain of wood: points with radii, and whether it is deadwood.
@@ -136,6 +182,25 @@ pub fn samara_share(level: u8) -> f64 {
 }
 
 impl Scene {
+    /// The scene's mirror image about the pot's center line.
+    #[must_use]
+    pub fn mirrored(&self) -> Self {
+        let m = |p: &mut V3| p[0] = -p[0];
+        let mut s = self.clone();
+        for (p, _) in s.chains.iter_mut().flat_map(|c| c.0.iter_mut()) {
+            m(p);
+        }
+        for t in &mut s.tufts {
+            m(&mut t.p);
+            m(&mut t.n);
+        }
+        s.pads.iter_mut().for_each(|p| m(&mut p.0));
+        s.drip.iter_mut().flatten().for_each(|p| m(&mut p.0));
+        s.masses.iter_mut().for_each(|p| m(&mut p.0));
+        s.joins.values_mut().for_each(|j| m(&mut j.1));
+        s
+    }
+
     /// The scene of a grown tree.
     pub fn build(b: &Bonsai) -> Self {
         let sk = &b.skeleton;
@@ -147,7 +212,7 @@ impl Scene {
         if n == 0 {
             return scene;
         }
-        let flow = sk.flows();
+        let flow = carried(b);
         let mut children: Vec<Vec<usize>> = vec![Vec::new(); n];
         for i in (0..n).rev() {
             if let Some(p) = sk.nodes[i].parent {
@@ -545,6 +610,38 @@ fn leaf_color(b: &Bonsai, lang: Option<&str>, pick: f64) -> Rgb {
     }
 }
 
+/// A language below this share of the public leaves is drawn forward, the
+/// smaller the further, up to `LIFT`: in front of the whole crown.
+const SMALL: f64 = 0.15;
+const LIFT: f64 = 120.0;
+
+/// Draws a small language's leaves in front of a big one's: by its share of
+/// the public leaves, so the lift grows and fades smoothly as work shifts.
+fn lift_small(tufts: &mut [Tuft], langs: &[Option<&str>]) {
+    let mut count: std::collections::BTreeMap<&str, f64> = std::collections::BTreeMap::new();
+    for l in langs.iter().flatten() {
+        *count.entry(l).or_default() += 1.0;
+    }
+    let public: f64 = count.values().sum::<f64>().max(1.0);
+    for (t, l) in tufts.iter_mut().zip(langs) {
+        if let Some(l) = l {
+            let share = count[l] / public;
+            t.lift = LIFT * (1.0 - share / SMALL).clamp(0.0, 1.0);
+        }
+    }
+}
+
+/// Fewer leaves than this on a cloud and it has no mass behind them.
+const SPARSE: usize = 12;
+
+/// How far out a cloud's mass may reach, as a share of its leaves' reach,
+/// and as far on a formal upright, whose clipped pads stay solid.
+const MASS_IN: f64 = 0.55;
+const MASS_TIER: f64 = 0.85;
+
+/// How many more leaves a formal upright's pads carry, as a share.
+const TIER_LEAVES: f64 = 0.4;
+
 /// Leaf tufts over every cloud of the tree.
 const CLOUD_TUFTS: f64 = 900.0;
 /// The cloud area that earns the full tuft budget.
@@ -595,6 +692,7 @@ fn cloud_leaves(b: &Bonsai, scene: &mut Scene) {
     let flow = sk.flows();
     let mut tubed = std::collections::BTreeSet::new();
     let mut tufts = Vec::new();
+    let mut langs: Vec<Option<&str>> = Vec::new();
     for (li, (ci, cl)) in lobes.iter().enumerate() {
         let c3 = [cl.c.0 - CENTER_X, SOIL_Y - cl.c.1, cl.z];
         let a = area(cl);
@@ -615,6 +713,7 @@ fn cloud_leaves(b: &Bonsai, scene: &mut Scene) {
         }
         // The mass behind the leaves shrinks as they fall.
         let left = b.fullness(dom.as_deref()).sqrt();
+        let (mass_at, t0) = (scene.masses.len(), tufts.len());
         if left > 0.02 {
             scene.masses.push((
                 c3,
@@ -659,7 +758,8 @@ fn cloud_leaves(b: &Bonsai, scene: &mut Scene) {
             .map(|(p, z, l, w)| ([p.0 - CENTER_X, SOIL_Y - p.1, *z], l.as_deref(), *w))
             .collect();
         // Leaves at 1.5 times 0.2's count, at the same size: a full crown.
-        let nn = (k * 1.5 / 0.36 * b.leaf_share) as usize;
+        // A formal upright's clipped pads are denser: more leaves, as large.
+        let nn = (k * 1.5 / 0.36 * b.leaf_share * (1.0 + TIER_LEAVES * b.leader.tier)) as usize;
         let phase = hash01(seed, li as i64) * math::TAU;
         let ph2 = hash01(seed ^ 0x77, li as i64) * math::TAU;
         for i in 0..nn {
@@ -720,9 +820,35 @@ fn cloud_leaves(b: &Bonsai, scene: &mut Scene) {
                     && h > 1.0 - seeds * SAMARA_RATE,
                 size,
                 private: lang.is_none(),
+                lift: 0.0,
             });
+            langs.push(lang);
+        }
+        // The mass never reaches past its leaves: where they are few it
+        // shrinks with them, so no plain patch of color shows.
+        // A cloud of only a few leaves needs no mass: it would show between
+        // them as a plain patch.
+        if tufts.len() - t0 < SPARSE && scene.masses.len() > mass_at {
+            scene.masses.remove(mass_at);
+        }
+        if let Some(m) = scene.masses.get_mut(mass_at) {
+            let reach = |axis: usize| {
+                tufts[t0..]
+                    .iter()
+                    .map(|t| (t.p[axis] - c3[axis]).abs())
+                    .fold(0.0, f64::max)
+            };
+            // A formal upright's pads stay solid, as clipped tiers are.
+            // A thinning cloud's mass thins with its leaves: as a share of
+            // the leaves a full cloud of its size carries.
+            let full = (tufts.len() - t0) as f64 / nn.max(1) as f64;
+            let keep = (MASS_IN + (MASS_TIER - MASS_IN) * b.leader.tier) * full.min(1.0);
+            m.1 = m.1.min(reach(0) * keep);
+            m.2 = m.2.min(reach(1) * keep);
+            m.3 = m.3.min(reach(2) * keep);
         }
     }
+    lift_small(&mut tufts, &langs);
     scene.tufts = tufts;
 }
 

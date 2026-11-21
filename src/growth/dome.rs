@@ -542,6 +542,22 @@ impl Frame {
     }
 }
 
+/// The crown's size at its fullest for the work in `timeline`: it grows with
+/// the work done, the age and the maturity, and never shrinks, so a pot sized
+/// to it is never too big a year later. 0 for a timeline without work.
+#[doc(hidden)]
+pub fn full_size(timeline: &Timeline, periods: &[(Date, Date, Vec<String>)]) -> f64 {
+    let Some(life) = Life::of(timeline, periods) else {
+        return 0.0;
+    };
+    let span = life.now() - f64::from(life.years[0].y);
+    let work = life.work_years().min(span);
+    (40.0 + 29.0 * math::ln(1.5 + work))
+        * 1.05
+        * (0.86 + 0.014 * life.age().min(18.0))
+        * (0.25 + 0.75 * life.maturity())
+}
+
 /// The crown years of a timeline, oldest first, with private work declared
 /// in `periods`.
 #[doc(hidden)]
@@ -1126,10 +1142,10 @@ impl Cone {
     /// trunk `h_vis` tall.
     fn of(big_s: f64, h_vis: f64, vv: f64) -> Self {
         let w_b = big_s * 0.95;
-        let h_top = (2.0 * w_b / 1.5).max(h_vis + vv * big_s);
+        let h_top = (2.0 * w_b / CONE_WIDE).max(h_vis + vv * big_s);
         Self {
             w_b,
-            h_b: 0.28 * h_top,
+            h_b: CLEAR * h_top,
             h_top,
         }
     }
@@ -1140,11 +1156,18 @@ impl Cone {
     }
 }
 
+/// How much wider than tall a formal upright's triangle stands.
+const CONE_WIDE: f64 = 1.2;
+
+/// How much of a formal upright's height its trunk stands bare before the
+/// first limb: the straight trunk shows, the triangle stands on it.
+const CLEAR: f64 = 0.36;
+
 /// How steeply a formal upright's low limbs rise: up per unit out.
 const LIMB_RISE: f64 = 0.6;
 
 /// A formal upright's foliage layers on each side.
-const LAYERS: f64 = 3.0;
+const LAYERS: f64 = 4.0;
 
 /// A crown arm placed: (index into the arms, angle, reach, chain).
 type Placed = (usize, f64, f64, usize);
@@ -1222,6 +1245,9 @@ pub fn tree(
     wind_shape(sk, &wood, &eras);
     wind_limbs(sk, &wood, &low);
     wind_branches(sk, &wood, &low);
+    above_rim(sk, &wood);
+    no_lone_top(sk, &wood);
+    no_lone_tuft(sk, &wood);
     cascade_shape(sk, &wood);
     girth(sk, &c, &wood);
     crate::growth::wood::hug(sk);
@@ -1257,6 +1283,15 @@ const PADS: [(f64, f64, f64); 4] = [
     (1.0, 0.14, -0.04),
 ];
 
+/// How much of their spread a pad's clouds keep around its center, across
+/// and up, and at most how far out they lie, as a share of the trunk's
+/// height: wide enough that a pad's clouds lie side by side, its foliage
+/// showing, not stacked on one another.
+const SPREAD: (f64, f64, f64) = (0.6, 0.25, 0.2);
+/// How much a cascade's clouds shrink, and the widest a cloud may be, as a
+/// share of the trunk's height.
+const SHRINK: (f64, f64) = (0.1, 0.26);
+
 /// Bends the main trunk into a cascade over the rim; everything grown from
 /// it follows the point it grew from, and each cloud its branch.
 fn cascade_shape(sk: &mut Skeleton, wood: &Wood) {
@@ -1279,15 +1314,7 @@ fn cascade_shape(sk: &mut Skeleton, wood: &Wood) {
             foot.1 - h * (p.1 + (q.1 - p.1) * f),
         )
     };
-    let hangs: Vec<usize> = sk
-        .clouds
-        .iter()
-        .map(|cl| {
-            (1..sk.nodes.len())
-                .min_by(|&x, &y| dist(sk.nodes[x].p, cl.c).total_cmp(&dist(sk.nodes[y].p, cl.c)))
-                .unwrap_or(0)
-        })
-        .collect();
+    let hangs = hangs_of(sk, &sk.nodes.iter().map(|n| n.p).collect::<Vec<P>>(), false);
     let mut delta: Vec<Option<P>> = vec![None; sk.nodes.len()];
     let n = main.len().max(2) - 1;
     let on_main: std::collections::BTreeSet<usize> = main.iter().copied().collect();
@@ -1320,8 +1347,15 @@ fn cascade_shape(sk: &mut Skeleton, wood: &Wood) {
     // pad takes its share of them in order across the crown, keeping a
     // little of their spread around its center: a stray cloud far out (a
     // low limb's) folds into the pad, so each pad stands apart.
+    // Private work goes last, down the arc: the crest belongs to a public
+    // language.
     let mut order: Vec<usize> = (0..sk.clouds.len()).collect();
-    order.sort_by(|&a, &b| sk.clouds[a].c.0.total_cmp(&sk.clouds[b].c.0));
+    let private = |c: usize| crate::growth::clouds::lead_of(&sk.clouds[c]).is_none();
+    order.sort_by(|&a, &b| {
+        private(a)
+            .cmp(&private(b))
+            .then(sk.clouds[a].c.0.total_cmp(&sk.clouds[b].c.0))
+    });
     let pads = PADS.len().min(order.len().div_ceil(3)).max(1);
     let mut gather: Vec<P> = vec![(0.0, 0.0); sk.clouds.len()];
     for (j, group) in order.chunks(order.len().div_ceil(pads).max(1)).enumerate() {
@@ -1341,10 +1375,10 @@ fn cascade_shape(sk: &mut Skeleton, wood: &Wood) {
         );
         for &c in group {
             let p = moved(c);
-            let reach = 0.08 * h;
+            let reach = SPREAD.2 * h;
             let to = (
-                slot.0 + (0.2 * (p.0 - mid.0)).clamp(-reach, reach),
-                slot.1 + (0.1 * (p.1 - mid.1)).clamp(-reach, reach),
+                slot.0 + (SPREAD.0 * (p.0 - mid.0)).clamp(-reach, reach),
+                slot.1 + (SPREAD.1 * (p.1 - mid.1)).clamp(-reach, reach),
             );
             gather[c] = (k * (to.0 - p.0), k * (to.1 - p.1));
         }
@@ -1388,8 +1422,8 @@ fn cascade_shape(sk: &mut Skeleton, wood: &Wood) {
     // the pads stand apart; no cloud wider than a pad.
     let flat = 1.0 - 0.55 * k;
     for ((cloud, &n), g) in sk.clouds.iter_mut().zip(&hangs).zip(&gather) {
-        let small = 1.0 - 0.35 * k;
-        let small = small * (1.0 - k + k * (0.16 * h / (cloud.rx * small).max(1e-6)).min(1.0));
+        let small = 1.0 - SHRINK.0 * k;
+        let small = small * (1.0 - k + k * (SHRINK.1 * h / (cloud.rx * small).max(1e-6)).min(1.0));
         let (dx, dy) = delta[n].unwrap_or((0.0, 0.0));
         let (dx, dy) = (dx + g.0, dy + g.1);
         let cy = cloud.c.1;
@@ -1480,6 +1514,8 @@ fn cascade_shape(sk: &mut Skeleton, wood: &Wood) {
         // White well before the tree is wholly kengai.
         sk.legacy_jin = (1.6 * k).min(1.0) * ease(f64::from(wood.months_b) / 18.0);
     }
+    // Spread along its pads, no cloud reaches past its wood.
+    on_wood(sk, k);
 }
 
 /// A formal upright's outline stays clean: wood and foliage that stray past
@@ -1595,6 +1631,175 @@ fn fold_bare(sk: &mut Skeleton, keep: &std::collections::BTreeSet<usize>, fold: 
 /// the tree is windswept, and its leaves go with it. At its fullest it
 /// stands up and leans a little downwind; nothing crosses to crowd the
 /// other side.
+/// In the wind a few clouds left high above the rest of the crown, on long
+/// bare arms, read as a lollipop: the top of the tree eases down until they
+/// sit just above the crown, their arms shorter, every height in order.
+fn no_lone_top(sk: &mut Skeleton, wood: &Wood) {
+    if wood.sweep == 0.0 || sk.clouds.len() < 4 {
+        return;
+    }
+    let mut tops: Vec<f64> = sk.clouds.iter().map(|c| c.c.1 - c.ry).collect();
+    tops.sort_by(f64::total_cmp);
+    // The top: a few clouds, at most a quarter of them, above a wide gap.
+    let few = (sk.clouds.len() / 4).clamp(1, 6);
+    let Some(lone) = (1..=few).find(|&i| tops[i] - tops[i - 1] >= LONE_GAP) else {
+        return;
+    };
+    let (top, next) = (tops[0], tops[lone]);
+    // Above the crown, heights draw in toward it: the top lands just above.
+    let ease = |y: f64| {
+        if y >= next {
+            y
+        } else {
+            next - (next - y) * (LONE_KEEP + tops[lone - 1] - top) / (next - top)
+        }
+    };
+    for n in &mut sk.nodes {
+        n.p.1 = ease(n.p.1);
+    }
+    for cl in &mut sk.clouds {
+        let dy = ease(cl.c.1) - cl.c.1;
+        cl.c.1 += dy;
+        for p in &mut cl.patches {
+            p.0.1 += dy;
+        }
+    }
+}
+
+/// A cloud standing alone on a windswept tree, further than [`TUFT_GAP`] from
+/// every other cloud, out on a long bare arm, comes in to the nearest: its
+/// arm bends with it, from nothing where it leaves the wood that carries
+/// other leaves to the whole move at the cloud. The move eases in over
+/// [`LONE_RAMP`] past the gap, so a cloud drifting apart never jumps.
+fn no_lone_tuft(sk: &mut Skeleton, wood: &Wood) {
+    if wood.sweep == 0.0 || sk.clouds.len() < 4 {
+        return;
+    }
+    let n = sk.nodes.len();
+    let trunk: std::collections::BTreeSet<usize> = wood.chains.iter().flatten().copied().collect();
+    for ci in 0..sk.clouds.len() {
+        let at: Vec<P> = sk.nodes.iter().map(|x| x.p).collect();
+        let hangs = hangs_of(sk, &at, true);
+        let cl = &sk.clouds[ci];
+        // The nearest other cloud, box to box, and the way to it.
+        let Some((gap, to)) = sk
+            .clouds
+            .iter()
+            .enumerate()
+            .filter(|&(j, _)| j != ci)
+            .map(|(_, o)| {
+                let (dx, dy) = (o.c.0 - cl.c.0, o.c.1 - cl.c.1);
+                let (gx, gy) = (dx.abs() - o.rx - cl.rx, dy.abs() - o.ry - cl.ry);
+                if gx > gy {
+                    (gx, (dx.signum(), 0.0))
+                } else {
+                    (gy, (0.0, dy.signum()))
+                }
+            })
+            .min_by(|a, b| a.0.total_cmp(&b.0))
+        else {
+            continue;
+        };
+        let k = ((gap - TUFT_GAP) / LONE_RAMP).clamp(0.0, 1.0);
+        if k <= 0.0 {
+            continue;
+        }
+        let shift = k * (gap - LONE_KEEP);
+        let delta = (to.0 * shift, to.1 * shift);
+        // The arm: up from the cloud's node to where the wood carries others.
+        let mut carry = vec![0usize; n];
+        for &h in &hangs {
+            carry[h] += 1;
+        }
+        for i in (1..n).rev() {
+            if let Some(p) = sk.nodes[i].parent {
+                carry[p] += carry[i];
+            }
+        }
+        let h = hangs[ci];
+        // A cloud with no wood of its own in it (a dropped language's, its
+        // twigs gone) is no tuft: it bends nobody's arm.
+        if dist(at[h], sk.clouds[ci].c) > sk.clouds[ci].rx {
+            continue;
+        }
+        let mut arm = h;
+        while let Some(p) = sk.nodes[arm].parent {
+            if carry[p] > carry[h] || trunk.contains(&p) {
+                break;
+            }
+            arm = p;
+        }
+        let Some(fork) = sk.nodes[arm].parent.filter(|_| !trunk.contains(&arm)) else {
+            continue;
+        };
+        let reach = dist(at[fork], at[h]).max(1e-6);
+        let mut on = vec![false; n];
+        on[arm] = true;
+        for i in arm + 1..n {
+            on[i] = sk.nodes[i].parent.is_some_and(|p| on[p]);
+        }
+        for i in (arm..n).filter(|&i| on[i]) {
+            let t = (dist(at[fork], at[i]) / reach).min(1.0);
+            sk.nodes[i].p.0 += delta.0 * t;
+            sk.nodes[i].p.1 += delta.1 * t;
+        }
+        let cl = &mut sk.clouds[ci];
+        cl.c.0 += delta.0;
+        cl.c.1 += delta.1;
+        for p in &mut cl.patches {
+            p.0.0 += delta.0;
+            p.0.1 += delta.1;
+        }
+    }
+}
+
+/// How far a cloud may stand from every other before [`no_lone_tuft`] draws
+/// it in, and over how much more gap that move eases in.
+const TUFT_GAP: f64 = 15.0;
+const LONE_RAMP: f64 = 10.0;
+
+/// How wide a gap under the top clouds [`no_lone_top`] draws in, and how far
+/// above the crown their lowest sits after.
+const LONE_GAP: f64 = 25.0;
+const LONE_KEEP: f64 = 4.0;
+
+/// How far above the rim a windswept crown's lowest clouds stay, and over how
+/// much height above that the droop eases onto the floor.
+const RIM_GAP: f64 = 6.0;
+const RIM_EASE: f64 = 24.0;
+
+/// In the wind the crown may hang low downwind, but only a cascade goes past
+/// the rim: what the wind swept lower eases onto a floor just above it,
+/// branches and their clouds alike, so a long arm runs out level instead.
+/// The trunks stay where they stand.
+fn above_rim(sk: &mut Skeleton, wood: &Wood) {
+    if wood.sweep == 0.0 {
+        return;
+    }
+    let floor = SOIL_Y - RIM_GAP;
+    let knee = floor - RIM_EASE;
+    let ease = |y: f64| {
+        if y <= knee {
+            return y;
+        }
+        let z = (y - knee) / RIM_EASE;
+        knee + RIM_EASE * (1.0 - 2.0 / (math::exp(2.0 * z) + 1.0))
+    };
+    let trunk: std::collections::BTreeSet<usize> = wood.chains.iter().flatten().copied().collect();
+    for (i, n) in sk.nodes.iter_mut().enumerate() {
+        if !trunk.contains(&i) && !n.strand {
+            n.p.1 = ease(n.p.1);
+        }
+    }
+    for cl in &mut sk.clouds {
+        let dy = ease(cl.c.1) - cl.c.1;
+        cl.c.1 += dy;
+        for p in &mut cl.patches {
+            p.0.1 += dy;
+        }
+    }
+}
+
 fn wind_branches(sk: &mut Skeleton, wood: &Wood, low: &[(usize, f64)]) {
     let w = wood.sweep.abs();
     let s = w * w * (3.0 - 2.0 * w);
@@ -1611,18 +1816,8 @@ fn wind_branches(sk: &mut Skeleton, wood: &Wood, low: &[(usize, f64)]) {
         .chain((0..sk.nodes.len()).filter(|&i| sk.nodes[i].strand))
         .collect();
     let before: Vec<P> = sk.nodes.iter().map(|n| n.p).collect();
-    let hangs: Vec<usize> = sk
-        .clouds
-        .iter()
-        .map(|cl| {
-            (1..sk.nodes.len())
-                .min_by(|&x, &y| dist(before[x], cl.c).total_cmp(&dist(before[y], cl.c)))
-                .unwrap_or(0)
-        })
-        .collect();
     // Each branch: the trunk node it leaves and its first node off it.
     let mut attach: Vec<Option<(usize, usize)>> = vec![None; sk.nodes.len()];
-    let (sin, cos) = (math::sin(d * s * 1.75), math::cos(d * s * 1.75));
     // A low limb of two trunks already runs level into open air
     // ([`wind_limbs`]): it swings only as far as it has not.
     let kl = if wood.chains.len() > 1 {
@@ -1632,9 +1827,9 @@ fn wind_branches(sk: &mut Skeleton, wood: &Wood, low: &[(usize, f64)]) {
         0.0
     };
     let sl = s * (1.0 - kl);
-    let (sin_l, cos_l) = (math::sin(d * sl * 1.75), math::cos(d * sl * 1.75));
     let low_of = limb_of(sk, low);
-    let mut moved: Vec<P> = vec![(0.0, 0.0); sk.nodes.len()];
+    // Each branch's reach: its node furthest from where it leaves the trunk.
+    let mut reach: Vec<P> = vec![(0.0, 0.0); sk.nodes.len()];
     for i in 0..sk.nodes.len() {
         if trunk.contains(&i) {
             continue;
@@ -1644,20 +1839,69 @@ fn wind_branches(sk: &mut Skeleton, wood: &Wood, low: &[(usize, f64)]) {
             Some(p) => attach[p],
             None => None,
         };
+        if let Some((a, root)) = attach[i] {
+            let o = (before[i].0 - before[a].0, before[i].1 - before[a].1);
+            if math::sq(o.0) + math::sq(o.1) > math::sq(reach[root].0) + math::sq(reach[root].1) {
+                reach[root] = o;
+            }
+        }
+    }
+    // Each cloud moves with the branch that has the most living wood inside
+    // it, its own twigs, at that branch's node nearest it: a branch merely
+    // passing close, or a dead arm, never carries it off. Without such wood
+    // it moves with the nearest node, as the wood around it does.
+    let hangs: Vec<usize> = sk
+        .clouds
+        .iter()
+        .map(|cl| {
+            let near =
+                |a: &usize, b: &usize| dist(before[*a], cl.c).total_cmp(&dist(before[*b], cl.c));
+            let mut votes: BTreeMap<usize, usize> = BTreeMap::new();
+            for i in 1..sk.nodes.len() {
+                let inside = math::sq((before[i].0 - cl.c.0) / cl.rx.max(1.0))
+                    + math::sq((before[i].1 - cl.c.1) / cl.ry.max(1.0))
+                    <= 1.0;
+                if inside
+                    && sk.nodes[i].language.as_deref() != Some(JIN)
+                    && let Some((_, root)) = attach[i]
+                {
+                    *votes.entry(root).or_insert(0) += 1;
+                }
+            }
+            let own = votes
+                .into_iter()
+                .max_by_key(|&(root, n)| (n, std::cmp::Reverse(root)))
+                .map(|v| v.0);
+            own.and_then(|root| {
+                (1..sk.nodes.len())
+                    .filter(|&i| attach[i].is_some_and(|a| a.1 == root))
+                    .min_by(near)
+            })
+            .or_else(|| (1..sk.nodes.len()).min_by(near))
+            .unwrap_or(0)
+        })
+        .collect();
+    let mut moved: Vec<P> = vec![(0.0, 0.0); sk.nodes.len()];
+    for i in 0..sk.nodes.len() {
         let Some((a, root)) = attach[i] else {
             continue;
         };
+        // Private work stays low as well: swung up, its silver would top
+        // the crown, which belongs to a public language.
+        let tame = low_of[i].is_some() || sk.nodes[root].language.is_none();
         // Upwind branches only, judged where they leave the trunk.
         let side = before[root].0 - before[a].0;
         if side * d >= 0.0 {
             continue;
         }
+        // An upwind branch swings over the top, and at least far enough to
+        // stream out downwind: one that ran out level would otherwise stand
+        // straight up, and a few of those make a pillar of the crown.
+        let rise = math::atan2(-reach[root].1, -reach[root].0 * d);
+        let turn = (std::f64::consts::PI - rise - STREAM_RISE).max(1.75);
+        let turn = d * turn * if tame { sl } else { s };
+        let (sin, cos) = (math::sin(turn), math::cos(turn));
         let (ox, oy) = (before[i].0 - before[a].0, before[i].1 - before[a].1);
-        let (sin, cos) = if low_of[i].is_some() {
-            (sin_l, cos_l)
-        } else {
-            (sin, cos)
-        };
         let to = (
             before[a].0 + ox * cos - oy * sin,
             before[a].1 + ox * sin + oy * cos,
@@ -1675,6 +1919,62 @@ fn wind_branches(sk: &mut Skeleton, wood: &Wood, low: &[(usize, f64)]) {
         }
     }
 }
+
+/// Leaves grow on wood: a cascade's cloud, spread along its pad, that
+/// reaches further across than the wood in it, past its twigs by more than
+/// [`LEAF_REACH`] or 0.4 of its width, is drawn in to them by `k`, so no
+/// leaves hang in the air beside a pad.
+fn on_wood(sk: &mut Skeleton, k: f64) {
+    let nodes = &sk.nodes;
+    for cl in &mut sk.clouds {
+        // Wood outside the cloud counts for less the further out it lies, so
+        // the cloud eases in as wood moves instead of jumping.
+        let (lo, hi) = nodes
+            .iter()
+            .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), n| {
+                let out = ((n.p.0 - cl.c.0).abs() - cl.rx).max(0.0)
+                    + ((n.p.1 - cl.c.1).abs() - cl.ry - LEAF_REACH).max(0.0);
+                (lo.min(n.p.0 + 3.0 * out), hi.max(n.p.0 - 3.0 * out))
+            });
+        let m = LEAF_REACH.max(0.4 * cl.rx);
+        let (a, b) = ((cl.c.0 - cl.rx).max(lo - m), (cl.c.0 + cl.rx).min(hi + m));
+        if lo > hi || b - a >= 2.0 * cl.rx - 1e-9 {
+            continue;
+        }
+        let c = cl.c.0 + k * (f64::midpoint(a, b) - cl.c.0);
+        let f = 1.0 - k * (1.0 - (b - a) / (2.0 * cl.rx));
+        for patch in &mut cl.patches {
+            patch.0.0 = c + (patch.0.0 - cl.c.0) * f;
+        }
+        cl.c.0 = c;
+        cl.rx *= f;
+    }
+}
+
+/// How far past its twigs a cloud's leaves may reach, at the least.
+const LEAF_REACH: f64 = 8.0;
+
+/// Each cloud's node, the wood it moves with: the node nearest it at the
+/// positions `at`, a living one when `live`. Dead wood bears no leaves, so
+/// where branches swing, a dead arm passing close never carries a cloud off
+/// its own twigs.
+fn hangs_of(sk: &Skeleton, at: &[P], live: bool) -> Vec<usize> {
+    let living = |i: &usize| !live || sk.nodes[*i].language.as_deref() != Some(JIN);
+    sk.clouds
+        .iter()
+        .map(|cl| {
+            let near = |a: &usize, b: &usize| dist(at[*a], cl.c).total_cmp(&dist(at[*b], cl.c));
+            (1..at.len())
+                .filter(living)
+                .min_by(near)
+                .or_else(|| (1..at.len()).min_by(near))
+                .unwrap_or(0)
+        })
+        .collect()
+}
+
+/// The steepest a swung branch points downwind, in radians above level.
+const STREAM_RISE: f64 = 0.6;
 
 /// Each node's low limb, by the limb's first node: `None` off the low limbs.
 fn limb_of(sk: &Skeleton, limbs: &[(usize, f64)]) -> Vec<Option<usize>> {
@@ -1703,15 +2003,7 @@ fn wind_limbs(sk: &mut Skeleton, wood: &Wood, limbs: &[(usize, f64)]) {
     }
     let n = sk.nodes.len();
     let d = wood.sweep.signum();
-    let hangs: Vec<usize> = sk
-        .clouds
-        .iter()
-        .map(|cl| {
-            (1..n)
-                .min_by(|&x, &y| dist(sk.nodes[x].p, cl.c).total_cmp(&dist(sk.nodes[y].p, cl.c)))
-                .unwrap_or(0)
-        })
-        .collect();
+    let hangs = hangs_of(sk, &sk.nodes.iter().map(|n| n.p).collect::<Vec<P>>(), false);
     let limb_of = limb_of(sk, limbs);
     // The trunk on a side: the one whose top lies further that way.
     let (ca, cb) = (&wood.chains[0], &wood.chains[1]);
@@ -1961,15 +2253,7 @@ fn wind_shape(sk: &mut Skeleton, wood: &Wood, eras: &std::ops::Range<usize>) {
         }
     }
     // Each cloud follows the branch it hangs from: the nearest wood.
-    let hangs: Vec<usize> = sk
-        .clouds
-        .iter()
-        .map(|cl| {
-            (1..sk.nodes.len())
-                .min_by(|&x, &y| dist(sk.nodes[x].p, cl.c).total_cmp(&dist(sk.nodes[y].p, cl.c)))
-                .unwrap_or(0)
-        })
-        .collect();
+    let hangs = hangs_of(sk, &sk.nodes.iter().map(|n| n.p).collect::<Vec<P>>(), false);
     // Parents come before children: each node follows the one it grew from.
     for i in 0..sk.nodes.len() {
         if delta[i].is_none() {
@@ -2277,7 +2561,16 @@ fn grow_eras(sk: &mut Skeleton, c: &Ctx, wood: &Wood) -> Vec<(usize, f64)> {
         } else {
             1.0
         };
-        let from = at_height(sk, &wood.chains[k], c.frame.limb_h(ei) * low);
+        // A formal upright's first limb leaves the trunk at the triangle's
+        // base, a third of the way up; the rest keep their spacing above it.
+        // A pause's window is bare trunk already: its limbs stay below it.
+        let lift = if c.window_lo().is_finite() {
+            0.0
+        } else {
+            wood.tier * (c.cone().h_b - c.frame.limb_h(0)).max(0.0)
+        };
+        let limb_h = |ei: usize| c.frame.limb_h(ei) + lift;
+        let from = at_height(sk, &wood.chains[k], limb_h(ei) * low);
         let p0 = sk.nodes[from].p;
         let grown: f64 = era
             .iter()
@@ -2291,13 +2584,11 @@ fn grow_eras(sk: &mut Skeleton, c: &Ctx, wood: &Wood) -> Vec<(usize, f64)> {
         // A formal upright's low limbs rise steeply into its lowest layers,
         // out to the triangle's edge.
         let cone = c.cone();
-        let edge = cone.width(c.frame.limb_h(ei))
-            / (1.0 + LIMB_RISE * cone.w_b / (cone.h_top - cone.h_b))
+        let edge = cone.width(limb_h(ei)) / (1.0 + LIMB_RISE * cone.w_b / (cone.h_top - cone.h_b))
             - cell * 0.45;
         let len = len + wood.tier * era_w * (edge.max(20.0) - len / era_w.max(1e-9));
         // Never up into a pause's window.
-        let rise =
-            (LIMB_RISE * len).min((c.window_lo() - cell * 0.5 - c.frame.limb_h(ei)).max(0.0));
+        let rise = (LIMB_RISE * len).min((c.window_lo() - cell * 0.5 - limb_h(ei)).max(0.0));
         // Keyed by the era's first year: a new era moves no other limb.
         let y0 = life.years[era[0]].y;
         let mut er = Rng::keyed(seed, &format!("bdome/era/{y0}"));
@@ -3230,6 +3521,15 @@ fn dome_clouds(
             cl.ry = rx * (0.6 - 0.15 * wood.tier);
             cl.rz = rx * 0.85;
         }
+        // A dropped language's cloud keeps its place, so the crown never
+        // closes up at once, but grows no twigs: its leaves are long gone,
+        // and bare twigs hung from whatever living wood is near would read
+        // as the teeth of a rake. Its own twigs died with its arms (above).
+        if c.gone(&lang) {
+            sk.nodes.truncate(n0);
+            sk.node_z.truncate(n0);
+            continue;
+        }
         twigs
             .entry(key(&lang))
             .or_default()
@@ -3462,6 +3762,117 @@ mod tests {
             2,
             "the fixtures hold single trunks and claimed strands"
         );
+    }
+
+    /// In a full wind a branch that ran out level upwind streams out
+    /// downwind, never left standing straight up beside a leaning trunk.
+    #[test]
+    fn a_level_upwind_branch_streams_out_downwind() {
+        let mut sk = root_only();
+        let node = |p: P, parent: usize, lang: Option<&str>| crate::growth::Node {
+            p,
+            parent: Some(parent),
+            own: 0.0,
+            language: lang.map(str::to_string),
+            bleach: 0.0,
+            strand: false,
+        };
+        sk.nodes.push(node((CENTER_X, 380.0), 0, None));
+        sk.nodes.push(node((CENTER_X, 360.0), 1, None));
+        sk.nodes
+            .push(node((CENTER_X - 20.0, 360.0), 2, Some("Rust")));
+        sk.nodes
+            .push(node((CENTER_X - 40.0, 362.0), 3, Some("Rust")));
+        let wood = Wood {
+            chains: vec![vec![0, 1, 2]],
+            sides: vec![0.0],
+            foot: 0,
+            s_a: 0.0,
+            center: CENTER_X,
+            dead_b: false,
+            dead_g: 0.0,
+            sweep: 1.0,
+            peel_b: 0.0,
+            months_b: 0,
+            free_b: 0,
+            cascade: 0.0,
+            downwind: 1.0,
+            tier: 0.0,
+        };
+        wind_branches(&mut sk, &wood, &[]);
+        let (a, tip) = (sk.nodes[2].p, sk.nodes[4].p);
+        let rise = math::atan2(a.1 - tip.1, tip.0 - a.0);
+        assert!(tip.0 > a.0, "the branch still points upwind: {tip:?}");
+        assert!(
+            rise <= STREAM_RISE + 1e-9,
+            "the branch stands {:.0} degrees up",
+            math::deg(rise)
+        );
+    }
+
+    /// A cloud out on its own bare arm, well clear of the rest of a windswept
+    /// crown, comes in to the crown, its arm with it.
+    #[test]
+    fn a_lone_tuft_comes_in_to_the_crown() {
+        let mut sk = root_only();
+        let node = |p: P, parent: usize| crate::growth::Node {
+            p,
+            parent: Some(parent),
+            own: 0.0,
+            language: Some("Rust".to_string()),
+            bleach: 0.0,
+            strand: false,
+        };
+        // A trunk, a low limb carrying four clouds side by side, and a long
+        // bare arm reaching up to one cloud far above them.
+        sk.nodes.push(node((CENTER_X, 360.0), 0));
+        sk.nodes.push(node((CENTER_X, 330.0), 1));
+        for k in 1..=4 {
+            sk.nodes.push(node(
+                (CENTER_X + 20.0 * f64::from(k), 330.0),
+                sk.nodes.len() - 1,
+            ));
+        }
+        let fork = 3;
+        let mut at = fork;
+        for k in 1..=4 {
+            sk.nodes
+                .push(node((CENTER_X + 20.0, 330.0 - 20.0 * f64::from(k)), at));
+            at = sk.nodes.len() - 1;
+        }
+        let cloud = |c: P| crate::growth::Cloud {
+            c,
+            rx: 10.0,
+            ry: 6.0,
+            ..crate::growth::Cloud::default()
+        };
+        sk.clouds = (1..=4)
+            .map(|k| cloud((CENTER_X + 20.0 * f64::from(k), 326.0)))
+            .collect();
+        sk.clouds.push(cloud(sk.nodes[at].p));
+        let wood = Wood {
+            chains: vec![vec![0, 1, 2]],
+            sides: vec![0.0],
+            foot: 0,
+            s_a: 0.0,
+            center: CENTER_X,
+            dead_b: false,
+            dead_g: 0.0,
+            sweep: 1.0,
+            peel_b: 0.0,
+            months_b: 0,
+            free_b: 0,
+            cascade: 0.0,
+            downwind: 1.0,
+            tier: 0.0,
+        };
+        let tip = sk.nodes[at].p;
+        no_lone_tuft(&mut sk, &wood);
+        let (lone, below) = (&sk.clouds[4], &sk.clouds[0]);
+        let gap = (below.c.1 - below.ry) - (lone.c.1 + lone.ry);
+        assert!(gap <= LONE_KEEP + 1e-6, "still {gap:.1} above the crown");
+        assert!(sk.nodes[at].p.1 > tip.1, "its arm came with it");
+        assert_eq!(sk.nodes[fork].p, (CENTER_X + 20.0, 330.0), "the limb stays");
     }
 
     #[test]

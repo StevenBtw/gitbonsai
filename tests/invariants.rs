@@ -489,12 +489,15 @@ fn the_legend_explains_without_spoiling() {
         "furin",
         "fūrin",
         "moon",
+        "petunia",
+        "begonia",
         "firefly",
         "glow",
         "pebble",
         "crane",
         "coin",
         "snow",
+        "frost",
         "copter",
         "kintsugi",
         "achievement",
@@ -528,6 +531,7 @@ fn the_legend_explains_without_spoiling() {
                 );
                 for language in &bonsai.order {
                     if bonsai.state(Some(language)) == LanguageState::Alive
+                        && bonsai.shows_leaves(language)
                         && bonsai.order.len() <= 8
                     {
                         assert!(
@@ -580,11 +584,12 @@ fn a_returning_language_lives_and_a_lost_one_turns_to_jin() {
 fn easter_eggs_follow_the_achievements() {
     let render = |name: &str| render::svg(&grow(name), &Config::default(), Theme::Light);
     let veteran = render("veteran");
+    // Observed in November: the autumn samara, not the spring cranes
+    // (`seasonal_eggs_keep_their_season`).
     for egg in [
         "#fish4",
-        "#cranes",
         "#goen",
-        "#taketombo",
+        r#"rx="8.4" ry="1.1""#,
         "class=\"fs\"",
         "url(#pc)",
     ] {
@@ -813,7 +818,10 @@ fn the_wind_chimes_sway_at_their_own_pace() {
 fn the_firefly_hovers_in_the_open() {
     use gitbonsai::scene::{Scene, TILT, WORLD, project};
     for name in ["polyglot", "steady"] {
-        let bonsai = grow(name);
+        // Fireflies are a summer thing.
+        let snapshot = fixtures::by_name(name).unwrap().snapshot;
+        let summer = gitbonsai::date::Date::from_ymd(2026, 7, 15);
+        let bonsai = Bonsai::grow(&snapshot, &Config::default(), summer);
         let svg = render::svg(&bonsai, &Config::default(), Theme::Light);
         let at = svg
             .split("<g class=\"ff\"><g transform=\"translate(")
@@ -1120,6 +1128,86 @@ fn dropped_trunk(per_week: u32) -> gitbonsai::Snapshot {
         achievement_dates: std::collections::BTreeMap::new(),
         archived_dates: std::collections::BTreeMap::new(),
         start: None,
+    }
+}
+
+/// A cascade's leaves grow on its wood: spread along its pads, no cloud
+/// reaches past the wood in it by more than a pad's open edge.
+#[test]
+fn a_cascade_keeps_its_leaves_on_wood() {
+    let mut trees: Vec<(String, gitbonsai::Snapshot)> = fixtures::all()
+        .into_iter()
+        .map(|f| (f.name.to_string(), f.snapshot))
+        .collect();
+    for name in ["jacobwilliams", "steipete", "stevenbtw", "tj", "torvalds"] {
+        let path = format!(
+            "{}/site/snapshots/{name}.snapshot.json",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        let s = gitbonsai::Snapshot::load(std::path::Path::new(&path)).unwrap();
+        trees.push((name.to_string(), s));
+    }
+    for (name, snapshot) in &trees {
+        let b = Bonsai::grow(snapshot, &config(Style::Kengai), None);
+        let sk = &b.skeleton;
+        for cl in &sk.clouds {
+            let near = |n: &&gitbonsai::growth::Node| (n.p.1 - cl.c.1).abs() <= cl.ry + 8.0;
+            let wood = |side: f64| {
+                sk.nodes
+                    .iter()
+                    .filter(near)
+                    .map(|n| side * (n.p.0 - cl.c.0))
+                    .fold(f64::NEG_INFINITY, f64::max)
+            };
+            // A young cascade's pads are still easing in: a little slack.
+            let open = 8.0_f64.max(0.4 * cl.rx) + 5.0;
+            for side in [-1.0, 1.0] {
+                assert!(
+                    wood(side) + open >= cl.rx,
+                    "{name}: a cloud at ({:.0}, {:.0}) reaches {:.0} past its wood",
+                    cl.c.0,
+                    cl.c.1,
+                    cl.rx - wood(side)
+                );
+            }
+        }
+    }
+}
+
+/// A dropped language grows no living wood: its arms died, and its cloud
+/// keeps its place bare, with no twigs hung from the living wood near it.
+#[test]
+fn a_dropped_language_grows_no_living_wood() {
+    let mut trees: Vec<(String, Bonsai)> = fixtures::all()
+        .into_iter()
+        .map(|f| {
+            (
+                f.name.to_string(),
+                Bonsai::grow(&f.snapshot, &Config::default(), None),
+            )
+        })
+        .collect();
+    for per in [1, 2, 4] {
+        trees.push((
+            format!("dropped trunk, {per} a week"),
+            Bonsai::grow(&dropped_trunk(per), &Config::default(), None),
+        ));
+    }
+    for (name, b) in &trees {
+        let living = b
+            .skeleton
+            .nodes
+            .iter()
+            .filter(|n| {
+                n.language
+                    .as_deref()
+                    .is_some_and(|l| b.state(Some(l)) == gitbonsai::foliage::LanguageState::Jin)
+            })
+            .count();
+        assert_eq!(
+            living, 0,
+            "{name}: {living} living nodes of a dropped language"
+        );
     }
 }
 
@@ -1513,6 +1601,333 @@ fn a_left_tree_mirrors_the_right() {
         for (r, l) in right.tufts.iter().zip(&left.tufts) {
             mirrors(r.p, l.p, "leaf");
             mirrors(r.n, l.n, "leaf normal");
+        }
+    }
+}
+
+/// A semi-cascade's white trunk reads as an honor, not as a dropped
+/// language, and the legend names only leaves the crown draws: Fortran's
+/// trunk gets its own row and line, and JavaScript, with no cloud of its
+/// own, gets no leaf.
+#[test]
+fn the_white_trunk_reads_as_a_classic_still_growing() {
+    let path = format!(
+        "{}/site/snapshots/jacobwilliams.snapshot.json",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    let snapshot = gitbonsai::Snapshot::load(std::path::Path::new(&path)).unwrap();
+    let mut config = Config::default();
+    config.render.legend = gitbonsai::config::Legend::Left;
+    let bonsai = Bonsai::grow(&snapshot, &config, None);
+    let svg = render::svg(&bonsai, &config, Theme::Light);
+    assert!(
+        svg.contains("white trunk: Fortran, still growing"),
+        "no white trunk row"
+    );
+    assert!(
+        !svg.contains(">JavaScript<"),
+        "JavaScript has no leaves to show"
+    );
+    let text = bonsai.description();
+    assert!(
+        text.contains("A white Fortran trunk: a classic language, still growing."),
+        "{text}"
+    );
+}
+
+/// A windswept crown may hang low downwind, but only a cascade goes past
+/// the rim: every leaf of a windswept tree stays above it.
+#[test]
+fn a_windswept_crown_stays_above_the_rim() {
+    let mut trees: Vec<(String, gitbonsai::Snapshot)> = fixtures::all()
+        .into_iter()
+        .map(|f| (f.name.to_string(), f.snapshot))
+        .collect();
+    for name in ["jacobwilliams", "steipete", "stevenbtw", "torvalds"] {
+        let path = format!(
+            "{}/site/snapshots/{name}.snapshot.json",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        let s = gitbonsai::Snapshot::load(std::path::Path::new(&path)).unwrap();
+        trees.push((name.to_string(), s));
+    }
+    for (name, snapshot) in &trees {
+        let b = Bonsai::grow(snapshot, &config(Style::Fukinagashi), None);
+        let scene = gitbonsai::scene::Scene::build(&b);
+        // Scene heights are above the soil, where the rim lies.
+        let low = scene
+            .tufts
+            .iter()
+            .map(|t| t.p[1])
+            .fold(f64::INFINITY, f64::min);
+        assert!(low > 0.0, "{name}: a leaf {low:.1} below the rim");
+    }
+}
+
+/// Private work stays in the skirt and the inner crown: the top of a crown
+/// belongs to a public language whenever the tree has one.
+#[test]
+fn private_work_never_tops_the_crown() {
+    use gitbonsai::growth::clouds::lead_of;
+    let mut trees: Vec<(String, gitbonsai::Snapshot)> = fixtures::all()
+        .into_iter()
+        .map(|f| (f.name.to_string(), f.snapshot))
+        .collect();
+    for name in ["jacobwilliams", "steipete", "stevenbtw", "tj", "torvalds"] {
+        let path = format!(
+            "{}/site/snapshots/{name}.snapshot.json",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        let s = gitbonsai::Snapshot::load(std::path::Path::new(&path)).unwrap();
+        trees.push((name.to_string(), s));
+    }
+    let mut bad = Vec::new();
+    for (name, snapshot) in &trees {
+        let styles = std::iter::once(None).chain(Style::ALL.into_iter().map(Some));
+        for style in styles {
+            let b = Bonsai::grow(snapshot, &style.map_or_else(Config::default, config), None);
+            let clouds = &b.skeleton.clouds;
+            if clouds.iter().all(|c| lead_of(c).is_none()) {
+                continue;
+            }
+            // Heights grow upward on the canvas as y shrinks.
+            let top = clouds
+                .iter()
+                .min_by(|a, b| (a.c.1 - a.ry).total_cmp(&(b.c.1 - b.ry)));
+            if top.is_some_and(|c| lead_of(c).is_none()) {
+                bad.push(format!("{name} {style:?}"));
+            }
+        }
+    }
+    assert!(bad.is_empty(), "private work tops: {bad:?}");
+}
+
+/// How much of each language the picture shows: a coarse raster of the
+/// leaves, each cell keeping the frontmost leaf, counted by the language
+/// whose color that leaf is nearest. Private work counts as "".
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    reason = "canvas cells"
+)]
+fn visible_leaves(b: &Bonsai) -> std::collections::BTreeMap<String, usize> {
+    // Canvas units a cell is wide and high.
+    const CELL: f64 = 2.0;
+    use gitbonsai::scene::{Scene, WORLD, project};
+    let scene = Scene::build(b);
+    let langs: Vec<String> = b
+        .order
+        .iter()
+        .filter(|l| b.shows_leaves(l))
+        .cloned()
+        .collect();
+    let mut front: std::collections::BTreeMap<(i64, i64), (f64, String)> = Default::default();
+    for t in &scene.tufts {
+        let lang = if t.private {
+            String::new()
+        } else {
+            let d = |l: &String| {
+                let c = b.maple.leaf(Some(l), 0.5);
+                sq(f64::from(c.r) - f64::from(t.color.r))
+                    + sq(f64::from(c.g) - f64::from(t.color.g))
+                    + sq(f64::from(c.b) - f64::from(t.color.b))
+            };
+            langs
+                .iter()
+                .min_by(|a, b| d(a).total_cmp(&d(b)))
+                .cloned()
+                .unwrap_or_default()
+        };
+        let (x, y, depth) = project(t.p);
+        let depth = depth + t.lift;
+        let r = 4.0 * WORLD * t.size;
+        let cell = |v: f64| (v / CELL).floor() as i64;
+        for cx in cell(x - r)..=cell(x + r) {
+            for cy in cell(y - r)..=cell(y + r) {
+                let at = |c: i64| (c as f64 + 0.5) * CELL;
+                if sq(at(cx) - x) + sq(at(cy) - y) > r * r {
+                    continue;
+                }
+                let e = front
+                    .entry((cx, cy))
+                    .or_insert((f64::NEG_INFINITY, String::new()));
+                if depth > e.0 {
+                    *e = (depth, lang.clone());
+                }
+            }
+        }
+    }
+    let mut seen = std::collections::BTreeMap::new();
+    for (_, l) in front.into_values() {
+        *seen.entry(l).or_insert(0) += 1;
+    }
+    seen
+}
+
+/// Every language the crown draws shows: a small language's cloud is never
+/// buried behind a big one's.
+#[test]
+fn every_language_in_the_crown_shows() {
+    let mut trees: Vec<(String, gitbonsai::Snapshot)> = fixtures::all()
+        .into_iter()
+        .map(|f| (f.name.to_string(), f.snapshot))
+        .collect();
+    for name in ["jacobwilliams", "steipete", "stevenbtw", "tj", "torvalds"] {
+        let path = format!(
+            "{}/site/snapshots/{name}.snapshot.json",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        let s = gitbonsai::Snapshot::load(std::path::Path::new(&path)).unwrap();
+        trees.push((name.to_string(), s));
+    }
+    // Cells of 2 by 2: at least a small patch of leaves, about 15 by 15.
+    const SHOWN: usize = 60;
+    let mut hidden = Vec::new();
+    for (name, snapshot) in &trees {
+        for style in std::iter::once(None).chain(Style::ALL.into_iter().map(Some)) {
+            let b = Bonsai::grow(snapshot, &style.map_or_else(Config::default, config), None);
+            let seen = visible_leaves(&b);
+            for l in b.order.iter().filter(|l| b.shows_leaves(l)) {
+                let n = seen.get(l).copied().unwrap_or(0);
+                if n < SHOWN {
+                    hidden.push(format!("{name} {style:?} {l}: {n}"));
+                }
+            }
+        }
+    }
+    assert!(hidden.is_empty(), "hidden: {hidden:?}");
+}
+
+/// A cascade carries the foliage its work earned: gathered into pads along
+/// the arc, its clouds lie side by side, not stacked on one another.
+#[test]
+fn a_cascade_shows_its_foliage() {
+    let mut trees: Vec<(String, gitbonsai::Snapshot)> = ["legacy", "showcase", "veteran"]
+        .into_iter()
+        .map(|n| (n.to_string(), fixtures::by_name(n).unwrap().snapshot))
+        .collect();
+    for name in ["jacobwilliams", "stevenbtw", "torvalds"] {
+        let path = format!(
+            "{}/site/snapshots/{name}.snapshot.json",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        let s = gitbonsai::Snapshot::load(std::path::Path::new(&path)).unwrap();
+        trees.push((name.to_string(), s));
+    }
+    let shown = |s: &gitbonsai::Snapshot, style: Style| -> usize {
+        visible_leaves(&Bonsai::grow(s, &config(style), None))
+            .values()
+            .sum()
+    };
+    let mut thin = Vec::new();
+    for (name, s) in &trees {
+        let (cascade, upright) = (shown(s, Style::Kengai), shown(s, Style::Moyogi));
+        let share = cascade as f64 / upright as f64;
+        // Stacked in its pads it showed 22 to 36% (0.4.0); laid side by side
+        // it shows 40 to 54%. An arc never carries as much as a crown.
+        if share < 0.38 {
+            thin.push(format!("{name}: {share:.2}"));
+        }
+    }
+    assert!(thin.is_empty(), "thin cascades: {thin:?}");
+}
+
+/// A left tree is lit from its open side, as the right one's mirror image:
+/// its eggs lie mirrored about the pot's center line, and its galaxy plant
+/// peeks out on the light's side: left of the trunk on a right tree, right of
+/// it on a left one.
+#[test]
+fn a_left_tree_is_furnished_as_the_mirror_image() {
+    use gitbonsai::growth::dome::Reach;
+    use gitbonsai::style::Leader;
+    let snapshot = fixtures::by_name("veteran").unwrap().snapshot;
+    let config = Config::default();
+    let base = Bonsai::grow(&snapshot, &config, None);
+    let svg = |side: f64| {
+        let mut b = base.clone();
+        b.leader = Leader::new(b.leader.style, None, side);
+        b.skeleton = gitbonsai::growth::grow(
+            &b.timeline,
+            b.account_id,
+            &b.leader,
+            &[],
+            Reach::default(),
+            None,
+        );
+        render::svg(&b, &config, Theme::Light)
+    };
+    let (right, left) = (svg(1.0), svg(-1.0));
+    // Where an egg is drawn, before any mirroring, and whether a mirror
+    // group holds it.
+    let at = |svg: &str, egg: &str| -> (f64, f64, bool) {
+        let i = svg.find(egg).unwrap_or_else(|| panic!("no {egg}"));
+        let head = &svg[..i];
+        let t = head.rfind("translate(").unwrap() + "translate(".len();
+        let xy: Vec<f64> = head[t..]
+            .split(')')
+            .next()
+            .unwrap()
+            .split(' ')
+            .map(|v| v.parse().unwrap())
+            .collect();
+        let mirrored = head
+            .rfind(r#"<g transform="matrix(-1 0 0 1 512 0)">"#)
+            .is_some_and(|m| head[m..].matches("<g").count() > head[m..].matches("</g>").count());
+        (xy[0], xy[1], mirrored)
+    };
+    for egg in [
+        r##"fill="#3b0f6a""##,
+        r##"<use href="#goen"/>"##,
+        r##"<use href="#fish4""##,
+    ] {
+        let (r, l) = (at(&right, egg), at(&left, egg));
+        assert!(!r.2 && l.2, "{egg}: only the left tree's is mirrored");
+        assert!(
+            (r.0 - l.0).abs() < 2.0 && (r.1 - l.1).abs() < 2.0,
+            "{egg}: {r:?} vs {l:?}"
+        );
+    }
+    let petunia = at(&right, r##"fill="#3b0f6a""##);
+    assert!(
+        petunia.0 < gitbonsai::style::CENTER_X,
+        "the petunia peeks out on the light's side"
+    );
+}
+
+/// A configured wind sets the tree's side, its light with it: no tree
+/// streams toward its lit side.
+#[test]
+fn a_configured_wind_sets_the_side() {
+    use gitbonsai::config::Wind;
+    let snapshot = fixtures::by_name("showcase").unwrap().snapshot;
+    for (wind, side) in [(Wind::Left, -1.0), (Wind::Right, 1.0)] {
+        let mut config = Config::default();
+        config.tree.wind = Some(wind);
+        let b = Bonsai::grow(&snapshot, &config, None);
+        assert!(
+            (b.leader.side - side).abs() < 1e-9,
+            "{wind:?}: {}",
+            b.leader.side
+        );
+    }
+}
+
+/// The pot is repotted in steps and never gets smaller, month to month,
+/// whatever the tree does: a pause, a dormant year, a comeback.
+#[test]
+fn the_pot_never_shrinks() {
+    for name in [
+        "steady", "showcase", "veteran", "comeback", "dormant", "polyglot",
+    ] {
+        let frames = monthly(name);
+        for pair in frames.windows(2) {
+            let ((_, a), (day, b)) = (&pair[0], &pair[1]);
+            assert!(
+                gitbonsai::POTS.contains(&b.pot),
+                "{name} {day}: pot {} off the ladder",
+                b.pot
+            );
+            assert!(b.pot >= a.pot, "{name} {day}: pot {} -> {}", a.pot, b.pot);
         }
     }
 }

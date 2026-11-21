@@ -36,6 +36,7 @@ pub mod explain;
 pub mod extras;
 pub mod fixtures;
 pub mod foliage;
+pub mod galaxy;
 pub mod growth;
 pub mod html;
 pub mod legend;
@@ -86,6 +87,8 @@ pub struct Bonsai {
     pub account_id: u64,
     /// The day the tree shows.
     pub observed_on: Date,
+    /// Whose seasons the tree keeps.
+    pub hemisphere: config::Hemisphere,
     /// The style, made concrete for this account.
     pub leader: Leader,
     /// Capped days and weeks.
@@ -117,18 +120,91 @@ pub struct Bonsai {
     /// The share of its leaves the crown is drawn with, 1 unless the SVG
     /// would be too heavy ([`render::SVG_BUDGET`]).
     pub leaf_share: f64,
+    /// The pot's size on the canvas, one of [`POTS`]: it grows a size at a
+    /// repotting and never shrinks.
+    pub pot: f64,
+}
+
+/// The pot sizes a tree is repotted through, smallest first: each about a
+/// quarter larger than the one before.
+pub const POTS: [f64; 9] = [80.0, 100.0, 125.0, 156.0, 195.0, 244.0, 305.0, 381.0, 400.0];
+
+/// The pot a crown's full size calls for, as a share of that size: what
+/// most trees need ([`growth::dome::full_size`]).
+const FULL_POT: f64 = 1.6;
+
+/// The smallest pot that holds `need`, or the largest.
+fn pot_for(need: f64) -> f64 {
+    POTS.iter()
+        .copied()
+        .find(|&p| p >= need)
+        .unwrap_or(POTS[POTS.len() - 1])
+}
+
+/// The pot for a tree that needs `now` today and needed `then` at the last
+/// start of spring: repotted then, and out of season only in a growth spurt,
+/// once it outgrows that pot by two sizes; merely pot-bound, it waits for
+/// spring.
+fn pot_size(now: f64, then: Option<f64>) -> f64 {
+    let potted = pot_for(then.unwrap_or(now));
+    if now > potted * 1.25 * 1.25 {
+        potted.max(pot_for(now))
+    } else {
+        potted
+    }
+}
+
+/// The first day of the last spring on or before `day`: March in the north,
+/// September in the south.
+fn last_spring(day: Date, hemisphere: config::Hemisphere) -> Date {
+    let month = if hemisphere == config::Hemisphere::South {
+        9
+    } else {
+        3
+    };
+    let (y, m, _) = day.ymd();
+    let year = if m >= month { y } else { y - 1 };
+    Date::from_ymd(year, month, 1).unwrap_or(day)
 }
 
 impl Bonsai {
     /// Grows the tree for `snapshot` as of `as_of` (default: its
     /// `observed_on`). Reads no clock and no network.
+    ///
+    /// Its pot is repotted in steps: the size that fit the tree at the last
+    /// start of spring, or one that fits it now if it has outgrown that by two
+    /// sizes since. So any day's pot follows from its date alone.
     pub fn grow(snapshot: &Snapshot, config: &Config, as_of: Option<Date>) -> Self {
+        let mut b = Self::grow_at(snapshot, config, as_of);
+        let spring = last_spring(b.observed_on, b.hemisphere);
+        let then = (spring < b.observed_on && spring >= snapshot.range.from)
+            .then(|| Self::grow_at(snapshot, config, Some(spring)).pot_need());
+        b.pot = pot_size(b.pot_need(), then);
+        b
+    }
+
+    /// How big a pot the tree needs, from what never shrinks: 0.62 of its
+    /// height on the canvas, or the pot its crown's full size calls for,
+    /// whichever is more. So its pot never gets smaller.
+    fn pot_need(&self) -> f64 {
+        let full = growth::dome::full_size(&self.timeline, &self.periods) * FULL_POT;
+        (self.skeleton.height * scene::WORLD * 0.62).max(full)
+    }
+
+    /// The tree for `snapshot` as of `as_of`, before its pot is chosen.
+    fn grow_at(snapshot: &Snapshot, config: &Config, as_of: Option<Date>) -> Self {
         let snapshot = match as_of {
             Some(date) => snapshot.truncated(date),
             None => snapshot.clone(),
         };
         let wind = config.tree.wind;
-        let side = crate::style::side(&snapshot.days);
+        // A configured wind sets the side too: the lean, the light and the
+        // eggs follow it, so no tree streams toward its lit side.
+        let side = match wind {
+            Some(config::Wind::Left) => -1.0,
+            Some(config::Wind::Right) => 1.0,
+            None => crate::style::side(&snapshot.days),
+        };
         let leader = match config.tree.style {
             Some(style) => Leader::new(style, wind, side),
             None => Leader::mixed(crate::style::Mix::of(&snapshot), wind, side),
@@ -164,6 +240,7 @@ impl Bonsai {
             login: snapshot.login.clone(),
             account_id: snapshot.account_id,
             observed_on: snapshot.observed_on,
+            hemisphere: config.tree.hemisphere,
             leader,
             last_week_total: foliage::last_week_total(&timeline),
             skeleton,
@@ -179,6 +256,7 @@ impl Bonsai {
             fullness,
             timeline,
             leaf_share: 1.0,
+            pot: POTS[0],
         }
     }
 
@@ -218,6 +296,35 @@ impl Bonsai {
         u32::try_from(weeks.len() - 1 - last).ok()
     }
 
+    /// Checks whether the crown draws leaves of `language`: a language too
+    /// small for a cloud of its own has none, so the legend leaves it out.
+    pub fn shows_leaves(&self, language: &str) -> bool {
+        self.skeleton
+            .clouds
+            .iter()
+            .any(|c| c.patches.iter().any(|p| p.2.as_deref() == Some(language)))
+    }
+
+    /// Names the classic language of a semi-cascade's white trunk: the one
+    /// with the most work in all. You get `None` while the trunk isn't white.
+    pub fn white_trunk(&self) -> Option<&str> {
+        if self.skeleton.legacy_jin <= 0.0 {
+            return None;
+        }
+        let total = |l: &str| -> f64 {
+            self.timeline
+                .days
+                .iter()
+                .filter_map(|d| d.by_language.get(l))
+                .sum()
+        };
+        self.order
+            .iter()
+            .filter(|l| crate::style::is_legacy(l))
+            .max_by(|a, b| total(a).total_cmp(&total(b)).then(b.cmp(a)))
+            .map(String::as_str)
+    }
+
     /// A year of total silence: the canopy is bare. The trunk never becomes jin.
     /// The same rule the drawing follows, so the legend and `explain` agree
     /// with what the tree shows.
@@ -248,7 +355,13 @@ impl Bonsai {
             text.push_str(" A shoot in its seed coat.");
             return text;
         }
-        let mut ranked: Vec<(&String, &f64)> = self.window.by_language.iter().collect();
+        // Only languages the crown draws, as in the legend.
+        let mut ranked: Vec<(&String, &f64)> = self
+            .window
+            .by_language
+            .iter()
+            .filter(|(l, _)| self.shows_leaves(l))
+            .collect();
         ranked.sort_by(|a, c| c.1.total_cmp(a.1).then(a.0.cmp(c.0)));
         let leaves = self.window.total.max(1e-9);
         // After the first, a language under 15% of the leaves is "a bit of".
@@ -280,6 +393,12 @@ impl Bonsai {
             .collect();
         if !jin.is_empty() {
             let _ = write!(text, " {} turned to deadwood.", and_list(&jin));
+        }
+        if let Some(language) = self.white_trunk() {
+            let _ = write!(
+                text,
+                " A white {language} trunk: a classic language, still growing."
+            );
         }
         if self.dormant() {
             text.push_str(" Dormant, waiting for spring.");

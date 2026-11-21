@@ -1,8 +1,9 @@
 # bonsai.toml: every key is optional; these are the defaults unless noted.
 
 [tree]
-# style = "moyogi"      # chokkan | moyogi | shakan | fukinagashi | kengai; unset, the last three years pick it
+# style = "moyogi"      # chokkan | moyogi | shakan | fukinagashi | kengai; unset, mostly the last three years pick it
 # wind = "left"         # the side it leans and streams to; unset, its sprout picks it
+# hemisphere = "south"  # seasons follow the southern hemisphere; unset, the northern
 
 [leaves]
 pins = []               # at most 5 languages, e.g. ["Rust", "Python"]; they take color slots first
