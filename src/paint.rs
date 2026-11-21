@@ -298,21 +298,12 @@ fn layer(twigs: &[Twig]) -> Vec<usize> {
             must(i, p);
         }
     }
-    let boxes: Vec<(f64, f64, f64, f64)> = twigs
-        .iter()
-        .map(|t| {
-            t.line
-                .iter()
-                .fold((f64::MAX, f64::MAX, f64::MIN, f64::MIN), |b, p| {
-                    (b.0.min(p.0), b.1.min(p.1), b.2.max(p.0), b.3.max(p.1))
-                })
-        })
-        .collect();
+    let boxes: Vec<Bounds> = twigs.iter().map(|t| bounds(&t.line)).collect();
     for i in 0..n {
         for j in i + 1..n {
             let (a, b) = (boxes[i], boxes[j]);
             let related = twigs[i].parent == Some(j) || twigs[j].parent == Some(i);
-            if related || a.2 < b.0 || b.2 < a.0 || a.3 < b.1 || b.3 < a.1 {
+            if related || !overlap(a, b) {
                 continue;
             }
             // Where a twig starts it is still coming out of wood, maybe the
@@ -359,8 +350,18 @@ fn layer(twigs: &[Twig]) -> Vec<usize> {
 /// there. Lines meeting at less than about 20 degrees lie along each other
 /// rather than cross, and don't count.
 fn crossing(a: &[(f64, f64, f64)], b: &[(f64, f64, f64)]) -> Option<((f64, f64), f64, f64)> {
+    // Only segments whose boxes meet can cross: a crown's many twigs stay
+    // quick to layer.
+    let whole = bounds(b);
     for s in a.windows(2) {
+        let sb = bounds(s);
+        if !overlap(sb, whole) {
+            continue;
+        }
         for t in b.windows(2) {
+            if !overlap(sb, bounds(t)) {
+                continue;
+            }
             let (p, r) = ((s[0].0, s[0].1), (s[1].0 - s[0].0, s[1].1 - s[0].1));
             let (q, w) = ((t[0].0, t[0].1), (t[1].0 - t[0].0, t[1].1 - t[0].1));
             let den = r.0 * w.1 - r.1 * w.0;
@@ -383,6 +384,22 @@ fn crossing(a: &[(f64, f64, f64)], b: &[(f64, f64, f64)]) -> Option<((f64, f64),
         }
     }
     None
+}
+
+/// A box on the canvas: least x and y, most x and y.
+type Bounds = (f64, f64, f64, f64);
+
+/// The box around a line's points.
+fn bounds(line: &[(f64, f64, f64)]) -> Bounds {
+    line.iter()
+        .fold((f64::MAX, f64::MAX, f64::MIN, f64::MIN), |b, p| {
+            (b.0.min(p.0), b.1.min(p.1), b.2.max(p.0), b.3.max(p.1))
+        })
+}
+
+/// Whether two boxes meet.
+fn overlap(a: Bounds, b: Bounds) -> bool {
+    a.0 <= b.2 && b.0 <= a.2 && a.1 <= b.3 && b.1 <= a.3
 }
 
 /// The soft groove of shadow a strand lies in, along its piece `seg`: wider
@@ -642,9 +659,8 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
     let mut low = SOIL_Y;
 
     // ---- wood, in pieces so leaves can pass in front of and behind it ----
-    // Thin twigs, living then dead, each with its depth: they are drawn one
-    // by one, back to front.
-    // Thin twigs, living and dead, with their outlines and whether dead.
+    // Thin twigs, living and dead, with their outlines and whether dead:
+    // drawn one by one, back to front, both kinds in one order ([`layer`]).
     let mut twigs: Vec<(Twig, String, bool)> = Vec::new();
     // Where each chain's twig is, by chain.
     let mut twig_at: Vec<Option<usize>> = vec![None; scene.chains.len()];
