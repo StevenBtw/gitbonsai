@@ -4,12 +4,19 @@ All notable changes to gitbonsai, a Japanese maple bonsai grown from GitHub acti
 
 ## [0.5.1] - Unreleased
 
-Fix release: two drawing faults from 0.5.0. Trees with a thick or white trunk, and every tree with fine twigs, look a little different.
+Fix release: drawing faults from 0.5.0, and formal upright trees stand taller. Formal uprights, trees with a thick or white trunk or a second trunk, and every tree with fine twigs or dead twigs look a little different.
+
+### Changed
+
+- **Formal uprights stand taller**: a chokkan crown is about as wide as it is tall (it was 1.2 times as wide), and its trunk keeps more girth toward the top; an old one such as torvalds stands 10 to 15% taller.
+- **A row has one light**: `gitbonsai row` lights every tree from the right, so trees side by side are never lit from opposite sides; a tree on its own is still lit from its open side.
 
 ### Fixed
 
 - **The trunk ends at its foot**: it no longer shows as a band on the soil under the roots, as on torvalds and jacobwilliams; a leaning trunk still goes into the soil.
 - **Crossing twigs lie one over the other**: each twig keeps its outline, drawn back to front, so where two cross only the outline of the one in front shows, instead of both outlines running through each other; a twig grows from behind the twig it comes from.
+- **Dead twigs lie one over the other**: as living twigs do, so their ink outlines no longer meet in small triangles at forks and crossings.
+- **A second trunk stays behind the first**: the shadow along it no longer pokes out beside the main trunk as a jagged wedge near the soil.
 
 ## [0.5.0] - 2026-11-21
 
