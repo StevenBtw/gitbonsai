@@ -246,6 +246,25 @@ pub fn footprint(leaf: bool) -> Vec<P> {
     pts
 }
 
+/// Gives where a galaxy plant's stem starts, in its own units: below the
+/// begonia's stalk (`leaf`), or at the foot of the petunia's stem, which
+/// runs down on the slant toward the trunk it peeks from behind.
+pub fn stem_foot(leaf: bool) -> P {
+    if leaf {
+        BEGONIA_HIDDEN[0]
+    } else {
+        PETUNIA_HIDDEN[0]
+    }
+}
+
+/// The begonia's points that stay behind the trunk, in its own units: the
+/// foot of its stem.
+pub const BEGONIA_HIDDEN: [P; 1] = [(3.5, 7.0)];
+
+/// The petunia's points that stay behind the trunk, in its own units: the
+/// foot of its stem, then its leaf's tip, which a small petunia lacks.
+pub const PETUNIA_HIDDEN: [P; 2] = [(4.6, 7.2), (8.6, 5.5)];
+
 /// The petunia's radius in its own units, before the squash.
 pub const PETUNIA_R: f64 = 3.0;
 
@@ -257,8 +276,9 @@ fn petunia_r(th: f64) -> f64 {
 
 /// The petunia: creased magenta-purple petals in three depths, five soft
 /// white patches and glowing stars clustered across it, a small dark throat.
-/// Its throat is at the origin, about 6 units across; its stem hangs down
-/// to the right, with one leaf unless the plant is a small one (`leaf`).
+/// Its throat is at the origin, about 6 units across; its stem runs down
+/// on the slant to the right, toward the trunk, with one leaf beside it
+/// unless the plant is a small one (`leaf`).
 pub fn petunia(leaf: bool) -> String {
     let mut rng = Rng::keyed(0, "galaxy/petunia");
     let big_r = petunia_r;
@@ -276,11 +296,11 @@ pub fn petunia(leaf: bool) -> String {
         d
     };
     let mut out = String::from(
-        r##"<path d="M2.4 8Q1.6 4.4 .3 1" stroke="#4f7d33" stroke-width=".5" fill="none"/>"##,
+        r##"<path d="M4.6 7.2Q2.4 4.4 .3 1" stroke="#4f7d33" stroke-width=".5" fill="none"/>"##,
     );
     if leaf {
         out.push_str(
-            r##"<path d="M1.2 5.2C-.6 4-3.6 4.2-4.8 5.9C-3 6.8-.4 6.6 1.2 5.2Z" fill="#5f8f3a"/>"##,
+            r##"<path d="M2.6 4.8C4.4 3.6 7.4 3.8 8.6 5.5C6.8 6.4 4.2 6.2 2.6 4.8Z" fill="#5f8f3a"/>"##,
         );
     }
     let _ = write!(

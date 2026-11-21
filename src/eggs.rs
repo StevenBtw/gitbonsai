@@ -310,8 +310,49 @@ fn settle(soil: &mut Vec<(f64, f64, f64)>, at: (f64, f64), r: f64, hw: f64) -> O
     Some((x, at.1))
 }
 
-/// How high above the soil a galaxy plant's stem meets the trunk's side.
-const STEM_FOOT: f64 = 6.0;
+/// A spot a galaxy plant may take, for [`peek`]: where it stands, the
+/// share of it that shows, the share other wood crosses, whether its stem
+/// (and the petunia's leaf) is behind the trunk, and whether the part that
+/// must show, the petunia's centre, does.
+#[derive(Debug, Clone, Copy)]
+struct Spot {
+    at: (f64, f64),
+    seen: f64,
+    crossed: f64,
+    tucked: bool,
+    centred: bool,
+}
+
+/// How much of a galaxy plant shows: most of it, the trunk hiding an edge
+/// of it and its stem. It is measured against the trunk's line, which is
+/// narrower than its flared foot, so the plant shows a little less.
+const PEEK: f64 = 0.8;
+
+/// Chooses where a galaxy plant peeks from among `spots`: you get a spot
+/// that stands clear, if any, and the best one that doesn't.
+///
+/// A plant peeks when its stem is behind the trunk, its centre shows, and
+/// between seven tenths and nearly all of it shows: most, never all. Clear, no other wood crosses it;
+/// of those, the one closest to [`PEEK`]. Failing that, the peeking spot
+/// other wood crosses least, then any with its stem tucked away. You get no
+/// spot at all only when the stem shows everywhere.
+fn peek(spots: &[Spot]) -> (Option<(f64, f64)>, Option<(f64, f64)>) {
+    let peeking = |s: &&Spot| s.tucked && s.centred && (0.7..=0.94).contains(&s.seen);
+    let near = |a: &Spot, b: &Spot| (a.seen - PEEK).abs().total_cmp(&(b.seen - PEEK).abs());
+    let clear = spots
+        .iter()
+        .filter(peeking)
+        .filter(|s| s.crossed <= 0.02)
+        .min_by(|a, b| near(a, b))
+        .map(|s| s.at);
+    let fallback = spots
+        .iter()
+        .filter(peeking)
+        .min_by(|a, b| a.crossed.total_cmp(&b.crossed).then(near(a, b)))
+        .or_else(|| spots.iter().filter(|s| s.tucked).min_by(|a, b| near(a, b)))
+        .map(|s| s.at);
+    (clear, fallback)
+}
 
 /// The trunks' lit edge on the canvas, `h` units above the soil: the
 /// outermost left side, where a right tree's light falls, of the trunks as
@@ -653,19 +694,35 @@ pub fn eggs(
             // Beside a slender young trunk the petunia is a small one: no
             // leaf, lower, smaller. The begonia keeps its size.
             let slender = trunk_girth(trunk, 24.0) < PLANT_GIRTH * 0.85;
-            let big = || (crate::galaxy::petunia(true), 36.0, -12.0, 3.79);
-            let small = || (crate::galaxy::petunia(false), 22.0, -12.0, 2.6);
+            // Each kind: its drawing, height, tilt, size, and the points of
+            // it that stay behind the trunk.
+            let big = || {
+                let hidden = &crate::galaxy::PETUNIA_HIDDEN[..];
+                (crate::galaxy::petunia(true), 36.0, -12.0, 3.79, hidden)
+            };
+            let small = || {
+                let hidden = &crate::galaxy::PETUNIA_HIDDEN[..1];
+                (crate::galaxy::petunia(false), 22.0, -12.0, 2.6, hidden)
+            };
             // The plants it may be, in turn: a full petunia that can't stand
             // clear beside the trunk tries the small one, lower, under the
             // branch in its way.
             let kinds = match (t, slender) {
-                (3, _) => vec![(crate::galaxy::begonia(), 18.0, 28.0, 0.86)],
+                (3, _) => vec![(
+                    crate::galaxy::begonia(),
+                    18.0,
+                    28.0,
+                    0.86,
+                    &crate::galaxy::BEGONIA_HIDDEN[..],
+                )],
                 (_, true) => vec![small()],
                 _ => vec![big(), small()],
             };
             let shape = crate::galaxy::footprint(t == 3);
             // Where a plant of this kind stands, and whether it stands clear.
-            let find = |&(_, h, rot, size): &(String, f64, f64, f64)| {
+            let find = |&(_, h, rot, size, hidden): &(String, f64, f64, f64, &[(f64, f64)])| {
+                // The petunia's centre always shows; the begonia has none to keep.
+                let shown: &[(f64, f64)] = if t == 3 { &[] } else { &[(0.0, 0.0)] };
                 let s = w * size;
                 // The leaf's base sits just inside the trunk's edge; the
                 // flower's centre a radius out.
@@ -674,7 +731,6 @@ pub fn eggs(
                 } else {
                     crate::galaxy::PETUNIA_R * s
                 };
-                let place = |h: f64| trunk_edge(trunk, h).map(|edge| (edge - out, SOIL_Y - h));
                 let shows = |(x, y): (f64, f64)| {
                     let (sn, cs) = (math::sin(math::rad(rot)), math::cos(math::rad(rot)));
                     let (mut seen, mut crossed) = (0, 0);
@@ -692,54 +748,66 @@ pub fn eggs(
                     let n = shape.len().max(1) as f64;
                     (f64::from(seen) / n, f64::from(crossed) / n)
                 };
-                // It peeks from behind the trunk: out along the soil a short
-                // way, the leaf's length or the flower's radius, from where
-                // the trunk meets the soil, so its stem stands beside it
-                // however the trunk leans, then from the trunk at the plant's
-                // own height.
-                let reach = if t == 3 {
+                // It peeks from behind the trunk, its stem behind it: tried
+                // from the plant's own height up, from a little way out of
+                // the trunk's edge to well behind it, the lowest height
+                // where one stands clear winning.
+                let span = if t == 3 {
                     10.0 * s
                 } else {
                     crate::galaxy::PETUNIA_R * s
                 };
-                let along = |at: f64| -> Vec<((f64, f64), (f64, f64))> {
-                    (0..100)
-                        .map(|k| 3.0 * f64::from(k))
-                        .take_while(|&d| d <= reach)
-                        .filter_map(|d| {
-                            trunk_edge(trunk, at).map(|edge| (edge - out - d, SOIL_Y - h))
-                        })
-                        .map(|p| (p, shows(p)))
-                        .collect()
+                let (sn, cs) = (math::sin(math::rad(rot)), math::cos(math::rad(rot)));
+                let foot = crate::galaxy::stem_foot(t == 3);
+                let on = |at: (f64, f64), (a, b): (f64, f64)| {
+                    (at.0 + s * (a * cs - b * sn), at.1 + s * (a * sn + b * cs))
                 };
-                let outward = along(STEM_FOOT);
-                let beside = along(h);
-                let clear = outward
-                    .iter()
-                    .chain(&beside)
-                    .find(|c| c.1.0 >= 0.62 && c.1.1 <= 0.02)
-                    .map(|c| c.0);
-                // Failing that, the spot wood crosses least where two thirds
-                // show; then the lowest that shows most, up the trunk.
-                let upward = (1..14)
-                    .filter_map(|k| place(h + 3.0 * f64::from(k)))
-                    .map(|p| (p, shows(p)));
-                let fallback = outward
-                    .iter()
-                    .chain(&beside)
-                    .filter(|c| c.1.0 >= 0.62)
-                    .min_by(|a, b| a.1.1.total_cmp(&b.1.1))
-                    .copied()
-                    .or_else(|| {
-                        outward.iter().copied().chain(upward).fold(
-                            None::<((f64, f64), (f64, f64))>,
-                            |best, c| match best {
-                                Some(b) if b.1.0 >= 0.62 || b.1.0 >= c.1.0 => Some(b),
-                                _ => Some(c),
-                            },
-                        )
-                    })
-                    .map(|b| b.0);
+                let mut best = (None, None);
+                // It stays near the soil, lifted 12 units at most: higher, it
+                // would float up the trunk among the limbs and leaves.
+                for k in 0..5 {
+                    let up = h + 3.0 * f64::from(k);
+                    let Some(edge) = trunk_edge(trunk, up) else {
+                        continue;
+                    };
+                    let spots: Vec<Spot> = (-4..=12)
+                        .map(|f| {
+                            let at = (edge - out + span * f64::from(f) / 8.0, SOIL_Y - up);
+                            let (seen, crossed) = shows(at);
+                            // Its stem and leaf stay behind the trunk, and so
+                            // does the longer stem a lifted plant grows down
+                            // to the soil.
+                            let from = on(at, foot);
+                            let down = (from.0 + 9.0, SOIL_Y + 3.0);
+                            let lifted = up > h + 0.5;
+                            let tucked = hidden.iter().all(|&p| covered(on(at, p), trunk, roots))
+                                && (!lifted
+                                    || [0.35, 0.7].iter().all(|&u| {
+                                        let p = (
+                                            from.0 + (down.0 - from.0) * u,
+                                            from.1 + (down.1 - from.1) * u,
+                                        );
+                                        covered(p, trunk, roots)
+                                    }));
+                            Spot {
+                                at,
+                                seen,
+                                crossed,
+                                tucked,
+                                centred: shown.iter().all(|&p| !covered(on(at, p), wood, roots)),
+                            }
+                        })
+                        .collect();
+                    let (clear, fallback) = peek(&spots);
+                    if clear.is_some() {
+                        best = (clear, clear);
+                        break;
+                    }
+                    if best.1.is_none() {
+                        best.1 = fallback;
+                    }
+                }
+                let (clear, fallback) = best;
                 (clear, fallback)
             };
             // The first kind that stands clear; failing all, the first kind
@@ -758,23 +826,25 @@ pub fn eggs(
                 // Lifted, it grows a longer stem down to the soil, curving a
                 // little toward the trunk: a taller plant, not a floating one.
                 if y < SOIL_Y - h - 0.5 {
-                    let (foot, stem, width) = if t == 3 {
-                        ((3.5, 7.0), "#5a2a36", 0.6)
+                    let foot = crate::galaxy::stem_foot(t == 3);
+                    let (stem, width) = if t == 3 {
+                        ("#5a2a36", 0.6)
                     } else {
-                        ((2.4, 8.0), "#4f7d33", 0.5)
+                        ("#4f7d33", 0.5)
                     };
                     let (sn, cs) = (math::sin(math::rad(rot)), math::cos(math::rad(rot)));
                     let from = (
                         x + s * (foot.0 * cs - foot.1 * sn),
                         y + s * (foot.0 * sn + foot.1 * cs),
                     );
-                    let to = (from.0 + 4.0, SOIL_Y + 3.0);
+                    // On the slant, down behind the trunk.
+                    let to = (from.0 + 9.0, SOIL_Y + 3.0);
                     let _ = write!(
                         e.back,
                         r#"<path d="M{} {}Q{} {} {} {}" stroke="{stem}" stroke-width="{}" fill="none" stroke-linecap="round"/>"#,
                         Num(from.0),
                         Num(from.1),
-                        Num(from.0 - 1.0),
+                        Num(from.0 + 2.0),
                         Num(f64::midpoint(from.1, to.1)),
                         Num(to.0),
                         Num(to.1),
@@ -898,6 +968,47 @@ pub fn kintsugi(archived: &[String], seed: u64, pot: &Pot) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A galaxy plant peeks: its stem always behind the trunk and some of
+    /// it too, most of it showing, the petunia's centre always in view.
+    #[test]
+    fn a_galaxy_plant_peeks_with_its_stem_behind_the_trunk() {
+        let spot = |x: f64, seen: f64, tucked: bool| Spot {
+            at: (x, 319.0),
+            seen,
+            crossed: 0.0,
+            tucked,
+            centred: true,
+        };
+        // Out in full with its stem showing, or peeking with it tucked.
+        let spots = [
+            spot(3.0, 0.97, false),
+            spot(19.0, 0.8, true),
+            spot(88.0, 0.19, true),
+        ];
+        assert_eq!(peek(&spots).0, Some((19.0, 319.0)));
+        // Of the spots that peek, the one closest to [`PEEK`].
+        let spots = [
+            spot(3.0, 0.93, true),
+            spot(19.0, 0.78, true),
+            spot(88.0, 0.63, true),
+        ];
+        assert_eq!(peek(&spots).0, Some((19.0, 319.0)));
+        // A spot that hides the flower's centre does not peek.
+        let mut hid = [spot(3.0, 0.8, true), spot(19.0, 0.74, true)];
+        hid[0].centred = false;
+        assert_eq!(peek(&hid).0, Some((19.0, 319.0)));
+        // With other wood across every peeking spot, none is clear; the one
+        // it crosses least still keeps its stem behind the trunk.
+        let mut crossed = [
+            spot(3.0, 0.97, false),
+            spot(19.0, 0.8, true),
+            spot(88.0, 0.8, true),
+        ];
+        crossed[1].crossed = 0.3;
+        crossed[2].crossed = 0.1;
+        assert_eq!(peek(&crossed), (None, Some((88.0, 319.0))));
+    }
 
     /// Soil eggs never touch: each settles clear of those before it, even
     /// crowded on a small pot.
