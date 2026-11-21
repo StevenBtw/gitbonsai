@@ -1936,7 +1936,7 @@ fn the_pot_never_shrinks() {
 /// under the roots; and each twig is drawn as its own outlined path.
 #[test]
 fn the_trunk_ends_at_its_foot_and_twigs_are_drawn_one_by_one() {
-    let (mut layered, mut dead_layered) = (false, false);
+    let (mut layered, mut dead_layered, mut dead_behind) = (false, false, false);
     for f in fixtures::all() {
         let b = Bonsai::grow(&f.snapshot, &Config::default(), None);
         if b.is_empty() || gitbonsai::sprout::is_sprout(&b) {
@@ -1959,20 +1959,29 @@ fn the_trunk_ends_at_its_foot_and_twigs_are_drawn_one_by_one() {
         // Each twig is its own outlined path, so one can hide the outline of
         // another instead of all merging into one shape. Their order, back
         // to front, is not checked here.
-        // Dead twigs too, in their own ink.
-        let group = |width: &str| {
-            svg.split(&format!(
-                r#"stroke-width="{width}" stroke-linejoin="round">"#
-            ))
+        // Dead twigs too, in their own ink, layered with the living ones:
+        // a living twig can lie in front of a dead one.
+        let twigs = svg
+            .split(r#"stroke-width="0.35" stroke-linejoin="round">"#)
             .nth(1)
-            .and_then(|r| r.split("</g>").next())
-            .map_or(0, |g| g.matches("<path d=").count())
-        };
-        layered |= group("0.35") > 1;
-        dead_layered |= group("0.7") > 1;
+            .unwrap_or("");
+        layered |= twigs
+            .split("<g")
+            .next()
+            .is_some_and(|g| g.matches("<path d=").count() > 1);
+        dead_layered |= twigs.split(r#"stroke-width=".7">"#).skip(1).any(|run| {
+            run.split("</g>")
+                .next()
+                .is_some_and(|g| g.matches("<path d=").count() > 1)
+        });
+        dead_behind |= twigs.split(r#"stroke-width=".7">"#).skip(1).any(|run| {
+            run.split_once("</g>")
+                .is_some_and(|(_, after)| after.starts_with("<path d="))
+        });
     }
     assert!(layered, "no tree draws its twigs one by one");
     assert!(dead_layered, "no tree draws its dead twigs one by one");
+    assert!(dead_behind, "no dead twig lies behind a living one");
 }
 
 /// A row of trees is lit by one light: a left tree under it casts its

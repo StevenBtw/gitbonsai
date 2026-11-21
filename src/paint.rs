@@ -644,9 +644,10 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
     // ---- wood, in pieces so leaves can pass in front of and behind it ----
     // Thin twigs, living then dead, each with its depth: they are drawn one
     // by one, back to front.
-    let mut twigs: [Vec<(Twig, String)>; 2] = [Vec::new(), Vec::new()];
-    // Where each chain's twig is, by chain: its kind and its index there.
-    let mut twig_at: Vec<Option<(usize, usize)>> = vec![None; scene.chains.len()];
+    // Thin twigs, living and dead, with their outlines and whether dead.
+    let mut twigs: Vec<(Twig, String, bool)> = Vec::new();
+    // Where each chain's twig is, by chain.
+    let mut twig_at: Vec<Option<usize>> = vec![None; scene.chains.len()];
     // Each chain's line as drawn, by index.
     let mut lines: Vec<Vec<(f64, f64)>> = Vec::with_capacity(scene.chains.len());
     // Each chain's drawn line with its radius, for what must touch it.
@@ -779,21 +780,15 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
             // Its place among the twigs is set when they are drawn
             // ([`layer`]): by depth, and behind the twig it grows from, so its
             // flat start never draws a line across it.
-            let kind = usize::from(*jin);
-            let parent = scene
-                .joins
-                .get(&ci)
-                .and_then(|r| twig_at[r.2])
-                .filter(|&(k, _)| k == kind)
-                .map(|(_, i)| i);
+            let parent = scene.joins.get(&ci).and_then(|r| twig_at[r.2]);
             let twig = Twig {
                 line: fine.iter().map(|p| (p.0, p.1, p.3)).collect(),
                 z: fine.iter().map(|p| p.3).sum::<f64>() / fine.len().max(1) as f64,
                 w: fine.iter().map(|p| p.2).fold(0.0, f64::max),
                 parent,
             };
-            twig_at[ci] = Some((kind, twigs[kind].len()));
-            twigs[kind].push((twig, tube(&seg, true, false).as_str().to_string()));
+            twig_at[ci] = Some(twigs.len());
+            twigs.push((twig, tube(&seg, true, false).as_str().to_string(), *jin));
             // A hairline crossing a plant is no matter; a branch is.
             if seg.iter().any(|p| p.2 >= 1.2) {
                 twig_pieces.push(seg);
@@ -1159,21 +1154,36 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
     // one behind it, its outline too, so crossing twigs read as one over the
     // other, not one flat shape. Living twigs get a faint darker outline;
     // dead ones their ink, or they vanish on a white page.
-    for (k, twigs) in twigs.iter().enumerate() {
-        if twigs.is_empty() {
-            continue;
-        }
+    // Living and dead twigs are layered together, so a dead twig passes
+    // behind a living one as well as in front of it. The living twigs'
+    // paint is the group's; each run of dead twigs, their ink, in a group
+    // of its own: short, so the file stays small.
+    if !twigs.is_empty() {
         let shapes: Vec<Twig> = twigs.iter().map(|t| t.0.clone()).collect();
-        let (fill, ink, width) = if k == 1 {
-            (paints.jin, paints.jin_ink, "0.7")
-        } else {
-            (paints.bark, paints.bark.shift(-0.08, 0.0), "0.35")
-        };
         let mut s = format!(
-            r#"<g fill="{fill}" stroke="{ink}" stroke-width="{width}" stroke-linejoin="round">"#
+            r#"<g fill="{}" stroke="{}" stroke-width="0.35" stroke-linejoin="round">"#,
+            paints.bark,
+            paints.bark.shift(-0.08, 0.0)
         );
+        let mut dead_run = false;
         for i in layer(&shapes) {
+            let dead = twigs[i].2;
+            if dead != dead_run {
+                if dead {
+                    let _ = write!(
+                        s,
+                        r#"<g fill="{}" stroke="{}" stroke-width=".7">"#,
+                        paints.jin, paints.jin_ink
+                    );
+                } else {
+                    s.push_str("</g>");
+                }
+                dead_run = dead;
+            }
             let _ = write!(s, r#"<path d="{}"/>"#, twigs[i].1);
+        }
+        if dead_run {
+            s.push_str("</g>");
         }
         s.push_str("</g>");
         items.push((f64::MIN, s));
