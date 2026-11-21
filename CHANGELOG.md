@@ -21,6 +21,7 @@ Fix release: drawing faults from 0.5.0, and formal upright trees stand taller. E
 - **Shadow bands stay on the wood**: where a trunk or limb bends, as at the trunk's foot, the dark band along it no longer cuts across the bend and shows as a loose line beside the wood or on the soil.
 - **Bare windswept crowns branch out**: a resting windswept tree's bare twigs grow from one another instead of all from one spot on long stems, so its crown no longer reads as a comb of parallel lines.
 - **Dead wood leaves the bark cleanly**: a dead limb runs out of the bark it leaves, without a round end and a line across it, a dead twig starts on the wood it grows from, and dead wood shows no ink line where its pieces meet.
+- **A shari stays clear of the limbs in front**: the bleached strip up a trunk stops below a living limb drawn in front of the trunk, instead of running on as a pale line along the limb's edge.
 - **Thin dead whips end in the crown**: a long dead whip with no forks is cut back where the crown no longer reaches over it; a branched dead top stays whole.
 - **Small clouds show no grey patch**: a cloud with few leaves no longer shows its solid backing below them.
 - **Pot details stay on the pot**: a crackle glaze line no longer runs under a foot, and the ribs of the plain training pot no longer reach past its bottom.
