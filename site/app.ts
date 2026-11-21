@@ -365,7 +365,29 @@ function select(id: string): void {
   if (pick) picks.scrollLeft += pick.getBoundingClientRect().left - picks.getBoundingClientRect().left - 16;
   load(false);
   label(last());
+  fitCaption();
 }
+/** Holds the caption at the height of the chosen tree's longest one, so the page doesn't jump while it plays. */
+function fitCaption(): void {
+  if (!FRAMES || !cur) return;
+  const c = $("caption");
+  const shown = c.textContent;
+  c.style.minHeight = "";
+  let h = 0;
+  for (const d of new Set(T().frames.map((f) => f.d))) {
+    c.textContent = d;
+    h = Math.max(h, c.getBoundingClientRect().height);
+  }
+  c.textContent = shown;
+  c.style.minHeight = `${Math.ceil(h)}px`;
+}
+// A new width, or the web font arriving, wraps the captions differently.
+void document.fonts.ready.then(fitCaption);
+let fitting = 0;
+addEventListener("resize", () => {
+  cancelAnimationFrame(fitting);
+  fitting = requestAnimationFrame(fitCaption);
+});
 function label(i: number): void {
   const f = T().frames[i];
   if (!f) return;
