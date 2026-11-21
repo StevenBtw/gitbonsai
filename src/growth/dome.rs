@@ -3974,8 +3974,8 @@ mod tests {
     /// A formal upright's triangle stands about as tall as it is wide, never
     /// more than 5% wider.
     #[test]
-    fn a_formal_uprights_crown_is_as_tall_as_it_is_wide() {
-        for big_s in [60.0, 120.0, 180.0] {
+    fn a_formal_uprights_crown_is_about_as_tall_as_it_is_wide() {
+        for big_s in [88.0, 119.0, 188.0] {
             let k = Cone::of(big_s, 40.0, 0.5);
             assert!(
                 1.05 * k.h_top >= 2.0 * k.w_b - 1e-9,
@@ -3993,7 +3993,7 @@ mod tests {
         let mut sk = root_only();
         let lang: Lang = Some("C".to_string());
         let mut main = vec![0];
-        for i in 1..50 {
+        for i in 1..88 {
             let p = *main.last().unwrap_or(&0);
             main.push(crate::growth::wood::add(
                 &mut sk,
@@ -4005,24 +4005,24 @@ mod tests {
         }
         let laid = |tier: f64| {
             let mut sk = sk.clone();
-            lay_trunk_extra(&mut sk, &main, 100.0, tier);
+            lay_trunk_extra(&mut sk, &main, 88.0, tier);
             sk.flows()
         };
         let flow = laid(1.0);
         let total = flow[0];
-        assert!((total - 100.0).abs() < 3.0, "{total:.1} laid of 100");
-        let at = flow[main[30]];
+        assert!((total - 88.0).abs() < 3.0, "{total:.1} laid of 88");
+        let at = flow[main[53]];
         assert!(
-            at >= 10.0,
-            "only {at:.1} of 100 carried above 60% of the trunk"
+            at >= 8.8,
+            "only {at:.1} of 88 carried above 60% of the trunk"
         );
         // A tree no longer formal upright keeps its old girth low: none of
         // it runs up a leader that is not a formal upright's.
         let flow = laid(0.0);
         assert!(
-            flow[main[30]] < 1e-9,
+            flow[main[53]] < 1e-9,
             "{:.1} carried up a tree no longer formal",
-            flow[main[30]]
+            flow[main[53]]
         );
     }
 

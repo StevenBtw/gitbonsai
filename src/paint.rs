@@ -279,11 +279,13 @@ struct Twig {
     parent: Option<usize>,
 }
 
-/// The order to draw `twigs` in, back to front. Where two cross, the one
-/// in front at the crossing comes later, so the right outline shows there
-/// even when a long twig is in front on average; a twig comes before the
-/// twig it grows from, so it comes out from behind it. Otherwise, and to
-/// break the rare cycle, the one further back on average comes first.
+/// Orders `twigs` for drawing, back to front: you get every index once.
+///
+/// Where two cross, the one in front at the crossing comes later, so the
+/// right outline shows there even when a long twig is in front on average.
+/// A twig comes before the twig it grows from, so it comes out from behind
+/// it. Otherwise, and to break the rare cycle, the one further back on
+/// average comes first.
 fn layer(twigs: &[Twig]) -> Vec<usize> {
     let n = twigs.len();
     // `later[i]`: the twigs that must be drawn after twig `i`.
@@ -303,7 +305,7 @@ fn layer(twigs: &[Twig]) -> Vec<usize> {
         for j in i + 1..n {
             let (a, b) = (boxes[i], boxes[j]);
             let related = twigs[i].parent == Some(j) || twigs[j].parent == Some(i);
-            if related || !overlap(a, b) {
+            if related || !overlaps(a, b) {
                 continue;
             }
             // Where a twig starts it is still coming out of wood, maybe the
@@ -346,26 +348,28 @@ fn layer(twigs: &[Twig]) -> Vec<usize> {
     order
 }
 
-/// Where the centre lines `a` and `b` first cross, and each one's depth
-/// there. Lines meeting at less than about 20 degrees lie along each other
-/// rather than cross, and don't count.
+/// Finds where the centre lines `a` and `b` first cross: the point, then
+/// each one's depth there. You get `None` when they never cross.
+///
+/// Lines meeting at less than about 20 degrees lie along each other rather
+/// than cross, and don't count.
 fn crossing(a: &[(f64, f64, f64)], b: &[(f64, f64, f64)]) -> Option<((f64, f64), f64, f64)> {
     // Only segments whose boxes meet can cross: a crown's many twigs stay
     // quick to layer.
     let whole = bounds(b);
     for s in a.windows(2) {
         let sb = bounds(s);
-        if !overlap(sb, whole) {
+        if !overlaps(sb, whole) {
             continue;
         }
         for t in b.windows(2) {
-            if !overlap(sb, bounds(t)) {
+            if !overlaps(sb, bounds(t)) {
                 continue;
             }
             let (p, r) = ((s[0].0, s[0].1), (s[1].0 - s[0].0, s[1].1 - s[0].1));
             let (q, w) = ((t[0].0, t[0].1), (t[1].0 - t[0].0, t[1].1 - t[0].1));
             let den = r.0 * w.1 - r.1 * w.0;
-            // The sine of the angle they meet at.
+            // `den / len` is the sine of the angle they meet at.
             let len =
                 (math::sq(r.0) + math::sq(r.1)).sqrt() * (math::sq(w.0) + math::sq(w.1)).sqrt();
             if den.abs() < 0.34 * len || len < 1e-12 {
@@ -389,7 +393,7 @@ fn crossing(a: &[(f64, f64, f64)], b: &[(f64, f64, f64)]) -> Option<((f64, f64),
 /// A box on the canvas: least x and y, most x and y.
 type Bounds = (f64, f64, f64, f64);
 
-/// The box around a line's points.
+/// Gives the box around a line's points.
 fn bounds(line: &[(f64, f64, f64)]) -> Bounds {
     line.iter()
         .fold((f64::MAX, f64::MAX, f64::MIN, f64::MIN), |b, p| {
@@ -397,13 +401,15 @@ fn bounds(line: &[(f64, f64, f64)]) -> Bounds {
         })
 }
 
-/// Whether two boxes meet.
-fn overlap(a: Bounds, b: Bounds) -> bool {
+/// Tells whether two boxes meet; touching edges count.
+fn overlaps(a: Bounds, b: Bounds) -> bool {
     a.0 <= b.2 && b.0 <= a.2 && a.1 <= b.3 && b.1 <= a.3
 }
 
-/// The soft groove of shadow a strand lies in, along its piece `seg`: wider
-/// than the strand. On its first piece (`from_start`) it widens from the
+/// Widens a strand's piece `seg` into the soft groove of shadow it lies in:
+/// 1.45 times its width.
+///
+/// On the strand's first piece (`from_start`) the groove widens from the
 /// strand's own width, so its start stays hidden in the trunk the strand
 /// leaves instead of poking out beside it.
 fn groove(seg: &[(f64, f64, f64)], from_start: bool) -> Vec<(f64, f64, f64)> {
@@ -2199,12 +2205,13 @@ mod tests {
     /// start it never pokes out of the trunk the strand leaves.
     #[test]
     fn a_strands_groove_starts_at_its_own_width() {
-        let seg: Vec<(f64, f64, f64)> = (0..20).map(|i| (0.0, -f64::from(i), 4.0)).collect();
+        let seg: Vec<(f64, f64, f64)> = (0..19).map(|i| (0.0, -f64::from(i), 3.0)).collect();
         let g = groove(&seg, true);
-        assert!((g[0].2 - 4.0).abs() < 1e-9, "starts {:.2} wide", g[0].2);
-        assert!((g[19].2 - 5.8).abs() < 1e-9, "ends {:.2} wide", g[19].2);
+        assert!((g[0].2 - 3.0).abs() < 1e-9, "starts {:.2} wide", g[0].2);
+        assert!((g[18].2 - 4.35).abs() < 1e-9, "ends {:.2} wide", g[18].2);
         // A later piece is a full groove all along.
-        assert!(groove(&seg, false).iter().all(|p| (p.2 - 5.8).abs() < 1e-9));
+        let full = groove(&seg, false);
+        assert!(full.iter().all(|p| (p.2 - 4.35).abs() < 1e-9), "{full:?}");
     }
 
     /// Where two twigs cross, the one in front there is drawn later, even
