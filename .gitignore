@@ -6,5 +6,6 @@
 !/site/snapshots/*.snapshot.json
 /_site
 /site/node_modules
+/site/.test-out
 target*/
 /testdata
