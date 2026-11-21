@@ -2,7 +2,7 @@
 
 All notable changes to gitbonsai, a Japanese maple bonsai grown from GitHub activity. A change to how a tree grows or looks is at least a minor version, because people notice their tree changing; a patch only fixes drawing bugs, wood or leaves drawn where they were never meant to be.
 
-## [0.5.1] - Unreleased
+## [0.5.1] - 2026-11-21
 
 Fix release: drawing faults from 0.5.0, and formal upright trees stand taller. Formal uprights, trees with a thick or white trunk or a second trunk, and every tree with fine twigs or dead twigs look a little different. Taller formal uprights and rows lit as one would make this a minor version; it ships as a patch because both finish the look of 0.5.0.
 
