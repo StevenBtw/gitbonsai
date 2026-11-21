@@ -1935,7 +1935,7 @@ fn the_pot_never_shrinks() {
 /// The trunk is cut level at its foot, so nothing of it lies on the soil
 /// under the roots; and the twigs are shaded, not outlined.
 #[test]
-fn the_trunk_ends_at_its_foot_and_twigs_overlap_in_depth() {
+fn the_trunk_ends_at_its_foot_and_twigs_are_drawn_one_by_one() {
     let (mut layered, mut dead_layered) = (false, false);
     for f in fixtures::all() {
         let b = Bonsai::grow(&f.snapshot, &Config::default(), None);
@@ -1948,13 +1948,17 @@ fn the_trunk_ends_at_its_foot_and_twigs_overlap_in_depth() {
             .nth(1)
             .and_then(|r| r.split('"').next())
             .unwrap_or_else(|| panic!("{}: no soil clip", f.name));
+        // Cut level at the foot: straight lines only, no arc or curve.
         assert!(
-            !clip.contains('A'),
-            "{}: the soil cut follows an arc",
+            clip.chars()
+                .filter(char::is_ascii_alphabetic)
+                .all(|c| "MmLlHhVvZz".contains(c)),
+            "{}: the soil cut curves",
             f.name
         );
-        // Each twig is its own outlined path, so the one in front hides the
-        // outline of the one behind it instead of all merging into one shape.
+        // Each twig is its own outlined path, so one can hide the outline of
+        // another instead of all merging into one shape. Their order, back
+        // to front, is not checked here.
         // Dead twigs too, in their own ink.
         let group = |width: &str| {
             svg.split(&format!(

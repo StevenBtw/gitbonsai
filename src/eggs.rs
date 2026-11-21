@@ -653,15 +653,15 @@ pub fn eggs(
             // Beside a slender young trunk the petunia is a small one: no
             // leaf, lower, smaller. The begonia keeps its size.
             let slender = trunk_girth(trunk, 24.0) < PLANT_GIRTH * 0.85;
-            let big = (crate::galaxy::petunia(true), 36.0, -12.0, 3.79);
-            let small = (crate::galaxy::petunia(false), 22.0, -12.0, 2.6);
+            let big = || (crate::galaxy::petunia(true), 36.0, -12.0, 3.79);
+            let small = || (crate::galaxy::petunia(false), 22.0, -12.0, 2.6);
             // The plants it may be, in turn: a full petunia that can't stand
             // clear beside the trunk tries the small one, lower, under the
             // branch in its way.
             let kinds = match (t, slender) {
                 (3, _) => vec![(crate::galaxy::begonia(), 18.0, 28.0, 0.86)],
-                (_, true) => vec![small],
-                _ => vec![big, small],
+                (_, true) => vec![small()],
+                _ => vec![big(), small()],
             };
             let shape = crate::galaxy::footprint(t == 3);
             // Where a plant of this kind stands, and whether it stands clear.
@@ -692,8 +692,9 @@ pub fn eggs(
                     let n = shape.len().max(1) as f64;
                     (f64::from(seen) / n, f64::from(crossed) / n)
                 };
-                // It peeks from behind the trunk: out along the soil no
-                // further than its own width, from where the trunk meets
+                // It peeks from behind the trunk: out along the soil a short
+                // way, the leaf's length or the flower's radius, from where
+                // the trunk meets
                 // the soil, so its stem stands beside it however the trunk
                 // leans, then from the trunk at the plant's own height.
                 let reach = if t == 3 {
@@ -741,16 +742,15 @@ pub fn eggs(
                     .map(|b| b.0);
                 (clear, fallback)
             };
-            let mut chosen = None;
-            for kind in &kinds {
-                if let (Some(at), _) = find(kind) {
-                    chosen = Some((kind, at));
-                    break;
-                }
-            }
-            let (kind, spot) = match chosen {
-                Some((kind, at)) => (kind, Some(at)),
-                None => (&kinds[0], find(&kinds[0]).1),
+            // The first kind that stands clear; failing all, the first kind
+            // where it shows best.
+            let first = find(&kinds[0]);
+            let (kind, spot) = match first.0 {
+                Some(at) => (&kinds[0], Some(at)),
+                None => kinds[1..]
+                    .iter()
+                    .find_map(|k| find(k).0.map(|at| (k, Some(at))))
+                    .unwrap_or((&kinds[0], first.1)),
             };
             let (art, h, rot, size) = (kind.0.as_str(), kind.1, kind.2, kind.3);
             let s = w * size;
