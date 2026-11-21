@@ -239,14 +239,23 @@ pub fn collect(
         .iter()
         .map(|(slug, &tier)| {
             let before = seen.and_then(|p| p.achievement_dates.get(slug));
-            // A tier-1 date never changes: only a new achievement is fetched.
-            let first = before.and_then(|b| b.first().copied()).or_else(|| {
-                api.fetch_page(&format!(
-                    "https://github.com/users/{login}/achievements/{slug}/detail"
-                ))
-                .and_then(|page| parse_first_unlocked(&page))
-            });
-            let dates = tier_dates(tier, first, before.map(Vec::as_slice), observed_on);
+            // A tier date never changes: the detail is fetched only for a new tier.
+            let detail = (before.map_or(0, Vec::len) < usize::from(tier))
+                .then(|| {
+                    api.fetch_page(&format!(
+                        "https://github.com/users/{login}/achievements/{slug}/detail"
+                    ))
+                })
+                .flatten()
+                .unwrap_or_default();
+            let first = before
+                .and_then(|b| b.first().copied())
+                .or_else(|| parse_first_unlocked(&detail));
+            let linked: Vec<Option<Date>> = parse_tier_links(&detail)
+                .iter()
+                .map(|link| link.as_deref().and_then(|l| reached_on(api, l)))
+                .collect();
+            let dates = tier_dates(tier, first, before.map(Vec::as_slice), &linked, observed_on);
             (slug.clone(), dates)
         })
         .filter(|(_, dates)| !dates.is_empty())
@@ -342,13 +351,57 @@ pub fn parse_first_unlocked(page: &str) -> Option<Date> {
     rest.get(at..at + 10)?.parse().ok()
 }
 
+/// Finds the pull request or discussion that reached each tier, tier 1 first,
+/// in an achievement's detail fragment: its "History" lists one item per
+/// tier. You get `None` for a tier GitHub shows as inaccessible (a private
+/// repository) or that links a repository (Starstruck): neither has a date.
+pub fn parse_tier_links(page: &str) -> Vec<Option<String>> {
+    page.split("achievement-history-tier\"")
+        .skip(1)
+        .map(|item| {
+            let body = item.split_once("TimelineItem-body")?.1;
+            let body = body.split_once("</div>").map_or(body, |(b, _)| b);
+            let href = body.split_once("href=\"/")?.1.split('"').next()?;
+            (href.contains("/pull/") || href.contains("/discussions/")).then(|| href.to_string())
+        })
+        .collect()
+}
+
+/// Asks GitHub the day a tier's link was reached: the merge of
+/// `owner/repo/pull/N`, or the accepted answer of `owner/repo/discussions/N`.
+/// You get `None` for any other link, or when GitHub won't say.
+fn reached_on(api: &dyn GraphQl, link: &str) -> Option<Date> {
+    let mut parts = link.split(['/', '#']);
+    let (owner, name, kind) = (parts.next()?, parts.next()?, parts.next()?);
+    // A number, never text from the page, goes into the query itself.
+    let number: u32 = parts.next()?.parse().ok()?;
+    let (field, at) = match kind {
+        "pull" => ("pullRequest", "mergedAt"),
+        "discussions" => ("discussion", "answerChosenAt"),
+        _ => return None,
+    };
+    let query = format!(
+        "query($owner:String!,$name:String!){{repository(owner:$owner,name:$name){{{field}(number:{number}){{{at}}}}}}}"
+    );
+    let data = api
+        .query(&query, &[("owner", owner), ("name", name)])
+        .ok()?;
+    data.pointer(&format!("/repository/{field}/{at}"))?
+        .as_str()?
+        .get(..10)?
+        .parse()
+        .ok()
+}
+
 /// The day each tier up to `tier` was reached: tier 1 on `first` (or as an
 /// earlier run recorded it), each higher tier as an earlier run recorded it,
-/// else `observed_on`, the first run that saw it. Undated without tier 1.
+/// else on the day its `linked` pull request or answer reached it, else
+/// `observed_on`, the first run that saw it. Undated without tier 1.
 pub fn tier_dates(
     tier: u8,
     first: Option<Date>,
     previous: Option<&[Date]>,
+    linked: &[Option<Date>],
     observed_on: Date,
 ) -> Vec<Date> {
     let previous = previous.unwrap_or(&[]);
@@ -356,7 +409,13 @@ pub fn tier_dates(
         return Vec::new();
     };
     std::iter::once(first)
-        .chain((1..usize::from(tier)).map(|i| previous.get(i).copied().unwrap_or(observed_on)))
+        .chain((1..usize::from(tier)).map(|i| {
+            previous
+                .get(i)
+                .copied()
+                .or_else(|| linked.get(i).copied().flatten())
+                .unwrap_or(observed_on)
+        }))
         .collect()
 }
 
@@ -985,20 +1044,97 @@ mod tests {
         let d = |s: &str| -> Date { s.parse().unwrap() };
         let today = d("2026-11-16");
         let first = Some(d("2024-12-13"));
-        assert_eq!(tier_dates(1, first, None, today), [d("2024-12-13")]);
+        assert_eq!(tier_dates(1, first, None, &[], today), [d("2024-12-13")]);
         assert_eq!(
-            tier_dates(3, first, None, today),
+            tier_dates(3, first, None, &[], today),
             [d("2024-12-13"), today, today],
             "seen for the first time today"
         );
         let before = [d("2024-12-13"), d("2025-06-01")];
         assert_eq!(
-            tier_dates(3, first, Some(&before), today),
+            tier_dates(3, first, Some(&before), &[], today),
             [d("2024-12-13"), d("2025-06-01"), today],
             "an earlier run's dates are kept"
         );
-        assert_eq!(tier_dates(2, None, Some(&before), today), before, "kept");
-        assert_eq!(tier_dates(2, None, None, today), [], "undated");
+        assert_eq!(tier_dates(2, None, Some(&before), &[], today), before);
+        assert_eq!(tier_dates(2, None, None, &[], today), [], "undated");
+        let linked = [None, None, Some(d("2025-03-19"))];
+        assert_eq!(
+            tier_dates(3, first, Some(&before), &linked, today),
+            [d("2024-12-13"), d("2025-06-01"), d("2025-03-19")],
+            "a linked merge dates a new tier"
+        );
+    }
+
+    /// A detail fragment's history as GitHub serves it: one item per tier.
+    const HISTORY: &str = r#"<div class="TimelineItem TimelineItem--condensed achievement-history-tier">
+<div class="TimelineItem-badge"><svg class="octicon"><path d="M8 4"></path></svg></div>
+<div class="TimelineItem-body text-small"><span class="color-fg-muted">inaccessible</span> &middot; <span>2nd pull request merged</span></div>
+</div>
+<div class="TimelineItem TimelineItem--condensed achievement-history-tier">
+<div class="TimelineItem-badge"><svg class="octicon"><path d="M8 4"></path></svg></div>
+<div class="TimelineItem-body text-small"><a class="Link" href="/vincent/vega/pull/319">vincent/vega#319</a> &middot; <span>16th pull request merged</span></div>
+</div>
+<div class="TimelineItem TimelineItem--condensed achievement-history-tier">
+<div class="TimelineItem-badge"><svg class="octicon"><path d="M8 4"></path></svg></div>
+<div class="TimelineItem-body text-small"><a class="Link" href="/jules/pulp/discussions/88#discussioncomment-1988">jules/pulp#88</a> &middot; <span>8th accepted answer</span></div>
+</div>
+<div class="TimelineItem TimelineItem--condensed achievement-history-tier">
+<div class="TimelineItem-badge"><svg class="octicon"><path d="M8 4"></path></svg></div>
+<div class="TimelineItem-body text-small"><a class="Link" href="/mia/wallace">mia/wallace</a> &middot; <span>16 stars</span></div>
+</div>
+</div></div>"#;
+
+    #[test]
+    fn the_history_links_what_reached_each_tier() {
+        assert_eq!(
+            parse_tier_links(HISTORY),
+            [
+                None,
+                Some("vincent/vega/pull/319".to_string()),
+                Some("jules/pulp/discussions/88#discussioncomment-1988".to_string()),
+                None,
+            ]
+        );
+        assert_eq!(
+            parse_tier_links("<div>nothing</div>"),
+            [] as [Option<String>; 0]
+        );
+    }
+
+    /// Answers a tier's pull request or discussion query with one date each.
+    struct Merges;
+
+    impl GraphQl for Merges {
+        fn query(&self, query: &str, variables: &[(&str, &str)]) -> Result<Value, Error> {
+            assert_eq!(variables[1].0, "name", "{variables:?}");
+            Ok(if query.contains("pullRequest(number:319){mergedAt}") {
+                json!({"repository": {"pullRequest": {"mergedAt": "2019-03-19T08:08:08Z"}}})
+            } else if query.contains("discussion(number:88){answerChosenAt}") {
+                json!({"repository": {"discussion": {"answerChosenAt": "2025-08-03T19:19:00Z"}}})
+            } else {
+                json!({"repository": null})
+            })
+        }
+    }
+
+    #[test]
+    fn a_linked_tier_is_dated_by_its_merge_or_accepted_answer() {
+        assert_eq!(
+            reached_on(&Merges, "vincent/vega/pull/319"),
+            Some(d("2019-03-19"))
+        );
+        assert_eq!(
+            reached_on(&Merges, "jules/pulp/discussions/88#discussioncomment-1988"),
+            Some(d("2025-08-03"))
+        );
+        assert_eq!(reached_on(&Merges, "vincent/vega/pull/3"), None, "unknown");
+        assert_eq!(reached_on(&Merges, "mia/wallace"), None, "a repository");
+        assert_eq!(
+            reached_on(&Merges, "mia/wallace/pull/1){x}"),
+            None,
+            "no number"
+        );
     }
 
     #[test]
