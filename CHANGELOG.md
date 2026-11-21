@@ -4,7 +4,11 @@ All notable changes to gitbonsai, a Japanese maple bonsai grown from GitHub acti
 
 ## [0.5.1] - 2026-11-21
 
-Visual polish release: drawing faults from 0.5.0 are fixed, and formal upright trees stand ever so slightly taller. Every pot, formal uprights, small trunks, trees with a thick or white trunk or a second trunk, and every tree with fine twigs or dead twigs look a little different. The changes under Changed (taller formal uprights, rows lit as one, bark on small trunks) would make this a minor version; it ships as a patch because they finish the look of 0.5.0.
+Visual polish release: drawing faults from 0.5.0 are fixed, formal upright trees stand ever so slightly taller, and a timelapse can follow the tree's growth instead of the calendar. Every pot, formal uprights, small trunks, trees with a thick or white trunk or a second trunk, and every tree with fine twigs or dead twigs look a little different. The changes under Changed (taller formal uprights, rows lit as one, bark on small trunks) would make this a minor version; it ships as a patch because they finish the look of 0.5.0.
+
+### Added
+
+- **A timelapse can be paced by change**: `gitbonsai timelapse --by change` checks the tree every week and keeps a frame at least every nine weeks, plus about `--frames` (default 120) more where it changes most, so growth spurts get more frames and quiet years fewer. `--by time` with `--every` stays the default; the timelapses on gitbonsai.dev are paced by change.
 
 ### Changed
 
