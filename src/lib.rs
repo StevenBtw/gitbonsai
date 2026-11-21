@@ -54,6 +54,7 @@ pub mod scene;
 pub mod snapshot;
 pub mod sprout;
 pub mod style;
+pub mod timelapse;
 pub mod timeline;
 
 use std::collections::BTreeMap;
@@ -123,6 +124,10 @@ pub struct Bonsai {
     /// The pot's size on the canvas, one of [`POTS`]: it grows a size at a
     /// repotting and never shrinks.
     pub pot: f64,
+    /// The girth at its foot on the canvas the trunk was last repotted for,
+    /// with room to grow: the pot's depth follows it, so like its size the
+    /// depth changes only at a repotting.
+    pub pot_girth: f64,
 }
 
 /// The pot sizes a tree is repotted through, smallest first: each about a
@@ -133,6 +138,11 @@ pub const POTS: [f64; 9] = [80.0, 100.0, 125.0, 156.0, 195.0, 244.0, 305.0, 381.
 /// most trees need ([`growth::dome::full_size`]).
 const FULL_POT: f64 = 1.6;
 
+/// The room a repotting leaves to grow: about a year's growth of most trees,
+/// so the pot still fits when the next spring comes. A tree in one of the two
+/// smallest pots gets none: a size up it would look like a seedling in a tray.
+const AHEAD: f64 = 1.15;
+
 /// The smallest pot that holds `need`, or the largest.
 fn pot_for(need: f64) -> f64 {
     POTS.iter()
@@ -142,11 +152,16 @@ fn pot_for(need: f64) -> f64 {
 }
 
 /// The pot for a tree that needs `now` today and needed `then` at the last
-/// start of spring: repotted then, and out of season only in a growth spurt,
-/// once it outgrows that pot by two sizes; merely pot-bound, it waits for
-/// spring.
+/// start of spring: repotted then, with room to grow, and out of season only
+/// in a growth spurt, once it outgrows that pot by two sizes; merely
+/// pot-bound, it waits for spring.
 fn pot_size(now: f64, then: Option<f64>) -> f64 {
-    let potted = pot_for(then.unwrap_or(now));
+    let need = then.unwrap_or(now);
+    let potted = if pot_for(need) < POTS[2] {
+        pot_for(need)
+    } else {
+        pot_for(need * AHEAD)
+    };
     if now > potted * 1.25 * 1.25 {
         potted.max(pot_for(now))
     } else {
@@ -173,14 +188,31 @@ impl Bonsai {
     ///
     /// Its pot is repotted in steps: the size that fit the tree at the last
     /// start of spring, or one that fits it now if it has outgrown that by two
-    /// sizes since. So any day's pot follows from its date alone.
+    /// sizes since; its depth fits the trunk as it was that spring. Each leaves
+    /// room for a year's growth. So any day's pot follows from its date alone.
     pub fn grow(snapshot: &Snapshot, config: &Config, as_of: Option<Date>) -> Self {
         let mut b = Self::grow_at(snapshot, config, as_of);
         let spring = last_spring(b.observed_on, b.hemisphere);
         let then = (spring < b.observed_on && spring >= snapshot.range.from)
-            .then(|| Self::grow_at(snapshot, config, Some(spring)).pot_need());
-        b.pot = pot_size(b.pot_need(), then);
+            .then(|| Self::grow_at(snapshot, config, Some(spring)));
+        let need = then.as_ref().map(Self::pot_need);
+        b.pot = pot_size(b.pot_need(), need);
+        let ahead = if b.pot < POTS[2] { 1.0 } else { AHEAD };
+        // Repotted out of season in a growth spurt, the pot deepens in step
+        // with its width.
+        let spring_pot = need.map_or(b.pot, |n| pot_size(n, Some(n)));
+        b.pot_girth = then.as_ref().unwrap_or(&b).foot_girth() * ahead * b.pot / spring_pot;
         b
+    }
+
+    /// The trunk's girth at its foot on the canvas, as drawn.
+    fn foot_girth(&self) -> f64 {
+        scene::WORLD
+            * scene::Scene::build(self)
+                .chains
+                .first()
+                .and_then(|c| c.0.first())
+                .map_or(1.0, |p| p.1)
     }
 
     /// How big a pot the tree needs, from what never shrinks: 0.62 of its
@@ -257,6 +289,7 @@ impl Bonsai {
             timeline,
             leaf_share: 1.0,
             pot: POTS[0],
+            pot_girth: 0.0,
         }
     }
 
@@ -511,6 +544,7 @@ fn past_reach(
     // The month before's style too: a trunk thickened over a month in one
     // style keeps that girth as the next month starts in another.
     let mut chokkan_before = 0.0_f64;
+    let mut newest = first;
     for no in (y * 12 + m.cast_signed())..i32::MAX {
         let Some(day) = Date::from_ymd(no / 12, (no % 12 + 1).cast_unsigned(), 1) else {
             break;
@@ -555,14 +589,31 @@ fn past_reach(
             let before = Recent::mean(&months[months.len().saturating_sub(3)..]);
             out = out.max(before.map_or(r, |b| r.settled(&b)));
             months.push(recent);
+            newest = day;
         }
         leaves.push(leaf);
     }
-    let last = months.len().saturating_sub(3);
+    // The newest month fades in over its month as the oldest of the last
+    // three fades out: the average moves a little each day, not a step on
+    // the 2nd.
+    let fade = (f64::from(snapshot.observed_on.days_since(newest))
+        / f64::from(newest.month_days()))
+    .min(1.0);
+    let n = months.len();
+    let recent: Vec<(&Recent, f64)> = months
+        .iter()
+        .enumerate()
+        .skip(n.saturating_sub(4))
+        .map(|(i, r)| match n - i {
+            4 => (r, 1.0 - fade),
+            1 => (r, fade),
+            _ => (r, 1.0),
+        })
+        .collect();
     let last_leaves = leaves.len().saturating_sub(2);
     (
         out,
-        Recent::mean(&months[last..]),
+        Recent::weighted(&recent),
         mean_leaves(&leaves[last_leaves..]),
     )
 }

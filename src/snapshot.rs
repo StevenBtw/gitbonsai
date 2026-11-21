@@ -205,11 +205,14 @@ impl Snapshot {
         snapshot.range.to = as_of;
         snapshot.observed_on = as_of;
         snapshot.truncated_windows.retain(|w| w.from <= as_of);
-        // Only what was reached by then; an undated one is left out.
+        // Only what was reached by then; an undated one is left out. A tier
+        // reached means every tier below it was, even one dated later only
+        // because the run that first saw it came later.
         let reached = |slug: &str| {
             self.achievement_dates
                 .get(slug)
-                .map_or(0, |d| d.iter().filter(|d| **d <= as_of).count())
+                .and_then(|d| d.iter().rposition(|d| *d <= as_of))
+                .map_or(0, |i| i + 1)
         };
         snapshot.achievements = self
             .achievements
@@ -333,6 +336,23 @@ mod tests {
         let now = s.truncated(s.observed_on);
         assert_eq!(now.achievements.len(), 3, "today shows everything");
         assert_eq!(now.archived_repos.len(), 3);
+    }
+
+    #[test]
+    fn a_tier_reached_brings_the_tiers_below_it() {
+        let d = |s: &str| -> Date { s.parse().unwrap() };
+        let mut s = minimal(SCHEMA);
+        s.achievements = [("pair-extraordinaire".to_string(), 3)].into();
+        // Tier 2 only seen by a later run; tier 3's merge is known.
+        s.achievement_dates = [(
+            "pair-extraordinaire".to_string(),
+            vec![d("2019-03-19"), d("2026-10-01"), d("2025-03-19")],
+        )]
+        .into();
+        let past = s.truncated(d("2025-08-03"));
+        assert_eq!(past.achievements["pair-extraordinaire"], 3, "{past:?}");
+        let earlier = s.truncated(d("2024-08-03"));
+        assert_eq!(earlier.achievements["pair-extraordinaire"], 1);
     }
 
     #[test]

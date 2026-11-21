@@ -18,9 +18,11 @@ mkdir -p "$out/hero"
 cp -r "$site/fonts" "$out/fonts"
 cp "$site/og.png" "$out/og.png"   # link-preview card; bump ?v= in index.html when it changes
 "$site/node_modules/.bin/tsc" -p "$site" --outDir "$work/js"
-cp "$work/js/app.js" "$site/index.html" "$site/style.css" "$site/tokens.css" "$site/fonts.css" "$site/CNAME" "$work/"
-for f in index.html app.js style.css tokens.css fonts.css CNAME; do
-  sed "s/@VERSION@/$version/g" "$work/$f" > "$out/$f"
+# The exhibition's API: api.gitbonsai.dev, or a local stub (site/dev/stub-api.py) with GITBONSAI_API.
+api=${GITBONSAI_API:-https://api.gitbonsai.dev}
+cp "$work/js/app.js" "$work/js/gallery.js" "$work/js/gallery-core.js" "$site/index.html" "$site/exhibition.html" "$site/style.css" "$site/tokens.css" "$site/fonts.css" "$site/CNAME" "$work/"
+for f in index.html exhibition.html app.js gallery.js gallery-core.js style.css tokens.css fonts.css CNAME; do
+  sed -e "s/@VERSION@/$version/g" -e "s#@API@#$api#g" "$work/$f" > "$out/$f"
 done
 # The whole example workflow, so what people copy is what the README links.
 python3 - "$out/index.html" "$site/../examples/profile-workflow.yml" <<'EOF'
@@ -28,6 +30,9 @@ import html, sys
 page, workflow = sys.argv[1], sys.argv[2]
 text = open(page, encoding="utf-8").read()
 assert text.count("@WORKFLOW@") == 1, "index.html needs one @WORKFLOW@"
+for f in ("index.html", "exhibition.html", "app.js", "gallery.js", "gallery-core.js"):
+    assert "@API@" not in open(page.replace("index.html", f), encoding="utf-8").read(), f"{f} still has @API@"
+assert open(page.replace("index.html", "exhibition.html"), encoding="utf-8").read().count('<script src="gallery.js" type="module"></script>') == 1, "exhibition.html needs its script"
 wf = open(workflow, encoding="utf-8").read().rstrip("\n")
 open(page, "w", encoding="utf-8", newline="\n").write(text.replace("@WORKFLOW@", html.escape(wf, quote=False)))
 EOF
@@ -61,8 +66,8 @@ for t in light dark; do
 done
 python3 "$site/hero.py" "$work/plates.tsv" "$out"
 
-"$bin" timelapse fixture:showcase --config "$site/showcase.toml" --every 1m --output-dir "$work/tl/showcase" -q
+"$bin" timelapse fixture:showcase --config "$site/showcase.toml" --by change --output-dir "$work/tl/showcase" -q
 for who in stevenbtw tj torvalds steipete; do
-  "$bin" timelapse "$site/snapshots/$who.snapshot.json" --every 1m --output-dir "$work/tl/$who" -q
+  "$bin" timelapse "$site/snapshots/$who.snapshot.json" --by change --output-dir "$work/tl/$who" -q
 done
 python3 "$site/mkvideo.py" "$work/tl" "$out"

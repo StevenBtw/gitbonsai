@@ -12,5 +12,5 @@
     "isolatedModules": true,
     "skipLibCheck": true
   },
-  "files": ["app.ts"]
+  "files": ["app.ts", "gallery-core.ts", "gallery.ts"]
 }

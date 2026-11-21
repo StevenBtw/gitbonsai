@@ -2,21 +2,42 @@
 
 All notable changes to gitbonsai, a Japanese maple bonsai grown from GitHub activity. A change to how a tree grows or looks is at least a minor version, because people notice their tree changing; a patch only fixes drawing bugs, wood or leaves drawn where they were never meant to be.
 
-## [0.5.1] - 2026-11-21
+## [0.5.1] - 2026-11-22
 
-Fix release: drawing faults from 0.5.0, and formal upright trees stand taller. Formal uprights, trees with a thick or white trunk or a second trunk, and every tree with fine twigs or dead twigs look a little different. Taller formal uprights and rows lit as one would make this a minor version; it ships as a patch because both finish the look of 0.5.0.
+Visual polish release: drawing faults from 0.5.0 are fixed, formal upright trees stand ever so slightly taller, and a timelapse can follow the tree's growth instead of the calendar. Most trees look a little different, pots, formal uprights and trees with fine or dead twigs the most. The additions and the changes under Changed (taller formal uprights, roomier pots, rows lit as one, bark on small trunks) would make this a minor version; it ships as a patch because they finish the look of 0.5.0.
+
+### Added
+
+- **gitbonsai.dev has an exhibition**: a page of the trees whose owners chose to show them by signing in with GitHub, with stars and filters, linked from the site's top bar.
+- **A timelapse can be paced by change**: `gitbonsai timelapse --by change` checks the tree every week and keeps a frame at least every nine weeks, plus about `--frames` (default 120) more where it changes most, so growth spurts get more frames and quiet years fewer. `--by time` with `--every` stays the default; the timelapses on gitbonsai.dev are paced by change.
 
 ### Changed
 
-- **Formal uprights stand taller**: a chokkan crown is about as wide as it is tall (it was 1.2 times as wide), and its trunk keeps more girth toward the top; an old one such as torvalds stands 10 to 15% taller.
+- **Formal uprights stand taller**: a chokkan crown is about as wide as it is tall (it was 1.2 times as wide), and its trunk keeps more girth toward the top; an old one stands 10 to 15% taller.
+- **Pots are repotted with room to grow**: at the spring repotting a pot fits the tree a year's growth ahead, and it is as deep as the trunk is wide at its foot, the usual rule, so many trees sit in a pot one size larger and deeper; a tree in one of the two smallest pots gets no head start. A pot's depth now changes only at a repotting, as its size does, so a timelapse no longer shows it deepening week by week; before a tree's first spring it still follows the trunk, and a cascade's deeper pot also follows its lean.
 - **A row has one light**: `gitbonsai row` lights every tree from the upper left, so trees side by side are never lit from opposite sides; a tree on its own is still lit from its open side.
+- **Small trunks show their bark**: a trunk too thin for the full light and shade of an old one gets a lit band and a bark line, so a young tree's trunk no longer looks flat.
 
 ### Fixed
 
-- **The trunk ends at its foot**: it no longer shows as a band on the soil under the roots, as on torvalds and jacobwilliams; a leaning trunk still goes into the soil.
+- **A tree grows without jumps**: what shapes the tree now moves a little each day instead of stepping on the 1st of a month, and a young branch moves over in a season instead of crossing the crown at once, so a weekly timelapse no longer shows the tree rebuilt from one week to the next. Most trees look a little different today.
+- **The trunk ends at its foot**: it no longer shows as a band on the soil under the roots; a leaning trunk still goes into the soil.
 - **Crossing twigs lie one over the other**: each twig keeps its outline, drawn back to front, so where two cross only the outline of the one in front shows, instead of both outlines running through each other; a twig grows from behind the twig it comes from.
 - **Dead twigs lie one over the other**: as living twigs do, so their ink outlines no longer meet in small triangles at forks and crossings, and a dead twig passes behind living ones as well as in front of them.
 - **A second trunk stays behind the first**: the shadow along it no longer pokes out beside the main trunk as a jagged wedge near the soil.
+- **Shadow bands stay on the wood**: where a trunk or limb bends, as at the trunk's foot, the dark band along it no longer cuts across the bend and shows as a loose line beside the wood or on the soil.
+- **Bare windswept crowns branch out**: a resting windswept tree's bare twigs grow from one another instead of all from one spot on long stems, so its crown no longer reads as a comb of parallel lines.
+- **Dead wood leaves the bark cleanly**: a dead limb runs out of the bark it leaves, without a round end and a line across it, a dead twig starts on the wood it grows from, and dead wood shows no ink line where its pieces meet.
+- **A shari stays clear of the limbs in front**: the bleached strip up a trunk stops below a living limb drawn in front of the trunk, instead of running on as a pale line along the limb's edge.
+- **Thin dead whips end in the crown**: a long dead whip with no forks is cut back where the crown no longer reaches over it; a branched dead top stays whole.
+- **Small clouds show no grey patch**: a cloud with few leaves no longer shows its solid backing below them.
+- **Pot details stay on the pot**: a crackle glaze line no longer runs under a foot, and the ribs of the plain training pot no longer reach past its bottom.
+- **Achievement tiers carry the day they were reached**: `collect` dates a tier above the first by the pull request merge or accepted answer that GitHub links to it, and repairs a date an earlier run recorded as the day it first saw the tier, so `--as-of` and a timelapse show an older account as it was. A tier with no linked pull request or answer keeps the day it was first seen.
+- **The rim sits on the pot**: a band across the pot's edge that tapers into its sides, shaded in steps with the wall, instead of a stroke whose square ends stuck out at both sides.
+
+### Dependencies
+
+- **toml 1.2.2** (was 1.2.1).
 
 ## [0.5.0] - 2026-11-21
 
@@ -102,7 +123,7 @@ Wood release: limbs stay in proportion to their trunk, dropped languages keep vi
 - **Roots grip the soil**: surface roots are rounded ridges lying on the soil that widen into the trunk and flatten toward a blunt tip; the trunk ends where it enters the soil, and moss grows over the roots in front. A tree has 3 to 7 roots by age (was 5 to 9), longer and thicker the older it is, and a new root no longer moves the others.
 - **No limb outgrows its trunk**: a limb is at most a third of the trunk's radius where it leaves, and what it gives up thickens the lower trunk, so a tree whose busy early years dwarf its crown no longer rises as a thin trunk out of a lump of limbs.
 - **Dropped languages stay visible**: each era's two biggest dropped languages leave a dead twig, even when they were a small part of their years, and a weathered dead twig keeps 70% of its length and a few bare twigs.
-- **The wind chime's clapper hangs inside the bell**: at the lip, where it strikes the rim, under the glass or the metal.
+- **A hidden surprise hangs as it should**.
 - **SVGs may reach 230 KB** (was 220 KB): the heaviest crowns keep more of their leaves.
 
 ### Fixed
@@ -177,7 +198,7 @@ Maintenance release: a release created in the GitHub UI gets its binaries again 
 
 ### Fixed
 
-- **Kintsugi runs under the pot's bands and seal**: the gold seams of archived repositories no longer cross the carved bands and maker's seal of an antique pot.
+- **A hidden surprise stays clear of the pot's carvings**: on an antique pot it no longer crosses the carved bands and maker's seal.
 - **Small trees with a dropped trunk language stand the right way round**: dead wood takes at most 35% of a tree's girth, so the living trunk carries the bark. An account of about 330 contributions drew its dead snag as the trunk.
 - **A misspelled login gets a plain message**: `collect` says there is no such GitHub user instead of printing GitHub's raw error.
 - **The size is limited to 4096 px**: `--size` and `[render] size` above 4096 (or 0) are a config error; `--size 99999` wrote a 72 MB PNG.
@@ -245,7 +266,7 @@ Growth release: every tree is regrown as an exhibition maple, short, wide and fu
 - **Movement follows rhythm**: irregular activity bends trunks and limbs more and steady activity grows straighter. `[tree] style` now nudges this movement (`chokkan` straighter, `shakan` and `fukinagashi` leaning).
 - **Old foliage thins**: a year's leaves count for half after four years; the wood stays.
 - **"History is never erased" replaces "wood never moves"**: the tree is restyled as it matures, but every active year keeps its place and the trunk never thins.
-- **The README**: a generated example with its legend, and five trees at one scale: a simulated newcomer, StevenBtw, tj, torvalds and steipete.
+- **The README**: a generated example with its legend, and five trees at one scale: a simulated newcomer and four real accounts.
 
 ### Removed
 

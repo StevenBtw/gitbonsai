@@ -714,24 +714,29 @@ impl Recent {
     /// The average of `all`; a strand missing in a month counts as not yet
     /// there.
     pub fn mean(all: &[Self]) -> Option<Self> {
-        if all.is_empty() {
+        Self::weighted(&all.iter().map(|r| (r, 1.0)).collect::<Vec<_>>())
+    }
+
+    /// The average of `all`, each month by its weight.
+    pub fn weighted(all: &[(&Self, f64)]) -> Option<Self> {
+        let n: f64 = all.iter().map(|a| a.1).sum();
+        if n <= 0.0 {
             return None;
         }
-        let n = all.len() as f64;
         let mut out = Self::default();
-        for r in all {
+        for &(r, w) in all {
             for (o, v) in out.frame.iter_mut().zip(r.frame) {
-                *o += v / n;
+                *o += v * w / n;
             }
-            out.irr += r.irr / n;
+            out.irr += r.irr * w / n;
             for (l, v) in &r.strands {
                 let o = out.strands.entry(l.clone()).or_default();
                 for (o, v) in o.iter_mut().zip(v) {
-                    *o += v / n;
+                    *o += v * w / n;
                 }
             }
             for (l, v) in &r.sector {
-                *out.sector.entry(l.clone()).or_default() += v / n;
+                *out.sector.entry(l.clone()).or_default() += v * w / n;
             }
         }
         Some(out)
@@ -3013,11 +3018,14 @@ fn place_arms(c: &Ctx, wood: &Wood, arms: &[Arm], sectors: &Sectors) -> (Vec<Pla
         };
         // Oldest at 0, a complete newest year (half a year ago) at 1; the
         // year growing now stays at 1, so each arm moves a little each day.
+        // The span is at least a season: an only arm turning half a year old
+        // walks over in three months, never across at once.
+        let span = oldest - 0.5;
         let t_of = |ag: f64| {
-            if oldest > 0.5 {
-                ((oldest - ag) / (oldest - 0.5)).clamp(0.0, 1.0)
+            if span >= 0.25 {
+                ((oldest - ag) / span).clamp(0.0, 1.0)
             } else {
-                1.0
+                ((0.75 - ag) / 0.25).clamp(0.0, 1.0)
             }
         };
         let k = if ui == 0 { 0 } else { wood.chain_on(-s_a) };
@@ -3411,7 +3419,45 @@ fn dome_clouds(
             skip[b] = true;
         }
     }
-    for (ci, &(th, rf, zf, sz, id)) in cells.iter().enumerate() {
+    // A cell's language, by where it sits on the dome, and the arms of it.
+    let lang_of = |th: f64, id: i64| {
+        let raw = if s_a < 0.0 {
+            (PI - th_lo - th) / (PI - 2.0 * th_lo)
+        } else {
+            (th - th_lo) / (PI - 2.0 * th_lo)
+        };
+        sectors.lang_at(raw + (hash01(seed ^ 0x5ec, id) - 0.5) * 0.05)
+    };
+    let arms_of = |lang: &Lang| {
+        by_lang.get(&key(lang)).filter(|v| !v.is_empty()).map_or(
+            if all_nodes.is_empty() {
+                &trunk_tops
+            } else {
+                &all_nodes
+            },
+            |v| v,
+        )
+    };
+    // A bare crown in the wind grows its fans out from its arms, nearest
+    // first, so a cell the wind swept far from them hangs from the fans
+    // before it, not on a long stem from the arm. Without wind the cells
+    // lie near their arms already.
+    let windswept = c.dormant && wood.sweep != 0.0;
+    let mut order: Vec<usize> = (0..cells.len()).collect();
+    if windswept {
+        let gap = |ci: usize| {
+            let (th, rf, _, _, id) = cells[ci];
+            let p = dome.pt(th, dome.envelope(th).0 * rf);
+            arms_of(&lang_of(th, id))
+                .iter()
+                .map(|&i| dist(sk.nodes[i].p, p))
+                .fold(f64::INFINITY, f64::min)
+        };
+        order.sort_by(|a, b| gap(*a).total_cmp(&gap(*b)));
+    }
+    let mut fans: Vec<P> = Vec::new();
+    for ci in order {
+        let (th, rf, zf, sz, id) = cells[ci];
         if skip[ci] {
             continue;
         }
@@ -3424,27 +3470,8 @@ fn dome_clouds(
         let rx = rx * (1.0 + 0.3 * wood.tier) * (1.0 - 0.4 * wood.tier * up.clamp(0.0, 1.0));
         let a = dome.pt(th, ((er - rx * 0.75) * rf).max(0.0));
         let base = (a.0, a.1 + rx * 0.3);
-        let u = {
-            let raw = if s_a < 0.0 {
-                (PI - th_lo - th) / (PI - 2.0 * th_lo)
-            } else {
-                (th - th_lo) / (PI - 2.0 * th_lo)
-            };
-            raw + (hash01(seed ^ 0x5ec, id) - 0.5) * 0.05
-        };
-        let lang = sectors.lang_at(u);
-        let mut under: Vec<usize> = by_lang
-            .get(&key(&lang))
-            .filter(|v| !v.is_empty())
-            .map_or(
-                if all_nodes.is_empty() {
-                    &trunk_tops
-                } else {
-                    &all_nodes
-                },
-                |v| v,
-            )
-            .clone();
+        let lang = lang_of(th, id);
+        let mut under: Vec<usize> = arms_of(&lang).clone();
         // Earlier clouds' twigs are wood too: a new cloud may hang from
         // them, so the twigs branch out instead of fanning from one point.
         under.extend(twigs.get(&key(&lang)).into_iter().flatten());
@@ -3485,24 +3512,29 @@ fn dome_clouds(
                     (1.0 - g) * left,
                 );
                 bleach_from(sk, n0, g);
+                fans.push(at);
             }
         }
         // As the leaves fall, the cloud's place shows a fan of bare twigs,
         // so the dome still reads as fine ramification. A dropped language's
         // cloud keeps its place, bare, so the crown never closes up at once.
         let bare = c.life.bare(&lang);
-        if bare > 0.02 && !c.gone(&lang) {
-            winter_fan(
-                sk,
-                fan_rng,
-                under,
-                (base.0, base.1 - rx * 0.45),
-                rx,
-                zf * dome.rz,
-                side,
-                &lang,
-                bare,
-            );
+        let at = (base.0, base.1 - rx * 0.45);
+        // A bare crown has no leaves to fill: a fan crowding one already
+        // grown would only tangle with it, so it is left out.
+        let crowded = windswept && fans.iter().any(|&f| dist(f, at) < FAN_ROOM * rx);
+        if bare > 0.02 && !c.gone(&lang) && !crowded {
+            fans.push(at);
+            let n0 = sk.nodes.len();
+            winter_fan(sk, fan_rng, under, at, rx, zf * dome.rz, side, &lang, bare);
+            // A bare crown grows no clouds: its fans are its only twigs,
+            // and in the wind the next fan may hang from them.
+            if windswept {
+                twigs
+                    .entry(key(&lang))
+                    .or_default()
+                    .extend(n0..sk.nodes.len());
+            }
         }
         if c.dormant {
             continue;
@@ -3541,6 +3573,10 @@ fn dome_clouds(
             .extend(n0..sk.nodes.len());
     }
 }
+
+/// How close, as a share of its width, a bare crown's fan may stand to one
+/// already grown before it is left out.
+const FAN_ROOM: f64 = 0.8;
 
 /// Girth: the trunks carry the rest; age thickens them. The arrangement
 /// sets where girth goes; history alone sets how much, so the trunk never
@@ -4143,5 +4179,30 @@ mod tests {
         assert_eq!(chains.len(), 2, "a third trunk language shares a trunk");
         let top = |c: &Vec<usize>| sk.nodes[*c.last().unwrap()].p.0;
         assert!((top(&chains[0]) - top(&chains[1])).abs() > 10.0);
+    }
+
+    /// A bare windswept crown branches out twig from twig: its fans never
+    /// all hang from one node of an arm the crown streamed away from, which
+    /// reads as a comb.
+    #[test]
+    fn a_bare_windswept_crown_never_fans_from_one_node() {
+        let leader = Leader::new(crate::config::Style::Fukinagashi, None, 1.0);
+        let mut seen = 0;
+        for (name, life, seed) in dome_lives().into_iter().filter(|l| l.1.dormant()) {
+            let mut sk = root_only();
+            let chains = tree(&mut sk, &life, seed, &leader, Reach::default(), None);
+            let trunk: std::collections::BTreeSet<usize> =
+                chains.iter().flatten().copied().collect();
+            let mut kids = vec![0usize; sk.nodes.len()];
+            for n in &sk.nodes {
+                if let Some(p) = n.parent.filter(|p| !trunk.contains(p)) {
+                    kids[p] += 1;
+                }
+            }
+            let most = kids.iter().max().copied().unwrap_or(0);
+            assert!(most <= 5, "{name}: {most} twigs leave one node");
+            seen += 1;
+        }
+        assert!(seen > 0, "the fixtures hold a dormant tree");
     }
 }

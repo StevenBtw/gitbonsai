@@ -1,14 +1,17 @@
 """Turns `gitbonsai timelapse` frames into one H.264 video per tree and theme.
 
 Usage: mkvideo.py <frames-dir> <site-dir>. Each tree's frames sit on one
-shared canvas, so the scale stays put and the tree visibly grows. Writes
+shared canvas, so the scale stays put and the tree visibly grows. Every video
+has the same size and the same scale, set by the widest tree, so the trees
+compare: each stands centred on the bottom edge and the player keeps one shape.
+Writes
 <site-dir>/tl/<tree>-<theme>.mp4 and <site-dir>/frames.json (the ISO week and
 description of every frame, for the player). Needs cairosvg, pillow, ffmpeg.
 
 Frames are rasterized on every CPU core and the videos encoded side by side.
 MKVIDEO_NVENC=1 encodes on an NVIDIA GPU (h264_nvenc) instead of libx264.
 """
-import glob, io, json, os, re, subprocess, sys
+import glob, io, json, math, os, re, subprocess, sys
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 
 import cairosvg
@@ -47,7 +50,7 @@ def encode(frames, out):
 def main():
     src, out = (os.path.abspath(a) for a in sys.argv[1:3])
     os.makedirs(f'{out}/tl', exist_ok=True)
-    manifest, jobs, videos = {}, [], []
+    manifest, jobs, videos, trees = {}, [], [], []
     for tree in TREES:
         meta = []
         for f in sorted(glob.glob(f'{src}/{tree}/*-dark.svg')):
@@ -60,16 +63,21 @@ def main():
             sys.exit(f'no frames for {tree} in {src}')
         ux = min(m['vb'][0] for m in meta); uy = min(m['vb'][1] for m in meta)
         ux2 = max(m['vb'][0] + m['vb'][2] for m in meta); uy2 = max(m['vb'][1] + m['vb'][3] for m in meta)
-        k = W / (ux2 - ux); H = int((uy2 - uy) * k + 1) // 2 * 2
+        trees.append((tree, meta, ux, uy, ux2 - ux, uy2 - uy))
+    # One scale for every tree, so their sizes compare: the widest tree fills the width.
+    k = W / max(t[4] for t in trees)
+    H = math.ceil(max(t[5] for t in trees) * k / 2) * 2  # even, and never below the tallest tree
+    for tree, meta, ux, uy, uw, uh in trees:
+        left, drop = round((W - uw * k) / 2), round(H - uh * k)  # centred, on the bottom edge
         for theme in BG:
             tmp = f'{src}/_png/{tree}-{theme}'; os.makedirs(tmp, exist_ok=True)
             for i, m in enumerate(meta):
                 jobs.append((f"{src}/{tree}/{m['n']}-{theme}.svg", max(1, round(m['vb'][2] * k)), (W, H),
-                             (round((m['vb'][0] - ux) * k), round((m['vb'][1] - uy) * k)), BG[theme],
-                             f'{tmp}/{i:04d}.png'))
+                             (left + round((m['vb'][0] - ux) * k), drop + round((m['vb'][1] - uy) * k)),
+                             BG[theme], f'{tmp}/{i:04d}.png'))
             videos.append((tmp, f'{out}/tl/{tree}-{theme}.mp4'))
         manifest[tree] = {'w': W, 'h': H, 'fps': FPS, 'frames': [{'wk': m['wk'], 'd': m['d']} for m in meta]}
-        print(tree, len(meta), 'frames', W, 'x', H, flush=True)
+        print(tree, len(meta), 'frames', W, 'x', H, f'(tree {round(uw * k)} x {round(uh * k)})', flush=True)
     with ProcessPoolExecutor() as pool:
         list(pool.map(frame, jobs, chunksize=8))
     # ffmpeg threads itself: a few encodes at once are enough.

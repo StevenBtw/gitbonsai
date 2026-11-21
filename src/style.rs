@@ -237,11 +237,12 @@ pub struct Mix {
 }
 
 impl Mix {
-    /// The mix of `snapshot`'s complete months, the recent ones counting
-    /// most: a month's weight halves every `HALF_LIFE_MONTHS`, so on a long
-    /// account the last three years hold about two thirds of it (older months
-    /// keep 0.5^(36/22), about 32%). A resting account keeps its mix of
-    /// languages, while its rest reads as uneven work.
+    /// The mix of `snapshot`'s months, the one under way as far as it has
+    /// gone and the recent ones counting most: a month's weight halves every
+    /// `HALF_LIFE_MONTHS`, so on a long account the last three years hold
+    /// about two thirds of it (older months keep 0.5^(36/22), about 32%). A
+    /// resting account keeps its mix of languages, while its rest reads as
+    /// uneven work.
     pub fn of(snapshot: &Snapshot) -> Self {
         let month = |d: crate::date::Date| {
             let (y, m, _) = d.ymd();
@@ -252,7 +253,7 @@ impl Mix {
         };
         let (start, now) = (month(first.date), month(snapshot.observed_on));
         let mut months: Vec<(u32, BTreeMap<&str, u32>)> =
-            vec![(0, BTreeMap::new()); usize::try_from(now - start).unwrap_or(0)];
+            vec![(0, BTreeMap::new()); usize::try_from(now - start + 1).unwrap_or(0)];
         for day in &snapshot.days {
             let Ok(i) = usize::try_from(month(day.date) - start) else {
                 continue;
@@ -264,7 +265,23 @@ impl Mix {
                 }
             }
         }
-        Self::from_months(&months, now - start)
+        // The month under way joins as far as it has gone, its active days
+        // counted at their pace: the mix moves a little each day, not a step
+        // on the 1st.
+        let then = Self::from_months(&months[..months.len().saturating_sub(1)], now - start);
+        let (_, _, day) = snapshot.observed_on.ymd();
+        let len = snapshot.observed_on.month_days();
+        let done = f64::from(day) / f64::from(len);
+        if let Some(cur) = months.last_mut() {
+            cur.0 = cur.0 * len / day;
+        }
+        let full = Self::from_months(&months, now - start + 1);
+        let lerp = |a: f64, b: f64| math::lerp(a, b, done);
+        Self {
+            irregular: lerp(then.irregular, full.irregular),
+            spread: lerp(then.spread, full.spread),
+            legacy: lerp(then.legacy, full.legacy),
+        }
     }
 
     /// The mix of monthly active days and languages, oldest first, `age`
@@ -360,6 +377,40 @@ impl Mix {
 mod tests {
     use super::*;
     use crate::date::Date;
+
+    /// The most the style mix may move from one day to the next.
+    const STEP: f64 = 0.02;
+
+    /// The style mix moves a little each day: a month joins as it goes, so
+    /// nothing steps on the 1st.
+    #[test]
+    fn the_mix_never_steps_at_a_month_start() {
+        for name in ["polyglot", "comeback", "steady"] {
+            let snap = crate::fixtures::by_name(name).unwrap().snapshot;
+            let end = snap.observed_on;
+            let mut day = end.add_days(-730);
+            let mut before = Mix::of(&snap.truncated(day));
+            let mut worst = (0.0_f64, day);
+            while day < end {
+                day = day.add_days(1);
+                let mix = Mix::of(&snap.truncated(day));
+                let step = (mix.irregular - before.irregular)
+                    .abs()
+                    .max((mix.spread - before.spread).abs())
+                    .max((mix.legacy - before.legacy).abs());
+                if step > worst.0 {
+                    worst = (step, day);
+                }
+                before = mix;
+            }
+            assert!(
+                worst.0 < STEP,
+                "{name}: the mix steps {} on {}",
+                worst.0,
+                worst.1
+            );
+        }
+    }
 
     #[test]
     fn chokkan_stands_straight_and_shakan_leans() {

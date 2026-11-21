@@ -843,8 +843,15 @@ fn cloud_leaves(b: &Bonsai, scene: &mut Scene) {
             // the leaves a full cloud of its size carries.
             let full = (tufts.len() - t0) as f64 / nn.max(1) as f64;
             let keep = (MASS_IN + (MASS_TIER - MASS_IN) * b.leader.tier) * full.min(1.0);
+            // Leaves sit on the cloud's upper half: the mass rises to their
+            // middle, or below them it shows as a plain patch.
+            let (low, high) = tufts[t0..]
+                .iter()
+                .map(|t| t.p[1] - c3[1])
+                .fold((f64::MAX, f64::MIN), |r, y| (r.0.min(y), r.1.max(y)));
+            m.0[1] = c3[1] + f64::midpoint(low, high);
             m.1 = m.1.min(reach(0) * keep);
-            m.2 = m.2.min(reach(1) * keep);
+            m.2 = m.2.min(0.5 * (high - low) * keep);
             m.3 = m.3.min(reach(2) * keep);
         }
     }

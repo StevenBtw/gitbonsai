@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data: blob:; media-src 'self'; connect-src 'self' https://api.gitbonsai.dev; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data: blob:; media-src 'self'; connect-src 'self' @API@; base-uri 'none'; form-action 'none'; object-src 'none'">
 <title>gitbonsai</title>
 <meta name="description" content="Grow a Japanese maple bonsai from GitHub activity: an animated SVG for a profile README.">
 <meta property="og:type" content="website">
@@ -28,7 +28,7 @@
   <div class="wrap">
     <a class="wm" href="#top" aria-label="gitbonsai home"><span class="g">git</span><span class="b">bonsai</span></a>
     <nav class="nav" aria-label="Sections">
-      <a href="#examples">Examples</a><a href="#read">Read a tree</a><a href="#yours">Your tree</a><a href="#add">Add it</a><a href="https://github.com/StevenBtw/gitbonsai">GitHub</a>
+      <a href="#examples">Examples</a><a href="#read">Read a tree</a><a href="#yours">Your tree</a><a href="#add">Add it</a><a href="exhibition.html">Exhibition</a><a href="https://github.com/StevenBtw/gitbonsai">GitHub</a>
     </nav>
     <button class="icon-btn" id="theme" type="button" aria-label="Switch to light mode">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/></svg>
@@ -86,6 +86,7 @@
           </div>
         </div>
       </div>
+      <p class="more-link"><a href="exhibition.html">More trees, shown by their owners, in the exhibition →</a></p>
     </div>
   </section>
 
@@ -182,11 +183,22 @@
             <button class="btn btn-primary" type="submit" id="grow">Grow</button>
           </div>
           <label class="check"><input type="checkbox" class="tick" id="legend"> Show the legend</label>
-          <p class="hint">Public activity only; private work shows as silver leaves once the Action runs on your own profile.</p>
+          <label class="check"><input type="checkbox" class="tick" id="option" aria-controls="option-dialog"> Show my bonsai in the exhibition</label>
+          <p class="hint">Public activity only; private work shows as silver leaves once the Action runs on your own profile. <a href="exhibition.html">See the exhibition →</a></p>
+          <p class="option-result" id="option-result" aria-live="polite"></p>
         </form>
       </div>
       <figure class="plate result" aria-live="polite">
         <div class="art" id="yourart"><p class="msg">Your tree grows here.</p></div>
+        <dialog class="option" id="option-dialog" aria-labelledby="option-title" aria-describedby="option-who" aria-live="off">
+          <h3 id="option-title">Show your bonsai in the exhibition</h3>
+          <p id="option-who"></p>
+          <div class="option-btns">
+            <button class="btn btn-primary" type="button" id="option-go">Sign in with GitHub to show it</button>
+            <button class="btn btn-outline" type="button" id="option-no">Not now</button>
+          </div>
+          <p class="option-note">You can take it down any time from the exhibition, by signing in again.</p>
+        </dialog>
         <figcaption class="label">
           <div><span class="k">Plate</span><span class="v tnum" id="yourno">09</span></div>
           <div><span class="k">Grown for</span><span class="v" id="yourlogin">@…</span></div>

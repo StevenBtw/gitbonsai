@@ -55,6 +55,12 @@ impl Date {
         self.ymd().0
     }
 
+    /// The days in this day's month.
+    pub fn month_days(self) -> u32 {
+        let (y, m, _) = self.ymd();
+        days_in_month(y, m)
+    }
+
     /// The day `n` days later (earlier for negative `n`).
     #[must_use]
     pub fn add_days(self, n: i32) -> Self {
