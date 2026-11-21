@@ -54,6 +54,7 @@ pub mod scene;
 pub mod snapshot;
 pub mod sprout;
 pub mod style;
+pub mod timelapse;
 pub mod timeline;
 
 use std::collections::BTreeMap;

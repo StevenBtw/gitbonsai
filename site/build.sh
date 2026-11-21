@@ -61,8 +61,8 @@ for t in light dark; do
 done
 python3 "$site/hero.py" "$work/plates.tsv" "$out"
 
-"$bin" timelapse fixture:showcase --config "$site/showcase.toml" --every 1m --output-dir "$work/tl/showcase" -q
+"$bin" timelapse fixture:showcase --config "$site/showcase.toml" --by change --output-dir "$work/tl/showcase" -q
 for who in stevenbtw tj torvalds steipete; do
-  "$bin" timelapse "$site/snapshots/$who.snapshot.json" --every 1m --output-dir "$work/tl/$who" -q
+  "$bin" timelapse "$site/snapshots/$who.snapshot.json" --by change --output-dir "$work/tl/$who" -q
 done
 python3 "$site/mkvideo.py" "$work/tl" "$out"

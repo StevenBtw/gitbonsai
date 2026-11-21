@@ -12,7 +12,8 @@ use clap::{Parser, Subcommand};
 use gitbonsai::config::Legend;
 use gitbonsai::date::Date;
 use gitbonsai::{
-    Bonsai, Config, Error, Snapshot, Style, Theme, collect, explain, fixtures, html, output, render,
+    Bonsai, Config, Error, Snapshot, Style, Theme, collect, explain, fixtures, html, output,
+    render, timelapse,
 };
 
 /// Grow a bonsai from your GitHub activity.
@@ -109,6 +110,15 @@ enum Command {
         /// months and quarters
         #[arg(long, default_value = "4w")]
         every: String,
+
+        /// Pace the frames by `time` (one every `--every`) or by `change`
+        /// (about `--frames` of them, each showing as much growth)
+        #[arg(long, default_value = "time")]
+        by: Pace,
+
+        /// How many frames a timelapse by change has, about
+        #[arg(long, default_value_t = 120)]
+        frames: usize,
 
         /// Output folder
         #[arg(long, default_value = "frames")]
@@ -243,11 +253,17 @@ fn run(cli: Cli) -> Result<()> {
             snapshot,
             tree,
             every,
+            by,
+            frames: budget,
             output_dir,
         } => {
             let snapshot = load_snapshot(&snapshot)?;
             let config = load_config(&tree, &snapshot, &status)?;
-            let step = parse_interval(&every)?;
+            // By change, the candidates are a month apart.
+            let step = match by {
+                Pace::Time => parse_interval(&every)?,
+                Pace::Change => Interval::Months(1),
+            };
             let end = as_of(&tree)?
                 .unwrap_or(snapshot.observed_on)
                 .min(snapshot.observed_on);
@@ -259,10 +275,29 @@ fn run(cli: Cli) -> Result<()> {
             // Two passes, one tree in memory at a time: every frame's box for
             // the shared camera, then each frame grown again and written.
             let grow = |day: Date| Bonsai::grow(&snapshot, &config, Some(day));
-            let boxes: Vec<_> = days
-                .iter()
-                .map(|&day| render::frame(&grow(day), &config))
-                .collect();
+            let mut boxes = Vec::with_capacity(days.len());
+            let (mut change, mut leafy) = (Vec::new(), Vec::new());
+            let mut before: Option<Vec<f64>> = None;
+            for &day in &days {
+                let bonsai = grow(day);
+                boxes.push(render::frame(&bonsai, &config));
+                if by == Pace::Change {
+                    let shape = timelapse::shape(&bonsai);
+                    change.push(
+                        before
+                            .as_ref()
+                            .map_or(0.0, |b| timelapse::change(b, &shape)),
+                    );
+                    leafy.push(timelapse::leafy(day.ymd().1, bonsai.hemisphere));
+                    before = Some(shape);
+                }
+            }
+            if by == Pace::Change {
+                // About a frame a year in full leaf through a quiet stretch.
+                let kept = timelapse::pick(&change, &leafy, budget, 9);
+                days = kept.iter().map(|&i| days[i]).collect();
+                boxes = kept.iter().map(|&i| boxes[i]).collect();
+            }
             let mut frames = Vec::new();
             for (&day, camera) in days.iter().zip(render::cameras(&boxes)) {
                 let bonsai = &grow(day);
@@ -425,6 +460,15 @@ fn previous_snapshot(output: Option<&Path>, status: &mut dyn FnMut(&str)) -> Opt
 }
 
 /// A timelapse step: a number of days, or of calendar months.
+/// How a timelapse's frames are paced.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+enum Pace {
+    /// One frame every `--every`.
+    Time,
+    /// Each frame as much growth as the next.
+    Change,
+}
+
 #[derive(Debug, Clone, Copy)]
 enum Interval {
     Days(i32),
