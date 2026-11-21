@@ -1935,7 +1935,8 @@ fn the_pot_never_shrinks() {
 /// The trunk is cut level at its foot, so nothing of it lies on the soil
 /// under the roots; and the twigs are shaded, not outlined.
 #[test]
-fn the_trunk_ends_at_its_foot_and_twigs_are_shaded() {
+fn the_trunk_ends_at_its_foot_and_twigs_overlap_in_depth() {
+    let mut layered = false;
     for f in fixtures::all() {
         let b = Bonsai::grow(&f.snapshot, &Config::default(), None);
         if b.is_empty() || gitbonsai::sprout::is_sprout(&b) {
@@ -1952,12 +1953,15 @@ fn the_trunk_ends_at_its_foot_and_twigs_are_shaded() {
             "{}: the soil cut follows an arc",
             f.name
         );
-        if svg.contains(r##"href="#tw""##) {
-            assert!(
-                !svg.contains(r#"stroke-width="0.35""#),
-                "{}: outlined twigs",
-                f.name
-            );
+        // Each twig is its own outlined path, so the one in front hides the
+        // outline of the one behind it instead of all merging into one shape.
+        if let Some(g) = svg
+            .split(r#"stroke-width="0.35" stroke-linejoin="round">"#)
+            .nth(1)
+            .and_then(|r| r.split("</g>").next())
+        {
+            layered |= g.matches("<path d=").count() > 1;
         }
     }
+    assert!(layered, "no tree draws its twigs one by one");
 }
