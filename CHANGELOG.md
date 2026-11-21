@@ -2,6 +2,15 @@
 
 All notable changes to gitbonsai, a Japanese maple bonsai grown from GitHub activity. Any change to how a tree grows or looks is at least a minor version, because people notice their tree changing.
 
+## [0.5.1] - Unreleased
+
+Fix release: two drawing faults from 0.5.0. Trees with a thick or white trunk, and every tree with fine twigs, look a little different.
+
+### Fixed
+
+- **The trunk ends at its foot**: it no longer shows as a band on the soil under the roots, as on torvalds and jacobwilliams; a leaning trunk still goes into the soil.
+- **Twigs are shaded, not outlined**: each twig has a darker underside away from the light instead of a dark line along both edges, so it reads round like the limbs.
+
 ## [0.5.0] - 2026-11-21
 
 Visual polish release: every language the crown draws shows, a left tree is lit from its open side, and the legend names only what the tree draws. Most trees change a little from 0.4.0: formal uprights, windswept trees, cascades, left trees and trees with private work the most.
