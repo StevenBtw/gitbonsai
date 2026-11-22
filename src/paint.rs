@@ -2020,9 +2020,11 @@ fn root_plans(b: &Bonsai, base_r: f64, pot: &Pot, off: f64) -> Vec<RootPlan> {
 /// foot and the root's own share of its reach.
 fn hold_on(b: &Bonsai, plan: &mut RootPlan, i: u32, (base_r, u): (f64, f64), pot: &Pot, off: f64) {
     let half = math::TAU / 2.0;
-    // The rim's inner edge, where a root reaching it meets the lip.
-    // Where the soil lies below the rim, its edge, short of the inner wall.
-    let edge = pot.hw * if pot.inset() > 0.0 { 0.92 } else { 0.97 };
+    // A root gripping the rim stops inside its band; one that goes over it
+    // runs on to the lip, or to the soil's edge where the soil lies below
+    // the rim, short of the inner wall.
+    let grip_edge = pot.hw * 0.92;
+    let over_edge = pot.hw * if pot.inset() > 0.0 { 0.92 } else { 0.97 };
     let wind = b.leader.sweep.abs().min(1.0);
     if wind > 0.0 {
         let up = -b.leader.sweep.signum();
@@ -2039,8 +2041,11 @@ fn hold_on(b: &Bonsai, plan: &mut RootPlan, i: u32, (base_r, u): (f64, f64), pot
                 to_rim(pot.hw * 0.78, plan.az, off) * (0.45 + 0.55 * math::cos(plan.az).abs());
             plan.reach = free.min(room);
             if i == 0 {
-                plan.reach = math::lerp(plan.reach, to_rim(edge, plan.az, off), wind);
-                plan.drape = pot.depth * 0.15 * ((wind - 0.4) / 0.6).clamp(0.0, 1.0);
+                // It runs to the rim only as far as it goes over it, so a
+                // mildly windswept tree's root never ends on the rim.
+                let over = ((wind - 0.4) / 0.6).clamp(0.0, 1.0);
+                plan.reach = math::lerp(plan.reach, to_rim(over_edge, plan.az, off), over);
+                plan.drape = pot.depth * 0.15 * over;
             }
         } else if math::cos(plan.az) * up < 0.0 {
             plan.reach *= 1.0 - 0.35 * wind;
@@ -2057,6 +2062,11 @@ fn hold_on(b: &Bonsai, plan: &mut RootPlan, i: u32, (base_r, u): (f64, f64), pot
         }
         let grip = ((math::cos(plan.az) * spill - 0.2) / 0.3).clamp(0.0, 1.0) * fall;
         if grip > 0.0 {
+            let edge = if plan.drape > 0.0 {
+                over_edge
+            } else {
+                grip_edge
+            };
             plan.reach = math::lerp(plan.reach, to_rim(edge, plan.az, off), grip);
         }
     }
@@ -2230,7 +2240,8 @@ fn drape(pts: &[(f64, f64)], w: f64, bark: Rgb, lit: f64) -> String {
     let side = |i: usize, sign: f64, share: f64| {
         let (a, c) = (pts[i.saturating_sub(1)], pts[(i + 1).min(n - 1)]);
         let t = norm((c.0 - a.0, c.1 - a.1));
-        let width = w * (1.0 - 0.65 * i as f64 / (n - 1) as f64) * share;
+        // Down to a point against the wall.
+        let width = w * (1.0 - 0.9 * i as f64 / (n - 1) as f64) * share;
         (pts[i].0 - t.1 * width * sign, pts[i].1 + t.0 * width * sign)
     };
     let mut outline = PathData::new();
