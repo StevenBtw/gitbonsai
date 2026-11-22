@@ -942,6 +942,26 @@ fn explain_shows_the_trees_size() {
     assert!(number("size") > 100.0);
 }
 
+/// A tree with no contributions yet is a seedling in its training pot, with
+/// a rim, in the middle of its frame.
+#[test]
+fn a_seedling_keeps_its_training_pot() {
+    let mut snapshot = fixtures::by_name("steady").unwrap().snapshot;
+    snapshot.days.clear();
+    let b = Bonsai::grow(&snapshot, &Config::default(), None);
+    assert!(b.is_empty());
+    assert_eq!(b.extras.pot_tier, 0);
+    let svg = render::svg(&b, &Config::default(), Theme::Light);
+    assert!(
+        svg.contains("M256 404Q254 396 257 389"),
+        "the seedling's stem"
+    );
+    assert!(
+        svg.contains(r##"fill="#2e2e2e""##),
+        "the plastic training pot"
+    );
+}
+
 /// A broad crown stands in a pot at least six tenths as wide as it spreads.
 #[test]
 fn a_broad_crown_gets_a_pot_at_least_six_tenths_its_spread() {

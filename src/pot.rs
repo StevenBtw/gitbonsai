@@ -425,6 +425,95 @@ pub fn size(b: &Bonsai, scene: &Scene, base_r: f64, glaze: Rgb) -> Pot {
     }
 }
 
+/// Gives where a pot's feet start and end, top to bottom: tucked up behind
+/// the curve of its foot, peeking out below it.
+fn feet_span(pot: &Pot) -> (f64, f64) {
+    let top = SOIL_Y + pot.depth + pot.ry * 0.62;
+    (top, top + 6.0 + pot.ry * 0.2)
+}
+
+/// Draws a pot's two feet as its model has them: in their own colour, or a
+/// darker shade of the pot, with a darker outline and the right half in
+/// shade, lit from the left. Nothing for a pot without feet.
+fn feet(level: u8, pot: &Pot) -> String {
+    let m = model(level);
+    if m.feet == Feet::None {
+        return String::new();
+    }
+    let color = m.feet_color.map_or(pot.glaze.shift(-0.08, 0.0), Rgb::hex);
+    let (y, end) = feet_span(pot);
+    let h = end - y;
+    let fw = (pot.hw * 0.14).max(6.0);
+    let mut s = String::new();
+    for (i, side) in [-1.0, 1.0].into_iter().enumerate() {
+        let x = CENTER_X + side * pot.bw * 0.68 - fw / 2.0;
+        let mut d = PathData::new();
+        match m.feet {
+            Feet::Cloud => {
+                d.m((x, y))
+                    .l((x + fw, y))
+                    .q((x + fw, y + h), (x + fw * 0.6, y + h * 0.95))
+                    .q((x + fw * 0.5, y + h * 0.6), (x + fw * 0.38, y + h * 0.95))
+                    .q((x, y + h), (x, y));
+            }
+            Feet::Bracket => {
+                d.m((x, y))
+                    .l((x + fw, y))
+                    .l((x + fw, y + h * 0.65))
+                    .q((x + fw * 0.82, y + h * 0.65), (x + fw * 0.76, y + h))
+                    .l((x + fw * 0.24, y + h))
+                    .q((x + fw * 0.18, y + h * 0.65), (x, y + h * 0.65));
+            }
+            Feet::Corner => {
+                d.m((x, y)).l((x + fw, y)).l((x + fw, y + h)).l((x, y + h));
+            }
+            Feet::Round => {
+                d.m((x, y))
+                    .l((x + fw, y))
+                    .q((x + fw, y + h), (x + fw / 2.0, y + h))
+                    .q((x, y + h), (x, y));
+            }
+            Feet::Plain | Feet::None => {
+                d.m((x, y))
+                    .l((x + fw, y))
+                    .l((x + fw * 0.9, y + h))
+                    .l((x + fw * 0.1, y + h));
+            }
+        }
+        d.z();
+        let _ = write!(
+            s,
+            r#"<clipPath id="pf{i}"><path d="{d}"/></clipPath><path d="{d}" fill="{color}"/><rect x="{}" y="{}" width="{}" height="{}" fill="{}" clip-path="url(#pf{i})"/><path d="{d}" fill="none" stroke="{}" stroke-width=".7" stroke-linejoin="round"/>"#,
+            Num(x + fw * 0.55),
+            Num(y - 1.0),
+            Num(fw),
+            Num(h + 2.0),
+            color.shift(-0.07, 0.0),
+            color.shift(-0.2, 0.0),
+            d = d.as_str(),
+        );
+    }
+    s
+}
+
+/// Draws the pot's top as seen from a little above: a lighter rim ring, the
+/// dark inside of the wall at the back, and the soil set a little lower.
+pub fn top(pot: &Pot, soil: Rgb) -> String {
+    format!(
+        r#"<ellipse cx="{CENTER_X}" cy="{SOIL_Y}" rx="{}" ry="{}" fill="{}"/><ellipse cx="{CENTER_X}" cy="{}" rx="{}" ry="{}" fill="{}"/><ellipse cx="{CENTER_X}" cy="{}" rx="{}" ry="{}" fill="{soil}"/>"#,
+        Num(pot.hw),
+        Num(pot.ry),
+        pot.glaze.shift(0.08, 0.0),
+        Num(SOIL_Y - 0.15),
+        Num(pot.hw - 2.4),
+        Num((pot.ry - 0.9).max(1.0)),
+        pot.glaze.shift(-0.2, 0.0),
+        Num(SOIL_Y + 0.6),
+        Num(pot.hw - 4.0),
+        Num((pot.ry - 2.0).max(1.0)),
+    )
+}
+
 /// Gives the pot's glaze for `level`: the model's, or the configured glaze
 /// on a glazed pot; lifted a little on the dark theme, except the plastic
 /// training pot, which takes the theme's own plastic.
@@ -465,13 +554,19 @@ pub fn moss(b: &Bonsai, paints: &Paints, pot: &Pot) -> (String, String) {
         let rx = r.range(3.0, 7.0);
         let ry = rx * r.range(0.25, 0.4);
         let near = usize::from(y > SOIL_Y);
+        // A cushion: two overlapping lobes, the second a little to one side.
+        let side = if r.unit() < 0.5 { -1.0 } else { 1.0 };
         let _ = write!(
             dark[near],
-            r#"<ellipse cx="{}" cy="{}" rx="{}" ry="{}"/>"#,
+            r#"<ellipse cx="{}" cy="{}" rx="{}" ry="{}"/><ellipse cx="{}" cy="{}" rx="{}" ry="{}"/>"#,
             Num(x),
             Num(y),
             Num(rx),
-            Num(ry)
+            Num(ry),
+            Num(x + side * rx * 0.6),
+            Num(y + ry * 0.25),
+            Num(rx * 0.7),
+            Num(ry * 0.85)
         );
         let _ = write!(
             light[near],
@@ -509,32 +604,8 @@ pub fn front(b: &Bonsai, pot: &Pot) -> String {
     let bottom = SOIL_Y + depth;
     let dark = glaze.shift(-0.08, 0.0);
     let mut s = String::new();
-    // Feet first, so the wall overlaps their tops; cloud feet from tier 4.
-    if tier >= 2 {
-        let fw = (hw * 0.14).max(6.0);
-        let _ = write!(s, r#"<g fill="{dark}">"#);
-        for side in [-1.0, 1.0] {
-            let x = CENTER_X + side * hw * 0.6 - fw / 2.0;
-            let y = bottom + ry * 0.75 - 2.0;
-            let mut d = PathData::new();
-            if tier >= 4 {
-                d.m((x, y))
-                    .l((x + fw, y))
-                    .q((x + fw, y + 7.0), (x + fw * 0.55, y + 6.5))
-                    .q((x + fw * 0.5, y + 4.0), (x + fw * 0.3, y + 6.5))
-                    .q((x, y + 7.0), (x, y))
-                    .z();
-            } else {
-                d.m((x, y))
-                    .l((x + fw, y))
-                    .l((x + fw * 0.9, y + 5.5))
-                    .l((x + fw * 0.1, y + 5.5))
-                    .z();
-            }
-            let _ = write!(s, r#"<path d="{}"/>"#, d.as_str());
-        }
-        s.push_str("</g>");
-    }
+    // Feet first, so the wall overlaps their tops.
+    s.push_str(&feet(b.extras.pot_tier, pot));
     let mut wall = PathData::new();
     wall.m((CENTER_X - hw, SOIL_Y))
         .a(hw, ry, false, (CENTER_X + hw, SOIL_Y))
@@ -816,6 +887,61 @@ mod tests {
             "{}",
             bowl.depth
         );
+    }
+
+    /// A pot's feet tuck up behind its curved foot and peek out below it,
+    /// at the smallest pot and the largest.
+    #[test]
+    fn feet_tuck_under_the_pot_and_peek_out() {
+        for hw in [40.0, 200.0] {
+            let pot = Pot {
+                hw,
+                ry: hw * 0.17,
+                depth: 30.0,
+                bw: hw * 0.88,
+                glaze: Rgb::hex(0x3e5c76),
+                shape: Shape::Oval,
+                level: 3,
+            };
+            let (top, bottom) = feet_span(&pot);
+            // Where the foot's front edge is, at the feet: 0.6 of the way out.
+            let edge = SOIL_Y + pot.depth + pot.ry * 0.8;
+            assert!(
+                top < edge,
+                "{hw}: the feet start at {top}, below the pot's edge {edge}"
+            );
+            assert!(
+                bottom > edge + 2.0,
+                "{hw}: the feet end at {bottom}, hidden behind {edge}"
+            );
+        }
+    }
+
+    /// Every level draws at the smallest pot without a broken number.
+    #[test]
+    fn every_level_draws_at_the_smallest_pot() {
+        let mut b = crate::Bonsai::grow(
+            &crate::fixtures::by_name("steady").unwrap().snapshot,
+            &Config::default(),
+            None,
+        );
+        for level in 0..11u8 {
+            b.extras.pot_tier = level;
+            let pot = Pot {
+                hw: 40.0,
+                ry: 6.8,
+                depth: 20.0,
+                bw: 35.0,
+                glaze: Rgb::hex(model(level).glaze),
+                shape: model(level).shape,
+                level,
+            };
+            let svg = front(&b, &pot) + &rim(&pot) + &top(&pot, Rgb::hex(0x5a4632));
+            assert!(
+                !svg.contains("NaN") && !svg.contains("inf"),
+                "level {level}"
+            );
+        }
     }
 
     /// Only glazed pots take a configured glaze.

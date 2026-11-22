@@ -1792,17 +1792,7 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
         Num(pot.bw * 1.02),
     );
     body.push_str(&egg.behind);
-    let _ = write!(
-        body,
-        r#"<ellipse cx="{CENTER_X}" cy="{SOIL_Y}" rx="{}" ry="{}" fill="{}"/><ellipse cx="{CENTER_X}" cy="{}" rx="{}" ry="{}" fill="{}"/>"#,
-        Num(hw),
-        Num(pot.ry),
-        pot.glaze.shift(-0.2, 0.0),
-        Num(SOIL_Y + 0.6),
-        Num(hw - 4.0),
-        Num((pot.ry - 2.0).max(1.0)),
-        paints.soil
-    );
+    body.push_str(&crate::pot::top(&pot, paints.soil));
     // The canopy's soft shadow on the soil.
     let canopy_x = f64::midpoint(extent.0, extent.1) + 10.0;
     let cx = canopy_x.clamp(CENTER_X - hw * 0.5, CENTER_X + hw * 0.5);
