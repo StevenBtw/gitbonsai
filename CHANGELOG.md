@@ -2,6 +2,8 @@
 
 All notable changes to gitbonsai, a Japanese maple bonsai grown from GitHub activity. A change to how a tree grows or looks is at least a minor version, because people notice their tree changing; a patch only fixes drawing bugs, wood or leaves drawn where they were never meant to be.
 
+## [0.6.0] - 2026-11-22
+
 ## [0.5.2] - 2026-11-22
 
 Fix release: a second trunk no longer shows a round end on the trunk's face, `gitbonsai collect` reports how far it has come, and the exhibition shows trees that have not grown yet. Only trees with a second trunk change, and only at the foot. The additions change no tree, so this ships as a patch.
