@@ -824,14 +824,14 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
     // Trunk pieces as drawn: (item, outline points, dead). A dead main trunk,
     // or one with a shari, always shows: a strand crossing it passes behind.
     let mut trunk_pieces: Vec<(usize, Vec<(f64, f64, f64)>, bool)> = Vec::new();
-    // Each shari as measured on the trunk: (item, where in its paint, strip
-    // points, how high it reaches, fill and ink).
     // A low strand's run into the soil, (item, where in its paint, path):
     // added only if the strand ends up in front of the trunk's foot, where
     // it shows, so a tree that never shows it keeps every byte for leaves.
     let mut soil_runs: Vec<(usize, usize, String)> = Vec::new();
     // The main trunk's lowest piece, by item.
     let mut trunk_foot: Option<usize> = None;
+    // Each shari as measured on the trunk: (item, where in its paint, strip
+    // points, how high it reaches, fill and ink).
     let mut sharis: Vec<(
         usize,
         usize,
