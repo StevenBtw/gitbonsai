@@ -2,7 +2,30 @@
 
 All notable changes to gitbonsai, a Japanese maple bonsai grown from GitHub activity. A change to how a tree grows or looks is at least a minor version, because people notice their tree changing; a patch only fixes drawing bugs, wood or leaves drawn where they were never meant to be.
 
-## [0.6.0] - 2026-11-22
+## [0.6.0] - 2026-11-23
+
+Pot release: the pot ladder grows from seven pots to eleven, with a hobnail bowl and three rectangles, and each pot is sized by the soil it holds. Every tree with a streak stands in a redrawn pot, and most in a different one; the trees themselves are unchanged. `gitbonsai explain` names the pot and measures the tree.
+
+### Added
+
+- **Four new pots**: a longest streak of 104 weeks earns a hobnail bowl on a bamboo saucer, 136 weeks a vintage clay rectangle, 174 weeks a glossy cobalt rectangle and 216 weeks a speckled green rectangle with a flared lip.
+- **`gitbonsai explain` describes the pot and the tree's size**: a `pot` line gives the pot's level and name, a `trunk at its foot` line the trunk's width where it meets the soil, and a `size` line the wood and foliage, so styles can be compared.
+- **The exhibition shows a tree growing**: a tree waiting its turn shows a seedling in its pot, and a growing one its trunk rising as its history comes in, with a ring for each year.
+
+### Changed
+
+- **Pots come sooner**: the ladder has eleven levels at 4, 13, 26, 39, 52, 78, 104, 136, 174 and 216 weeks (it was seven, up to 208 weeks); the celadon oval now comes at 39 weeks and the antique at 78.
+- **Each pot holds the soil the tree needs**: the round pots, the bowl and the rectangles each measure their own volume; a cascade's pot holds as much soil as the upright pot would, 0.7 times as deep as it is wide, instead of up to 2.3 times as much.
+- **Pots are at least 0.6 of the crown's spread**: a broad crown no longer stands in a pot much narrower than itself.
+- **Big pots go deeper, within limits**: a pot can be a quarter of its width deep (at least 56), the bowl at most 0.38 and a rectangle at most 0.27 of its width.
+- **Pots have rims, feet and moss cushions**: each pot has its own rim and feet in its own colours, and moss grows in soft cushions.
+- **Only the round pots cast a shadow**: the bowl and the rectangles stand without the soft shadow under the oval pots.
+- **SVGs stay under 241 KB and 2,800 elements**: up 12% from 215 KB and 2,500, for the new pots' detail; a heavier crown still keeps fewer, larger leaves.
+
+### Fixed
+
+- **The exhibition's progress never goes back**: one check runs at a time, so an older answer can no longer roll the bar back, and trees that leave the queue stop being checked.
+- **The exhibition's language filter knows new trees**: languages from a freshly grown tree appear in the filter.
 
 ## [0.5.2] - 2026-11-22
 
