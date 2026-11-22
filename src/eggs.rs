@@ -1172,9 +1172,13 @@ pub fn kintsugi(archived: &[String], seed: u64, pot: &Pot, dark: bool) -> String
         );
     }
     let wall = pot.wall();
-    format!(
-        r#"<clipPath id="pc"><path d="{}"/></clipPath><g clip-path="url(#pc)">{veins}</g>"#,
-        wall.as_str()
+    // On the pot's wall, which stands as high as the pot does.
+    crate::pot::lift(
+        pot,
+        format!(
+            r#"<clipPath id="pc"><path d="{}"/></clipPath><g clip-path="url(#pc)">{veins}</g>"#,
+            wall.as_str()
+        ),
     )
 }
 

@@ -124,7 +124,7 @@ pub fn frame(extent: (f64, f64, f64), pot: &Pot) -> Frame {
     let mut x0 = down(extent.0.min(CENTER_X - pot.hw) - MARGIN);
     let mut x1 = up(extent.1.max(CENTER_X + pot.hw * 1.2) + MARGIN);
     let mut y0 = down(extent.2.min(SOIL_Y - 40.0) - MARGIN);
-    let y1 = up(SOIL_Y + pot.depth + pot.ry + 8.0 + MARGIN);
+    let y1 = up(pot.rim_y() + pot.depth + pot.ry + 8.0 + MARGIN);
     if x1 - x0 < MIN_WIDTH {
         let pad = up((MIN_WIDTH - (x1 - x0)) / 2.0);
         x0 -= pad;
@@ -2021,7 +2021,8 @@ fn root_plans(b: &Bonsai, base_r: f64, pot: &Pot, off: f64) -> Vec<RootPlan> {
 fn hold_on(b: &Bonsai, plan: &mut RootPlan, i: u32, (base_r, u): (f64, f64), pot: &Pot, off: f64) {
     let half = math::TAU / 2.0;
     // The rim's inner edge, where a root reaching it meets the lip.
-    let edge = pot.hw * 0.97;
+    // Where the soil lies below the rim, its edge, short of the inner wall.
+    let edge = pot.hw * if pot.inset() > 0.0 { 0.92 } else { 0.97 };
     let wind = b.leader.sweep.abs().min(1.0);
     if wind > 0.0 {
         let up = -b.leader.sweep.signum();
@@ -2182,10 +2183,10 @@ fn nebari(
             // One arch: up over the lip, then down along the outside of the
             // wall to where it holds.
             let t = plan.drape / pot.depth;
-            let lip = (CENTER_X + dir * (pot.hw + 3.0), ey.min(SOIL_Y) - 2.5);
+            let lip = (CENTER_X + dir * (pot.hw + 3.0), ey.min(pot.rim_y()) - 2.5);
             let hold = (
                 CENTER_X + dir * (pot.half_width(t) + 0.8),
-                SOIL_Y + pot.depth * t,
+                pot.rim_y() + pot.depth * t,
             );
             let pts: Vec<(f64, f64)> = (0..=10)
                 .map(|j| {
