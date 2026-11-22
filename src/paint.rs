@@ -1898,6 +1898,31 @@ fn to_rim(rim: f64, az: f64, off: f64) -> f64 {
     (-off * c + (math::sq(rim) - math::sq(off * s)).max(0.0).sqrt()).max(0.0)
 }
 
+/// A root's half-width a share `t` along it, `w0` where it leaves the trunk:
+/// it widens into the trunk like a fillet and narrows toward its tip; one
+/// facing the viewer (`az` a quarter turn) narrows to a point, so its tip
+/// seen end-on is no round knob.
+fn root_width(w0: f64, t: f64, az: f64) -> f64 {
+    let facing = math::sin(az).max(0.0);
+    w0 * (1.0 - 0.5 * t) * (1.0 + 0.35 * math::sq(math::sq(1.0 - t))) * (1.0 - 0.9 * facing * t * t)
+        + 0.35 * (1.0 - facing * t)
+}
+
+/// Keeps a root's azimuth `az` at least 0.45 of a radian off straight at
+/// the viewer, on the side it already lies: seen end-on, a root shows only
+/// its round base.
+fn clear_of_front(az: f64) -> f64 {
+    let front = math::TAU / 4.0;
+    let d = turn_toward(az, front, 1.0) - az;
+    if d.abs() >= 0.45 {
+        az
+    } else if d > 0.0 {
+        front - 0.45
+    } else {
+        front + 0.45
+    }
+}
+
 /// Turns `az` a share `t` of the short way toward `to`.
 fn turn_toward(az: f64, to: f64, t: f64) -> f64 {
     let half = math::TAU / 2.0;
@@ -1981,10 +2006,10 @@ fn root_plans(b: &Bonsai, base_r: f64, pot: &Pot, off: f64) -> Vec<RootPlan> {
     let mut plans: Vec<RootPlan> = (0..n)
         .map(|i| {
             let mut r = Rng::keyed(b.account_id, &format!("root/{i}"));
-            let az = mirror_az(
+            let az = clear_of_front(mirror_az(
                 0.9 + f64::from(i) * 2.399_963 + r.range(-0.2, 0.2),
                 b.leader.side,
-            );
+            ));
             // Roots facing into the wind brace the tree: longer and thicker.
             // And those on the uphill side of a leaning trunk.
             let uphill = -b.leader.tilt.signum() * (b.leader.tilt.abs() / 0.55).min(1.0);
@@ -2147,7 +2172,7 @@ fn nebari(
             let g = ground(a, d);
             let (px, pz) = (-math::sin(a), math::cos(a));
             // It widens into the trunk where it leaves it, like a fillet.
-            let w = w0 * (1.0 - 0.5 * t) * (1.0 + 0.35 * math::sq(math::sq(1.0 - t))) + 0.35;
+            let w = root_width(w0, t, az);
             // Rounded where it leaves the trunk, then low along the soil,
             // and blunt where it goes under.
             let h = (h0 * math::pow(1.0 - t, 1.2) + w0 * 0.25 * (1.0 - t * t))
@@ -2723,6 +2748,39 @@ mod tests {
                 .iter()
                 .all(|r| r.white == 0.0)
         );
+    }
+
+    /// A root facing the viewer, seen nearly end-on, tapers to a point, so
+    /// its tip never shows as a round knob; one running sideways keeps its
+    /// width as it always had.
+    #[test]
+    fn a_root_facing_us_ends_in_a_point() {
+        let front = root_width(10.0, 1.0, math::TAU / 4.0);
+        let side = root_width(10.0, 1.0, 0.0);
+        assert!(front < 1.0, "{front}");
+        assert!((side - (10.0 * 0.5 + 0.35)).abs() < 1e-9, "{side}");
+        assert!((root_width(10.0, 0.0, math::TAU / 4.0) - root_width(10.0, 0.0, 0.0)).abs() < 1e-9);
+    }
+
+    /// No root points straight at the viewer: seen end-on it would show only
+    /// its round base, a knob by the trunk. Each runs at least 0.45 of a
+    /// radian off, so its length shows.
+    #[test]
+    fn no_root_points_straight_at_us() {
+        let pot = root_pot();
+        for name in [
+            "veteran", "legacy", "steady", "showcase", "polyglot", "comeback",
+        ] {
+            let b = Bonsai::grow(
+                &crate::fixtures::by_name(name).unwrap().snapshot,
+                &Config::default(),
+                None,
+            );
+            for r in root_plans(&b, 14.0, &pot, 0.0) {
+                let off = turn_toward(r.az, math::TAU / 4.0, 1.0) - r.az;
+                assert!(off.abs() >= 0.45 - 1e-9, "{name}: {r:?}");
+            }
+        }
     }
 
     /// Other styles keep their roots as they were: inside the rim, as long
