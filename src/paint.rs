@@ -550,7 +550,8 @@ fn into_soil(seg: &mut Vec<(f64, f64, f64)>, foot_y: f64) -> bool {
     let Some(&(x, y, r)) = seg.first() else {
         return false;
     };
-    if y + 2.0 * r < foot_y {
+    // Too high to reach the soil, or in it already.
+    if y + 2.0 * r < foot_y || y >= foot_y {
         return false;
     }
     seg.splice(0..0, [(x, y + 2.0 * r, r), (x, y + r, r)]);
@@ -1056,9 +1057,11 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                 let (x, y, r) = seg[0];
                 seg.splice(0..0, [(x, y + 2.0 * r, r), (x, y + r, r)]);
             }
-            // So does a second trunk leaving it low.
+            // So does a living second trunk leaving it low (dead wood lays
+            // its grain by point, and starts where it was cut).
             let soiled = start == 0
                 && strand
+                && !*jin
                 && scene.joins.contains_key(&ci)
                 && into_soil(&mut seg, foot_y);
             let depth = join.map_or(
@@ -1102,7 +1105,15 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
             } else if strand {
                 // A strand lies in a soft groove of its own shadow: it reads
                 // apart from the trunk without an outline.
-                let wide = groove(&seg, start == 0);
+                // A strand run into the soil keeps the groove it had: it
+                // widens from where the strand left the trunk.
+                let wide = if soiled {
+                    let mut w = groove(&seg[2..], true);
+                    w.splice(0..0, seg[..2].iter().copied());
+                    w
+                } else {
+                    groove(&seg, start == 0)
+                };
                 format!(
                     r#"<path d="{}" fill="{}"/><path d="{}" fill="{}"/>"#,
                     tube_from(
@@ -2593,6 +2604,10 @@ mod tests {
         let mut high = vec![(254.0, 396.5, 0.9), (254.0, 390.0, 0.9)];
         assert!(!into_soil(&mut high, 404.0));
         assert_eq!(high.len(), 2);
+        // Wood already starting in the soil is cut there as it is.
+        let mut sunk = vec![(257.3, 405.3, 0.2), (250.0, 400.0, 0.2)];
+        assert!(!into_soil(&mut sunk, 404.0));
+        assert_eq!(sunk.len(), 2);
     }
 
     #[test]
