@@ -542,6 +542,21 @@ fn whips(
     (0..n).map(|i| dead(i) && !forked[root[i]]).collect()
 }
 
+/// Runs wood that leaves the trunk low, within its own width of the foot at
+/// `foot_y`, on straight down into the soil as the trunk does: the soil cut
+/// then squares its start, which otherwise shows as a round end on the
+/// trunk's face whenever the wood sorts in front there. Whether it did.
+fn into_soil(seg: &mut Vec<(f64, f64, f64)>, foot_y: f64) -> bool {
+    let Some(&(x, y, r)) = seg.first() else {
+        return false;
+    };
+    if y + 2.0 * r < foot_y {
+        return false;
+    }
+    seg.splice(0..0, [(x, y + 2.0 * r, r), (x, y + r, r)]);
+    true
+}
+
 /// Dead wood narrows toward its end the more it has bleached, to a point
 /// when white.
 pub fn weather_tip(pts: &mut [(f64, f64, f64, f64)], bleach: f64) {
@@ -775,6 +790,16 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
     };
     let mut out = Painted::default();
     let mut items: Vec<(f64, String)> = Vec::new();
+    // The trunk's foot on the canvas, where it goes into the soil.
+    let (fx, foot_y) =
+        scene
+            .chains
+            .first()
+            .and_then(|c| c.0.first())
+            .map_or((CENTER_X, SOIL_Y), |p| {
+                let (x, y, _) = project(p.0);
+                (x, y)
+            });
     let mut extent = (f64::MAX, f64::MIN, SOIL_Y);
     // The lowest point drawn: a cascade hangs below the pot.
     let mut low = SOIL_Y;
@@ -1031,6 +1056,11 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                 let (x, y, r) = seg[0];
                 seg.splice(0..0, [(x, y + 2.0 * r, r), (x, y + r, r)]);
             }
+            // So does a second trunk leaving it low.
+            let soiled = start == 0
+                && strand
+                && scene.joins.contains_key(&ci)
+                && into_soil(&mut seg, foot_y);
             let depth = join.map_or(
                 fine[start..=end].iter().map(|p| p.3).sum::<f64>() / (end - start + 1) as f64,
                 |j| j.1,
@@ -1057,7 +1087,7 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
             let splinter = snapped && last && bleach < 0.8;
             let d = tube_from(
                 &seg,
-                start == 0 && scene.joins.contains_key(&ci) && tongue.is_none(),
+                start == 0 && scene.joins.contains_key(&ci) && tongue.is_none() && !soiled,
                 last && !splinter,
                 true,
             );
@@ -1077,7 +1107,7 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                     r#"<path d="{}" fill="{}"/><path d="{}" fill="{}"/>"#,
                     tube_from(
                         &wide,
-                        start == 0 && scene.joins.contains_key(&ci),
+                        start == 0 && scene.joins.contains_key(&ci) && !soiled,
                         last,
                         true
                     )
@@ -1801,14 +1831,7 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
     // The trunk goes into the soil: across its footprint nothing of it shows
     // below its foot, so no flare, strand end or wood run down into the soil
     // lies on the soil under the roots.
-    let (fx, fy) = scene
-        .chains
-        .first()
-        .and_then(|c| c.0.first())
-        .map_or((CENTER_X, SOIL_Y), |p| {
-            let (x, y, _) = project(p.0);
-            (x, y)
-        });
+    let fy = foot_y;
     let fr = base_r * 1.5;
     let mut cut = PathData::coarse();
     cut.m((fx - 4000.0, fy - 4000.0))
@@ -2554,6 +2577,24 @@ mod tests {
 
     /// A strand's groove starts as wide as the strand, then widens: at the
     /// start it never pokes out of the trunk the strand leaves.
+    /// A second trunk leaving the trunk low runs on down into the soil, so
+    /// its start is cut at the soil, never a round end on the trunk's face;
+    /// one leaving higher up keeps its start.
+    #[test]
+    fn a_strand_leaving_the_trunk_low_runs_into_the_soil() {
+        let mut low = vec![(254.0, 396.5, 7.4), (254.0, 390.0, 7.0)];
+        assert!(into_soil(&mut low, 404.0));
+        assert!(
+            low[0].1 > 404.0,
+            "starts at {:.1}, above the soil",
+            low[0].1
+        );
+        assert!(low.iter().all(|p| (p.0 - 254.0).abs() < 1e-9));
+        let mut high = vec![(254.0, 396.5, 0.9), (254.0, 390.0, 0.9)];
+        assert!(!into_soil(&mut high, 404.0));
+        assert_eq!(high.len(), 2);
+    }
+
     #[test]
     fn a_strands_groove_starts_at_its_own_width() {
         let seg: Vec<(f64, f64, f64)> = (0..19).map(|i| (0.0, -f64::from(i), 3.0)).collect();
