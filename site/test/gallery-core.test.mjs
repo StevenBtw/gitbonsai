@@ -155,3 +155,32 @@ test("waiting entries leave a style or language filter, and sort by added", () =
   assert.deepEqual(g.view(all, base).map((x) => x.login), ["sprout", "tj"]);
   assert.deepEqual(g.view(all, { ...base, search: "spr" }).map((x) => x.login), ["sprout"]);
 });
+
+test("progress parses, and a bad one becomes null without dropping the entry", () => {
+  const one = (progress) => g.parseList({ entries: [{ ...waitingEntry("sprout"), progress }] });
+  assert.deepEqual(one({ done: 41, total: 64 })[0].progress, { done: 41, total: 64 });
+  assert.deepEqual(one({ done: 0, total: 3 })[0].progress, { done: 0, total: 3 });
+  for (const bad of [null, undefined, { done: 65, total: 64 }, { done: -1, total: 4 }, { done: 1.5, total: 4 }, { done: 1, total: 0 }, { done: "3", total: 4 }, 7]) {
+    const [e] = one(bad);
+    assert.equal(e?.login, "sprout", JSON.stringify(bad));
+    assert.equal(e.progress, null, JSON.stringify(bad));
+  }
+});
+
+test("polling: 5 s while one grows, 30 s while the only ones waiting are queued, never for grown trees", () => {
+  const [queued] = g.parseList({ entries: [{ ...waitingEntry("q"), progress: null }] });
+  const [growing] = g.parseList({ entries: [{ ...waitingEntry("w"), progress: { done: 3, total: 28 } }] });
+  const [regrowing] = g.parseList({ entries: [{ ...e("tj"), progress: { done: 10, total: 28 } }] });
+  assert.equal(g.pollDelay([]), null);
+  assert.equal(g.pollDelay([e("tj")]), null);
+  assert.equal(g.pollDelay([regrowing]), null);
+  assert.equal(g.pollDelay([regrowing, queued]), 30000);
+  assert.equal(g.pollDelay([queued]), 30000);
+  assert.equal(g.pollDelay([growing]), 5000);
+  assert.equal(g.pollDelay([queued, growing]), 5000);
+});
+
+test("progressText counts quarters", () => {
+  assert.equal(g.progressText({ done: 41, total: 64 }), "41 of 64 quarters");
+  assert.equal(g.progressText({ done: 1, total: 1 }), "1 of 1 quarter");
+});

@@ -9,9 +9,11 @@ import {
   findIndex,
   isGrown,
   languagesByCount,
+  pollDelay,
   parseList,
   parseResult,
   parseStarred,
+  progressText,
   resultText,
   svgUrl,
   view as filtered,
@@ -143,13 +145,20 @@ function card(e: Entry, i: number): HTMLElement {
   label.className = "card-label";
   if (!isGrown(e)) {
     // Shown before its first growth: no picture, style or star yet.
-    const wait = document.createElement("p");
+    const wait = document.createElement("div");
     wait.className = "waiting";
-    wait.textContent = "Not grown yet";
+    // The bar: the drawing and its line, and nothing focusable in it.
+    const bar = document.createElement("div");
+    bar.className = "bar";
+    bar.innerHTML = GROWING; // fixed markup, no data in it
+    const text = document.createElement("p");
+    text.className = "wait-text";
+    bar.append(text);
     // Without a large view, Remove sits here, so its owner can still take it out.
     const remove = link(authUrl(e.login, "remove", false), "This is my tree: remove it");
     remove.className = "remove";
-    wait.append(remove);
+    wait.append(bar, remove);
+    paintWaiting(wait, e);
     label.append(who);
     a.append(wait, label);
     return a;
@@ -173,6 +182,91 @@ function card(e: Entry, i: number): HTMLElement {
   a.append(openBtn, label);
   return a;
 }
+/* A tree not grown yet: a seedling while it waits its turn, then a trunk
+   rising from the pot as its history comes in, a faint ring for each year
+   and the seedling's two leaves riding its tip */
+const RISE = 54; // the trunk's full height, from the rim (y 62) up
+const GROWING =
+  '<svg class="grow-bar" viewBox="0 0 60 80" aria-hidden="true">' +
+  '<g class="seedling"><path d="M30 62C30 56 29 52 30 47"/><path class="leaf" d="M30 50c-4-3-8-2-9 1 4 2 7 1 9-1zM30 48c3-4 8-4 10-1-4 3-8 3-10 1z"/></g>' +
+  '<g class="trunk"><path d="M25 62C25.6 44 27 25 28 8h4c1 17 2.4 36 3 54z"/><g class="rings"></g></g>' +
+  '<g class="tuft"><path class="leaf" d="M30 9c-4-3-8-2-9 1 4 2 7 1 9-1zM30 7c3-4 8-4 10-1-4 3-8 3-10 1z"/></g>' +
+  '<path class="pot" d="M10 61.5h40v3H10zM13 65h34l-3.5 11h-27z"/></svg>';
+function paintWaiting(wait: HTMLElement, e: Entry): void {
+  const p = e.progress;
+  const bar = wait.querySelector<HTMLElement>(".bar");
+  const text = wait.querySelector(".wait-text");
+  if (!bar) return;
+  if (!p) {
+    wait.dataset.state = "queued";
+    bar.removeAttribute("role");
+    for (const a of ["aria-valuemin", "aria-valuemax", "aria-valuenow", "aria-valuetext", "aria-label"]) bar.removeAttribute(a);
+    if (text) text.textContent = "Waiting its turn";
+    return;
+  }
+  const said = progressText(p);
+  wait.dataset.state = "growing";
+  bar.setAttribute("role", "progressbar");
+  bar.setAttribute("aria-label", `@${e.login}'s tree growing`);
+  bar.setAttribute("aria-valuemin", "0");
+  bar.setAttribute("aria-valuemax", String(p.total));
+  bar.setAttribute("aria-valuenow", String(p.done));
+  bar.setAttribute("aria-valuetext", said);
+  if (text) text.textContent = said;
+  wait.querySelector<SVGElement>(".grow-bar")?.style.setProperty("--k", String(p.done / p.total));
+  // A ring across the trunk for each year it has passed. The trunk is drawn
+  // full height and scaled to done/total, so a ring sits at its year's share
+  // of what has grown.
+  const rings = wait.querySelector(".rings");
+  if (rings) {
+    let d = "";
+    for (let q = 4; q <= p.done; q += 4) {
+      const h = (RISE * q) / p.done;
+      const half = (10 - (6 * h) / RISE) / 2 - 0.8;
+      d += `M${(30 - half).toFixed(2)} ${(62 - h).toFixed(2)}H${(30 + half).toFixed(2)}`;
+    }
+    rings.innerHTML = d ? `<path d="${d}"/>` : ""; // numbers only
+  }
+}
+
+/* Trees not grown yet are checked while one is on screen and the tab is
+   visible: every 5 s while one grows, every 30 s while they only wait their
+   turn. Each changes in place, so focus and scroll stay where they are. */
+let pollTimer: number | undefined;
+function schedulePoll(): void {
+  window.clearTimeout(pollTimer);
+  pollTimer = undefined;
+  const delay = pollDelay(shown);
+  if (!document.hidden && delay !== null) pollTimer = window.setTimeout(() => void poll(), delay);
+}
+async function poll(): Promise<void> {
+  try {
+    const r = await fetch(`${API}/v1/gallery`, { cache: "no-store" });
+    if (r.ok) {
+      const fresh = parseList(await r.json());
+      for (const old of shown.filter((x) => !isGrown(x))) {
+        const f = fresh[findIndex(fresh, old.login)];
+        if (!f) continue; // taken out meanwhile: it stays until the next load
+        Object.assign(old, f);
+        const el = grid.querySelector<HTMLElement>(`article[data-login="${CSS.escape(old.login)}"]`);
+        if (!el) continue;
+        if (isGrown(old)) {
+          // Grown: its card becomes a grown one, focus kept on the card.
+          const had = el.contains(document.activeElement);
+          const next = card(old, shown.indexOf(old));
+          el.replaceWith(next);
+          if (had) next.querySelector<HTMLElement>(".open")?.focus();
+        } else {
+          const wait = el.querySelector<HTMLElement>(".waiting");
+          if (wait) paintWaiting(wait, old);
+        }
+      }
+    }
+  } catch {}
+  schedulePoll();
+}
+document.addEventListener("visibilitychange", schedulePoll);
+
 function query(): Query {
   const s = sort.value;
   return { search: search.value, style: style.value, language: lang.value, age: age.value, sort: s === "stars" || s === "az" ? s : "new" };
@@ -180,6 +274,7 @@ function query(): Query {
 function render(): void {
   shown = filtered(all, query());
   grid.replaceChildren(...shown.map(card));
+  schedulePoll();
   if (!all.length) {
     status.replaceChildren("No trees on show yet. Grow yours and show it: ", link("index.html#yours", "See your own tree →"));
   } else if (!shown.length) {
