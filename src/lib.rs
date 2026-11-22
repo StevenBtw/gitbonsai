@@ -45,6 +45,7 @@ pub mod math;
 pub mod noise;
 pub mod output;
 pub mod paint;
+pub mod pot;
 #[cfg(feature = "png")]
 pub mod raster;
 pub mod render;
