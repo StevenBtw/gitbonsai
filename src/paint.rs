@@ -1057,13 +1057,15 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                 let (x, y, r) = seg[0];
                 seg.splice(0..0, [(x, y + 2.0 * r, r), (x, y + r, r)]);
             }
-            // So does a living second trunk leaving it low (dead wood lays
-            // its grain by point, and starts where it was cut).
-            let soiled = start == 0
-                && strand
-                && !*jin
-                && scene.joins.contains_key(&ci)
-                && into_soil(&mut seg, foot_y);
+            // So does a living second trunk leaving it low, as a piece of
+            // its own under the strand, which keeps its shape (dead wood
+            // starts where it was cut).
+            let soil = (start == 0 && strand && !*jin && scene.joins.contains_key(&ci))
+                .then(|| {
+                    let mut run = vec![seg[0]];
+                    into_soil(&mut run, foot_y).then(|| tube(&run, false, false))
+                })
+                .flatten();
             let depth = join.map_or(
                 fine[start..=end].iter().map(|p| p.3).sum::<f64>() / (end - start + 1) as f64,
                 |j| j.1,
@@ -1090,7 +1092,7 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
             let splinter = snapped && last && bleach < 0.8;
             let d = tube_from(
                 &seg,
-                start == 0 && scene.joins.contains_key(&ci) && tongue.is_none() && !soiled,
+                start == 0 && scene.joins.contains_key(&ci) && tongue.is_none(),
                 last && !splinter,
                 true,
             );
@@ -1105,25 +1107,22 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
             } else if strand {
                 // A strand lies in a soft groove of its own shadow: it reads
                 // apart from the trunk without an outline.
-                // A strand run into the soil keeps the groove it had: it
-                // widens from where the strand left the trunk.
-                let wide = if soiled {
-                    let mut w = groove(&seg[2..], true);
-                    w.splice(0..0, seg[..2].iter().copied());
-                    w
-                } else {
-                    groove(&seg, start == 0)
-                };
+                let wide = groove(&seg, start == 0);
                 format!(
-                    r#"<path d="{}" fill="{}"/><path d="{}" fill="{}"/>"#,
+                    r#"<path d="{}" fill="{}"/>{}<path d="{}" fill="{}"/>"#,
                     tube_from(
                         &wide,
-                        start == 0 && scene.joins.contains_key(&ci) && !soiled,
+                        start == 0 && scene.joins.contains_key(&ci),
                         last,
                         true
                     )
                     .as_str(),
                     base.shift(-0.1, 0.0),
+                    soil.as_ref().map_or(String::new(), |run| format!(
+                        r#"<path d="{}" fill="{}"/>"#,
+                        run.as_str(),
+                        base.shift(0.03, 0.0)
+                    )),
                     d.as_str(),
                     base.shift(0.03, 0.0)
                 )
