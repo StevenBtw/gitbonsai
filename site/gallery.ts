@@ -146,6 +146,10 @@ function card(e: Entry, i: number): HTMLElement {
     const wait = document.createElement("p");
     wait.className = "waiting";
     wait.textContent = "Not grown yet";
+    // Without a large view, Remove sits here, so its owner can still take it out.
+    const remove = link(authUrl(e.login, "remove", false), "This is my tree: remove it");
+    remove.className = "remove";
+    wait.append(remove);
     label.append(who);
     a.append(wait, label);
     return a;

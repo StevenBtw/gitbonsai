@@ -276,7 +276,8 @@ footer a { color: var(--muted-foreground); }
 .card .open:hover { background: var(--muted); }
 .card .open:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
 /* A tree shown before its first growth: the picture's room, holding a quiet note. */
-.card .waiting { display: grid; place-items: center; aspect-ratio: 5 / 4; margin: 0; font: 500 10px var(--font-mono); letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted-foreground); }
+.card .waiting { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; aspect-ratio: 5 / 4; margin: 0; font: 500 10px var(--font-mono); letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted-foreground); }
+.card .waiting .remove { font: 400 13px var(--font-ui); letter-spacing: 0; text-transform: none; color: var(--muted-foreground); }
 .card-label { margin-top: auto; display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 6px 0 14px; border-top: 1px solid var(--border-strong); }
 .card-label .who { font: 400 14px var(--font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .sty { font: 500 10px var(--font-mono); letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted-foreground); }

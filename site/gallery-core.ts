@@ -20,7 +20,7 @@ export interface Entry {
 }
 /** A tree that has grown, so it has a style and a picture. */
 export type Grown = Entry & { style: string; grown: string };
-export const isGrown = (e: Entry): e is Grown => e.grown !== null;
+export const isGrown = (e: Entry): e is Grown => e.grown !== null && e.style !== null;
 export type Sort = "new" | "stars" | "az";
 /** The page's filters; "" means any. */
 export interface Query {

@@ -140,6 +140,8 @@ test("a waiting entry parses, and a bad one is still dropped", () => {
   assert.equal(w.age_weeks, -1);
   assert.equal(g.isGrown(w), false);
   assert.equal(g.isGrown(e("tj")), true);
+  // The guard holds what its type promises, even for an entry that never went through parseList.
+  assert.equal(g.isGrown(e("tj", { style: null })), false);
   for (const bad of [{ grown: 5 }, { style: 3 }, { grown: "", style: null }, { grown: null, style: "moyogi" }, { languages: null }]) {
     assert.deepEqual(g.parseList({ entries: [{ ...waitingEntry("sprout"), ...bad }] }), [], JSON.stringify(bad));
   }

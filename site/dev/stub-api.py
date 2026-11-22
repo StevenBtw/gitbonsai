@@ -87,7 +87,10 @@ def make_handler(args):
                 flag = "mismatch" if login.startswith("x-") else "cancelled" if login.startswith("c-") else None
                 if action == "add":
                     flag = flag or "added"
-                    if flag == "added" and not find(login):
+                    w = find(login)
+                    if flag == "added" and w and not w["grown"]:
+                        flag = "growing"  # in the exhibition already, not grown yet
+                    if flag == "added" and not w:
                         entries.insert(0, {"login": login, "github_id": 1000 + len(entries), "style": "moyogi",
                                            "languages": ["Python"], "added": "2026-11-22T09:00:00Z",
                                            "grown": "2026-11-22T09:00:00Z", "stars": 0, "age_weeks": 120})
@@ -100,9 +103,11 @@ def make_handler(args):
                 return self.send(302, b"", "text/plain", [("Location", loc)])
             t = re.match(r"^/v1/tree/([^/]+)$", u.path)
             if t:  # "See your own tree", so a sign-in that comes back can grow the tree again
-                e = find(t.group(1)) or {"login": t.group(1), "style": "moyogi"}
+                found = find(t.group(1))
+                grown = found if found and found["grown"] else None  # a waiting tree grows like any other
+                e = grown or {"login": t.group(1), "style": "moyogi"}
                 leg = "-legend" if q.get("legend") == "1" else ""
-                own = e["login"].lower() if find(t.group(1)) else "showcase"
+                own = e["login"].lower() if grown else "showcase"
 
                 def pic(th):
                     try:
@@ -112,7 +117,8 @@ def make_handler(args):
                 return self.send(200, {"login": e["login"], "observed_on": "2026-W47", "style": e["style"], "gitbonsai": "stub",
                                        "legend": bool(leg), "light": pic("light"), "dark": pic("dark")})
             m = re.match(r"^/v1/gallery/([^/]+)/(legend-)?(light|dark)\.svg$", u.path)
-            if m and find(m.group(1)) and find(m.group(1))["grown"]:
+            found = find(m.group(1)) if m else None  # one lookup: a removal may land in between
+            if found and found["grown"]:
                 name = m.group(1).lower()  # the plates' files are named in lower case
                 path = f"{args.hero}/{name}{'-legend' if m.group(2) else ''}-{m.group(3)}.svg"
                 try:
@@ -185,6 +191,10 @@ def selftest(args):
     assert code == 302 and "gallery=added&login=tj" in h["Location"], (code, dict(h))
     assert call(f"{B}/auth?login=a--b&action=add&legend=0")[0] == 400
     assert call(f"{B}/tj/dark.svg?v=x")[0] == 200 and call(f"{B}/tj/legend-light.svg")[0] == 200
+    tree = json.loads(call(B.replace("/v1/gallery", "/v1/tree/seedling"))[2])
+    assert isinstance(tree["style"], str), tree  # a waiting tree grows like any other
+    code, h, _ = call(f"{B}/auth?login=seedling&action=add&legend=0")
+    assert code == 302 and "gallery=growing&login=seedling" in h["Location"], (code, dict(h))
     assert call(f"{B}/seedling/dark.svg")[0] == 404 and call(f"{B}/seedling/star", "POST")[0] == 404
     assert call(f"{B}/nobody/dark.svg")[0] == 404 and call(f"{B}/tj-dark.svg")[0] == 404
     srv.shutdown()
