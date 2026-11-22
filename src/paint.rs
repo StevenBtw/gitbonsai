@@ -826,6 +826,12 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
     let mut trunk_pieces: Vec<(usize, Vec<(f64, f64, f64)>, bool)> = Vec::new();
     // Each shari as measured on the trunk: (item, where in its paint, strip
     // points, how high it reaches, fill and ink).
+    // A low strand's run into the soil, (item, where in its paint, path):
+    // added only if the strand ends up in front of the trunk's foot, where
+    // it shows, so a tree that never shows it keeps every byte for leaves.
+    let mut soil_runs: Vec<(usize, usize, String)> = Vec::new();
+    // The main trunk's lowest piece, by item.
+    let mut trunk_foot: Option<usize> = None;
     let mut sharis: Vec<(
         usize,
         usize,
@@ -1108,8 +1114,8 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                 // A strand lies in a soft groove of its own shadow: it reads
                 // apart from the trunk without an outline.
                 let wide = groove(&seg, start == 0);
-                format!(
-                    r#"<path d="{}" fill="{}"/>{}<path d="{}" fill="{}"/>"#,
+                let shadow = format!(
+                    r#"<path d="{}" fill="{}"/>"#,
                     tube_from(
                         &wide,
                         start == 0 && scene.joins.contains_key(&ci),
@@ -1118,11 +1124,22 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                     )
                     .as_str(),
                     base.shift(-0.1, 0.0),
-                    soil.as_ref().map_or(String::new(), |run| format!(
-                        r#"<path d="{}" fill="{}"/>"#,
-                        run.as_str(),
-                        base.shift(0.03, 0.0)
-                    )),
+                );
+                // The run into the soil goes between the groove and the
+                // strand, in the strand's color.
+                if let Some(run) = &soil {
+                    soil_runs.push((
+                        items.len(),
+                        shadow.len(),
+                        format!(
+                            r#"<path d="{}" fill="{}"/>"#,
+                            run.as_str(),
+                            base.shift(0.03, 0.0)
+                        ),
+                    ));
+                }
+                format!(
+                    r#"{shadow}<path d="{}" fill="{}"/>"#,
                     d.as_str(),
                     base.shift(0.03, 0.0)
                 )
@@ -1363,6 +1380,9 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                 living.push((items.len(), outline.clone()));
             }
             wood_pieces.push(outline);
+            if ci == 0 && start == 0 {
+                trunk_foot = Some(items.len());
+            }
             items.push((depth, s));
             start = end;
         }
@@ -1381,6 +1401,11 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
             .map(|t| items[t.0].0 - 1.0)
             .fold(items[*live].0, f64::min);
         items[*live].0 = behind;
+    }
+    for (item, at_byte, run) in soil_runs {
+        if trunk_foot.is_none_or(|t| items[item].0 > items[t].0) {
+            items[item].1.insert_str(at_byte, &run);
+        }
     }
     // Beside living wood in front of the trunk the pale strip would read as
     // part of that wood: the shari narrows to its point below it.
