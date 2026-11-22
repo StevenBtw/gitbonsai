@@ -7,6 +7,7 @@ import {
   type Query,
   authUrl,
   findIndex,
+  isGrown,
   languagesByCount,
   parseList,
   parseResult,
@@ -135,6 +136,20 @@ function card(e: Entry, i: number): HTMLElement {
   const a = document.createElement("article");
   a.className = "card plate";
   a.dataset.login = e.login;
+  const who = document.createElement("span");
+  who.className = "who";
+  who.textContent = `@${e.login}`;
+  const label = document.createElement("div");
+  label.className = "card-label";
+  if (!isGrown(e)) {
+    // Shown before its first growth: no picture, style or star yet.
+    const wait = document.createElement("p");
+    wait.className = "waiting";
+    wait.textContent = "Not grown yet";
+    label.append(who);
+    a.append(wait, label);
+    return a;
+  }
   const openBtn = document.createElement("button");
   openBtn.type = "button";
   openBtn.className = "open";
@@ -147,11 +162,6 @@ function card(e: Entry, i: number): HTMLElement {
   img.src = svgUrl(e, theme(), false);
   openBtn.append(img);
   openBtn.addEventListener("click", () => openView(i));
-  const label = document.createElement("div");
-  label.className = "card-label";
-  const who = document.createElement("span");
-  who.className = "who";
-  who.textContent = `@${e.login}`;
   const sty = document.createElement("span");
   sty.className = "sty";
   sty.textContent = e.style;
@@ -190,14 +200,17 @@ function paint(): void {
   $("theme").setAttribute("aria-label", theme() === "dark" ? "Switch to light mode" : "Switch to dark mode");
   grid.querySelectorAll<HTMLImageElement>("img[data-i]").forEach((img) => {
     const e = shown[Number(img.dataset.i)];
-    if (e) img.src = svgUrl(e, theme(), false);
+    if (e && isGrown(e)) img.src = svgUrl(e, theme(), false);
   });
   if (open !== null) showView();
 }
 paint();
 
 /* The large view: one tree, its legend, its star, and Remove for its owner */
+const grownCount = (): number => shown.filter(isGrown).length;
 function openView(i: number): void {
+  const t = shown[i];
+  if (!t || !isGrown(t)) return; // a tree not grown yet has nothing to show large
   open = i;
   showView();
   if (!dlg.open) dlg.showModal();
@@ -206,7 +219,7 @@ function openView(i: number): void {
 }
 function showView(): void {
   const e = open === null ? undefined : shown[open];
-  if (!e) return;
+  if (!e || !isGrown(e)) return;
   const head = document.createElement("div");
   head.className = "gview-head";
   const title = document.createElement("h2");
@@ -252,13 +265,17 @@ function navButton(label: string, glyph: string, step: number): HTMLButtonElemen
   b.className = "icon-btn gnav";
   b.setAttribute("aria-label", label);
   b.textContent = glyph;
-  b.hidden = shown.length < 2;
+  b.hidden = grownCount() < 2;
   b.addEventListener("click", () => move(step));
   return b;
 }
 function move(step: number): void {
-  if (open === null || shown.length < 2) return;
-  openView((open + step + shown.length) % shown.length);
+  if (open === null || grownCount() < 2) return;
+  // The next grown tree: the ones still waiting have no large view.
+  let j = open;
+  do j = (j + step + shown.length) % shown.length;
+  while (!isGrown(shown[j]!));
+  openView(j);
   dlg.querySelector<HTMLButtonElement>(step < 0 ? ".gnav" : ".gnav ~ .gnav")?.focus();
 }
 dlg.addEventListener("keydown", (ev) => {
