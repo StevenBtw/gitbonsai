@@ -922,6 +922,26 @@ fn explain_shows_private_work() {
     assert!(line.contains('%'), "{line}");
 }
 
+/// `explain` gives the tree's size on the canvas: the trunk at its foot, and
+/// its wood and foliage taken together, so styles can be compared.
+#[test]
+fn explain_shows_the_trees_size() {
+    let report = gitbonsai::explain::report(&grow("showcase"));
+    let number = |key: &str| -> f64 {
+        let line = report
+            .lines()
+            .find(|l| l.trim_start().starts_with(key))
+            .unwrap_or_else(|| panic!("no {key} line in\n{report}"));
+        line.trim_start()[key.len()..]
+            .split_whitespace()
+            .next()
+            .and_then(|n| n.parse().ok())
+            .unwrap_or_else(|| panic!("no number in {line}"))
+    };
+    assert!(number("trunk at its foot") > 1.0);
+    assert!(number("size") > 100.0);
+}
+
 /// Work declared in `[leaves.private_periods]` is that language everywhere:
 /// its own color, a place in the legend, and in `explain`.
 #[test]

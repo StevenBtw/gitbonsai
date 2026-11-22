@@ -87,6 +87,16 @@ pub fn report(b: &Bonsai) -> String {
     );
     let _ = writeln!(
         out,
+        "  trunk at its foot   {:.1} wide, as drawn",
+        2.0 * b.foot_girth()
+    );
+    let _ = writeln!(
+        out,
+        "  size                {:.0} (wood by its girth and leaf pads by their foliage, as a timelapse weighs change)",
+        crate::timelapse::shape(b).iter().sum::<f64>()
+    );
+    let _ = writeln!(
+        out,
         "  skeleton            {} nodes, {} clouds",
         sk.nodes.len(),
         sk.clouds.len()

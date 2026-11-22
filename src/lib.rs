@@ -206,7 +206,7 @@ impl Bonsai {
     }
 
     /// The trunk's girth at its foot on the canvas, as drawn.
-    fn foot_girth(&self) -> f64 {
+    pub(crate) fn foot_girth(&self) -> f64 {
         scene::WORLD
             * scene::Scene::build(self)
                 .chains
