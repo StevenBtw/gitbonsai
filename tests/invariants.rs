@@ -988,7 +988,7 @@ fn explain_names_the_pot() {
         .lines()
         .find(|l| l.trim_start().starts_with("pot "))
         .unwrap_or_else(|| panic!("no pot line in\n{report}"));
-    assert!(line.contains("level 3, blue glazed oval"), "{line}");
+    assert!(line.contains("level 2, clay pot on feet"), "{line}");
 }
 
 /// Work declared in `[leaves.private_periods]` is that language everywhere:

@@ -396,7 +396,7 @@ pub fn all() -> Vec<Fixture> {
                     ],
                     0.06,
                 )
-                .rest_every(26)
+                .rest_every(25)
                 .build(),
         ),
         fixture(
@@ -616,15 +616,15 @@ pub fn names() -> Vec<&'static str> {
 mod tests {
     use super::*;
 
-    /// The Showcase rests a week after every half year of work: its longest
-    /// streak is 26 weeks, a glazed pot's tier, not its whole life.
+    /// The Showcase rests a week after every 25 weeks of work: its longest
+    /// streak is 25 weeks, the clay pot on feet, not its whole life.
     #[test]
     fn the_showcase_rests_twice_a_year() {
         let s = by_name("showcase").unwrap().snapshot;
         let t = crate::timeline::Timeline::new(&s);
         let e = crate::extras::Extras::new(&t, t.age_weeks());
-        assert_eq!(e.longest_streak, 26);
-        assert_eq!(e.pot_tier, 3);
+        assert_eq!(e.longest_streak, 25);
+        assert_eq!(e.pot_tier, 2);
     }
 
     #[test]
