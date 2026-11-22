@@ -4,7 +4,7 @@ All notable changes to gitbonsai, a Japanese maple bonsai grown from GitHub acti
 
 ## [0.5.2] - 2026-11-22
 
-Fix release: a second trunk no longer shows a round end on the trunk's face, `gitbonsai collect` reports how far it has come, and the exhibition shows trees that have not grown yet. Only trees with a second trunk change, and only at the foot.
+Fix release: a second trunk no longer shows a round end on the trunk's face, `gitbonsai collect` reports how far it has come, and the exhibition shows trees that have not grown yet. Only trees with a second trunk change, and only at the foot. The additions change no tree, so this ships as a patch.
 
 ### Added
 
