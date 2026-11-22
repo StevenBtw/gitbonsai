@@ -1969,13 +1969,16 @@ struct RootPlan {
     brace: f64,
     /// Its thickness against a usual root.
     thick: f64,
+    /// How far it has turned white with a classic-language trunk, 0 for
+    /// bark.
+    white: f64,
 }
 
 /// Plans a tree's surface roots, more with age (3 to 7), from a trunk foot
 /// `off` sideways of the pot's center.
 fn root_plans(b: &Bonsai, base_r: f64, pot: &Pot, off: f64) -> Vec<RootPlan> {
     let n = b.extras.roots.max(3);
-    (0..n)
+    let mut plans: Vec<RootPlan> = (0..n)
         .map(|i| {
             let mut r = Rng::keyed(b.account_id, &format!("root/{i}"));
             let az = mirror_az(
@@ -1998,11 +2001,40 @@ fn root_plans(b: &Bonsai, base_r: f64, pot: &Pot, off: f64) -> Vec<RootPlan> {
                 jitter,
                 brace,
                 thick: 1.0,
+                white: 0.0,
             };
             hold_on(b, &mut plan, i, (base_r, u), pot, off);
             plan
         })
-        .collect()
+        .collect();
+    whiten(&mut plans, b.skeleton.legacy_jin);
+    plans
+}
+
+/// A classic-language trunk turning white (`jin`, 0 to 1) takes its roots
+/// with it, much thinner so they sit into the trunk, all but two: the one
+/// furthest back and the most sideways of the rest stay in their bark. The
+/// large root that follows a cascade turns white with the others.
+fn whiten(plans: &mut [RootPlan], jin: f64) {
+    if jin <= 0.0 {
+        return;
+    }
+    let n = plans.len();
+    let back = (0..n).min_by(|&a, &c| math::sin(plans[a].az).total_cmp(&math::sin(plans[c].az)));
+    let large = (0..n).max_by(|&a, &c| plans[a].thick.total_cmp(&plans[c].thick));
+    let side = (0..n)
+        .filter(|&i| Some(i) != back && Some(i) != large)
+        .max_by(|&a, &c| {
+            math::cos(plans[a].az)
+                .abs()
+                .total_cmp(&math::cos(plans[c].az).abs())
+        });
+    for (i, p) in plans.iter_mut().enumerate() {
+        if Some(i) != back && Some(i) != side {
+            p.white = jin;
+            p.thick *= 0.6;
+        }
+    }
 }
 
 /// How a windswept or cascading tree's root `i` holds on, blended by how
@@ -2088,8 +2120,22 @@ fn nebari(
             jitter,
             brace,
             thick,
+            white,
             ..
         } = plan;
+        // A root gone white with its trunk is drawn as the trunk's deadwood
+        // is, with an inked edge so it reads on a light page.
+        let (bark, edge) = if white > 0.0 {
+            (
+                paints.bark.mix(paints.jin, white),
+                format!(
+                    r#" stroke="{}" stroke-width=".35" stroke-opacity=".6" stroke-linejoin="round""#,
+                    paints.jin_ink
+                ),
+            )
+        } else {
+            (bark, String::new())
+        };
         // Front roots are seen across their width: slimmer, so each stays
         // its own root.
         let front_k = 1.0 - 0.3 * math::sin(az).max(0.0);
@@ -2155,7 +2201,7 @@ fn nebari(
         let id = format!("rh{i}");
         let ww = w0 + h0 * 0.3;
         let s = format!(
-            r#"<clipPath id="{id}"><path d="{o}"/></clipPath><path d="{o}" fill="{base}"/><g clip-path="url(#{id})" fill="none" stroke-linecap="round"><path d="{shade}" stroke="{dark}" stroke-width="{sw}"/><path d="{ridge}" stroke="{light}" stroke-width="{rw}"/></g>"#,
+            r#"<clipPath id="{id}"><path d="{o}"/></clipPath><path d="{o}" fill="{base}"{edge}/><g clip-path="url(#{id})" fill="none" stroke-linecap="round"><path d="{shade}" stroke="{dark}" stroke-width="{sw}"/><path d="{ridge}" stroke="{light}" stroke-width="{rw}"/></g>"#,
             o = body.as_str(),
             base = bark.shift(-0.03, 0.0),
             shade = line(-lit * 0.7, 0.35),
@@ -2610,7 +2656,9 @@ mod tests {
     /// over it.
     #[test]
     fn a_cascade_holds_the_rim_where_it_spills() {
-        let b = styled(crate::config::Style::Kengai);
+        let mut b = styled(crate::config::Style::Kengai);
+        // In its bark: a white trunk's roots are tested on their own.
+        b.skeleton.legacy_jin = 0.0;
         let pot = root_pot();
         let spill = b.leader.cascade.signum();
         let off = -0.15 * pot.hw * spill;
@@ -2631,6 +2679,51 @@ mod tests {
         let thick: Vec<&RootPlan> = roots.iter().filter(|r| r.thick > 1.2).collect();
         assert_eq!(thick.len(), 1, "{roots:?}");
         assert!(math::cos(thick[0].az) * spill > 0.7, "{roots:?}");
+    }
+
+    /// A cascade whose classic-language trunk turns white takes its roots
+    /// with it, much thinner, all but two: the one furthest back and the most
+    /// sideways of the rest (the large one following the trunk aside) stay in
+    /// their bark. A trunk still in its bark has no white roots.
+    #[test]
+    fn a_white_trunk_has_white_roots() {
+        let pot = root_pot();
+        let b = Bonsai::grow(
+            &crate::fixtures::by_name("legacy").unwrap().snapshot,
+            &Config::default(),
+            None,
+        );
+        assert!(b.skeleton.legacy_jin > 0.0);
+        let roots = root_plans(&b, 14.0, &pot, 0.0);
+        let sin = |r: &RootPlan| math::sin(r.az);
+        let back = (0..roots.len())
+            .min_by(|&a, &c| sin(&roots[a]).total_cmp(&sin(&roots[c])))
+            .unwrap();
+        let large = (0..roots.len())
+            .max_by(|&a, &c| roots[a].thick.total_cmp(&roots[c].thick))
+            .unwrap();
+        let side = (0..roots.len())
+            .filter(|&i| i != back && i != large)
+            .max_by(|&a, &c| {
+                math::cos(roots[a].az)
+                    .abs()
+                    .total_cmp(&math::cos(roots[c].az).abs())
+            })
+            .unwrap();
+        for (i, r) in roots.iter().enumerate() {
+            if i == back || i == side {
+                assert_eq!(r.white, 0.0, "{i}: {roots:?}");
+            } else {
+                assert!(r.white > 0.0 && r.thick <= 0.9 + 1e-9, "{i}: {roots:?}");
+            }
+        }
+        let bark = styled(crate::config::Style::Chokkan);
+        assert_eq!(bark.skeleton.legacy_jin, 0.0);
+        assert!(
+            root_plans(&bark, 14.0, &pot, 0.0)
+                .iter()
+                .all(|r| r.white == 0.0)
+        );
     }
 
     /// Other styles keep their roots as they were: inside the rim, as long
