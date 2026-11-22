@@ -275,6 +275,8 @@ footer a { color: var(--muted-foreground); }
 .card .open img { display: block; width: 100%; height: 100%; object-fit: contain; object-position: center bottom; }
 .card .open:hover { background: var(--muted); }
 .card .open:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+/* A tree shown before its first growth: the picture's room, holding a quiet note. */
+.card .waiting { display: grid; place-items: center; aspect-ratio: 5 / 4; margin: 0; font: 500 10px var(--font-mono); letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted-foreground); }
 .card-label { margin-top: auto; display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 6px 0 14px; border-top: 1px solid var(--border-strong); }
 .card-label .who { font: 400 14px var(--font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .sty { font: 500 10px var(--font-mono); letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted-foreground); }
