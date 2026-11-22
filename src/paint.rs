@@ -2012,7 +2012,7 @@ fn root_plans(b: &Bonsai, base_r: f64, pot: &Pot, off: f64) -> Vec<RootPlan> {
 }
 
 /// A classic-language trunk turning white (`jin`, 0 to 1) takes its roots
-/// with it, much thinner so they sit into the trunk, all but two: the one
+/// with it, much thinner and shorter so they sit into the trunk, all but two: the one
 /// furthest back and the most sideways of the rest stay in their bark. The
 /// large root that follows a cascade turns white with the others.
 fn whiten(plans: &mut [RootPlan], jin: f64) {
@@ -2033,6 +2033,7 @@ fn whiten(plans: &mut [RootPlan], jin: f64) {
         if Some(i) != back && Some(i) != side {
             p.white = jin;
             p.thick *= 0.6;
+            p.reach *= 0.8;
         }
     }
 }
@@ -2123,25 +2124,20 @@ fn nebari(
             white,
             ..
         } = plan;
-        // A root gone white with its trunk is drawn as the trunk's deadwood
-        // is, with an inked edge so it reads on a light page.
-        let (bark, edge) = if white > 0.0 {
-            (
-                paints.bark.mix(paints.jin, white),
-                format!(
-                    r#" stroke="{}" stroke-width=".35" stroke-opacity=".6" stroke-linejoin="round""#,
-                    paints.jin_ink
-                ),
-            )
+        // A root gone white with its trunk is drawn as the trunk is.
+        let bark = if white > 0.0 {
+            paints.bark.mix(paints.jin, white)
         } else {
-            (bark, String::new())
+            bark
         };
         // Front roots are seen across their width: slimmer, so each stays
         // its own root.
         let front_k = 1.0 - 0.3 * math::sin(az).max(0.0);
         let w0 = base_r * (0.26 + 0.14 * age) * jitter.0 * front_k * (1.0 + 0.35 * brace) * thick;
         let h0 = base_r * (0.3 + 0.2 * age) * jitter.1 * (1.0 + 0.3 * brace) * thick;
-        let from = base_r * 0.55;
+        // A white root grows out of deeper inside the white trunk, so it
+        // runs on from it instead of starting at its edge.
+        let from = base_r * if white > 0.0 { 0.3 } else { 0.55 };
         // Ground point, ground direction and screen offset of a ground vector.
         let ground = |a: f64, d: f64| (x0 + math::cos(a) * d, y0 + math::sin(a) * d * tilt);
         let k = 20;
@@ -2201,7 +2197,7 @@ fn nebari(
         let id = format!("rh{i}");
         let ww = w0 + h0 * 0.3;
         let s = format!(
-            r#"<clipPath id="{id}"><path d="{o}"/></clipPath><path d="{o}" fill="{base}"{edge}/><g clip-path="url(#{id})" fill="none" stroke-linecap="round"><path d="{shade}" stroke="{dark}" stroke-width="{sw}"/><path d="{ridge}" stroke="{light}" stroke-width="{rw}"/></g>"#,
+            r#"<clipPath id="{id}"><path d="{o}"/></clipPath><path d="{o}" fill="{base}"/><g clip-path="url(#{id})" fill="none" stroke-linecap="round"><path d="{shade}" stroke="{dark}" stroke-width="{sw}"/><path d="{ridge}" stroke="{light}" stroke-width="{rw}"/></g>"#,
             o = body.as_str(),
             base = bark.shift(-0.03, 0.0),
             shade = line(-lit * 0.7, 0.35),
@@ -2222,7 +2218,10 @@ fn nebari(
         Num(y0 + base_r * tilt * 0.35),
         Num(base_r * 0.85),
         Num(base_r * tilt * 0.6 + 0.6),
-        bark.shift(-0.16, 0.0)
+        // Under a white trunk the shade between its roots is grey, not a
+        // dark pit.
+        bark.mix(paints.jin, b.skeleton.legacy_jin * 0.6)
+            .shift(-0.16, 0.0)
     );
     let (mut back, mut front) = (String::new(), valley);
     for (z, s) in roots {
