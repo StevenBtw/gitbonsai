@@ -3762,6 +3762,9 @@ pub fn grow(
         // Every tree grows on the right; one on the left
         // ([`Leader::side`]) is its mirror image.
         tree(&mut sk, &life, seed, &leader.canonical(), past, recent);
+        // Grown from the same work, each style comes out a little nearer
+        // the others' size.
+        sk.scale(crate::style::size_factor(leader));
         if leader.side < 0.0 {
             sk.mirror();
         }

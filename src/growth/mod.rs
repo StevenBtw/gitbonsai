@@ -112,6 +112,32 @@ impl Skeleton {
         }
     }
 
+    /// Scales the grown tree by `f` about its foot on the soil: its wood's
+    /// lengths, its clouds and its height; the wood keeps its thickness.
+    pub fn scale(&mut self, f: f64) {
+        let (cx, cy) = (crate::style::CENTER_X, crate::style::SOIL_Y);
+        let s = |p: &mut P| *p = (cx + (p.0 - cx) * f, cy + (p.1 - cy) * f);
+        for n in &mut self.nodes {
+            s(&mut n.p);
+        }
+        for z in &mut self.node_z {
+            *z *= f;
+        }
+        s(&mut self.apex);
+        self.height *= f;
+        for c in &mut self.clouds {
+            s(&mut c.c);
+            c.z *= f;
+            c.rx *= f;
+            c.ry *= f;
+            c.rz *= f;
+            for p in &mut c.patches {
+                s(&mut p.0);
+                p.1 *= f;
+            }
+        }
+    }
+
     /// The total contributions carried by each node: its own plus everything
     /// above it (the pipe model's flow).
     pub fn flows(&self) -> Vec<f64> {

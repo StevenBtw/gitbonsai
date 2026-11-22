@@ -744,6 +744,9 @@ fn a_pause_leaves_a_window() {
     let (lo, hi) = dome::window_band(&Timeline::new(&snapshot)).expect("comeback paused");
     assert!(hi - lo > 10.0, "{lo}..{hi}");
     let bonsai = Bonsai::grow(&snapshot, &Config::default(), None);
+    // The window grows and shrinks with the tree's style.
+    let f = gitbonsai::style::size_factor(&bonsai.leader);
+    let (lo, hi) = (lo * f, hi * f);
     for c in &bonsai.skeleton.clouds {
         let h = gitbonsai::style::SOIL_Y - c.c.1;
         assert!(
@@ -2006,15 +2009,18 @@ fn a_cascade_shows_its_foliage() {
         let s = gitbonsai::Snapshot::load(std::path::Path::new(&path)).unwrap();
         trees.push((name.to_string(), s));
     }
-    let shown = |s: &gitbonsai::Snapshot, style: Style| -> usize {
-        visible_leaves(&Bonsai::grow(s, &config(style), None))
-            .values()
-            .sum()
+    // Leaves shown, as if each style grew to the same scale: the styles'
+    // sizes are balanced apart from how a cascade carries its foliage.
+    let shown = |s: &gitbonsai::Snapshot, style: Style| -> f64 {
+        let b = Bonsai::grow(s, &config(style), None);
+        let n: usize = visible_leaves(&b).values().sum();
+        let f = gitbonsai::style::size_factor(&b.leader);
+        n as f64 / (f * f)
     };
     let mut thin = Vec::new();
     for (name, s) in &trees {
         let (cascade, upright) = (shown(s, Style::Kengai), shown(s, Style::Moyogi));
-        let share = cascade as f64 / upright as f64;
+        let share = cascade / upright;
         // Stacked in its pads it showed 22 to 36% (0.4.0); laid side by side
         // it shows 40 to 54%. An arc never carries as much as a crown.
         if share < 0.38 {
@@ -2284,4 +2290,77 @@ fn one_light_lights_a_row_from_one_side() {
         }
     }
     assert!(left > 0, "no fixture grows left");
+}
+
+/// Each style's median size, relative to the mean of the five styles a
+/// fixture grows into: (chokkan, moyogi, shakan, fukinagashi, kengai).
+/// Fixtures whose five trees are alike (too young for a style) are left out.
+fn style_sizes() -> [f64; 5] {
+    use gitbonsai::config::Style;
+    let styles = [
+        Style::Chokkan,
+        Style::Moyogi,
+        Style::Shakan,
+        Style::Fukinagashi,
+        Style::Kengai,
+    ];
+    let mut rel: Vec<Vec<f64>> = vec![Vec::new(); 5];
+    for f in fixtures::all() {
+        let sizes: Vec<f64> = styles
+            .iter()
+            .map(|&s| {
+                let mut c = Config::default();
+                c.tree.style = Some(s);
+                let b = Bonsai::grow(&f.snapshot, &c, None);
+                if b.is_empty() || gitbonsai::sprout::is_sprout(&b) {
+                    0.0
+                } else {
+                    gitbonsai::timelapse::shape(&b).iter().sum::<f64>()
+                }
+            })
+            .collect();
+        let (lo, hi) = sizes.iter().fold((f64::INFINITY, 0.0_f64), |(lo, hi), &s| {
+            (lo.min(s), hi.max(s))
+        });
+        if lo <= 0.0 || hi - lo < 1e-6 * hi {
+            continue;
+        }
+        let mean = sizes.iter().sum::<f64>() / 5.0;
+        for (i, s) in sizes.iter().enumerate() {
+            rel[i].push(s / mean);
+        }
+    }
+    let mut out = [0.0; 5];
+    for (o, r) in out.iter_mut().zip(rel.iter_mut()) {
+        r.sort_by(f64::total_cmp);
+        let n = r.len();
+        *o = f64::midpoint(r[(n - 1) / 2], r[n / 2]);
+    }
+    out
+}
+
+/// The styles move towards one size, each by at most 5%: grown from the
+/// same work, the uprights grow 5% and the windswept and cascade trees
+/// shrink 5%, measured as `explain` measures a tree's size. The baseline is
+/// the fixtures' before 0.6.0.
+#[test]
+fn styles_move_towards_one_size_by_at_most_five_percent() {
+    const BASELINE: [f64; 5] = [0.867, 0.889, 0.891, 1.236, 1.078];
+    const MOVE: [f64; 5] = [1.05, 1.05, 1.05, 0.95, 0.95];
+    let now = style_sizes();
+    eprintln!("style sizes now: {now:?}");
+    for i in 0..5 {
+        let want = BASELINE[i] * MOVE[i];
+        assert!(
+            (now[i] - want).abs() < 0.015,
+            "style {i}: {} (baseline {}, want {want})",
+            now[i],
+            BASELINE[i]
+        );
+        assert!(
+            (now[i] / BASELINE[i] - 1.0).abs() <= 0.055,
+            "style {i} moved {}",
+            now[i] / BASELINE[i]
+        );
+    }
 }
