@@ -1719,7 +1719,7 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
     let flip = |f: &mut Frame| f.0 = 2.0 * CENTER_X - f.0 - f.2;
     // The roots, before the eggs: what peeks out behind the trunk keeps
     // clear of them.
-    let (roots_back, roots_front, root_hulls) = nebari(
+    let (roots_back, roots_front, roots_over, root_hulls) = nebari(
         b,
         &paints,
         base_r,
@@ -1866,6 +1866,8 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
     body.push_str(&if lit < 0.0 { mirror(&marks) } else { marks });
     let rim = crate::pot::rim(&pot);
     body.push_str(&if lit < 0.0 { mirror(&rim) } else { rim });
+    // A root holding on over the rim lies on it.
+    body.push_str(&roots_over);
     body.push_str(&egg.top);
     let signs = crate::legend::Signs {
         fresh: (sprout.is_none() || crate::sprout::handover(crate::sprout::count(b)) > 0.5)
@@ -1888,10 +1890,21 @@ fn root_reach(base_r: f64, nebari: f64, hw: f64, az: f64, u: f64, brace: f64, of
     // unless the pot rim needs it shorter.
     let reach = (base_r * (1.35 + u * (0.25 + 0.5 * nebari.clamp(0.0, 1.0)))).max(base_r * 1.6)
         * (1.0 + 0.45 * brace);
-    // From the foot to the rim along the root, on the soil.
-    let (c, s, rim) = (math::cos(az), math::sin(az), hw * 0.78);
-    let to_rim = (-off * c + (math::sq(rim) - math::sq(off * s)).max(0.0).sqrt()).max(0.0);
-    reach.min(to_rim * (0.45 + 0.55 * c.abs()))
+    reach.min(to_rim(hw * 0.78, az, off) * (0.45 + 0.55 * math::cos(az).abs()))
+}
+
+/// How far it is along the soil at azimuth `az` from a foot `off` sideways
+/// of the pot's center to a circle `rim` round that center.
+fn to_rim(rim: f64, az: f64, off: f64) -> f64 {
+    let (c, s) = (math::cos(az), math::sin(az));
+    (-off * c + (math::sq(rim) - math::sq(off * s)).max(0.0).sqrt()).max(0.0)
+}
+
+/// Turns `az` a share `t` of the short way toward `to`.
+fn turn_toward(az: f64, to: f64, t: f64) -> f64 {
+    let half = math::TAU / 2.0;
+    let d = (to - az + half).rem_euclid(math::TAU) - half;
+    az + d * t
 }
 
 /// Measures how deep wood at `e` lies in the crown's shadow, 0 in the open to
@@ -1941,6 +1954,113 @@ fn hull(mut p: Vec<(f64, f64)>) -> Vec<(f64, f64)> {
     h
 }
 
+/// One surface root, before it is drawn: where it points, how far it
+/// reaches on the soil, its own wobble, and what it does at the rim.
+#[derive(Debug, Clone, Copy)]
+struct RootPlan {
+    /// Its azimuth on the soil: 0 to the right, a quarter turn toward the
+    /// viewer.
+    az: f64,
+    /// How far it runs over the soil from the trunk's center.
+    reach: f64,
+    /// How far it bends sideways along its length.
+    bend: f64,
+    /// Its own width and height, as shares of the usual.
+    jitter: (f64, f64),
+    /// How much it braces the tree, 0 to 1.
+    brace: f64,
+    /// Its thickness against a usual root.
+    thick: f64,
+    /// How far it hangs down the pot's wall past the rim, 0 when it stays
+    /// on the soil.
+    drape: f64,
+}
+
+/// Plans a tree's surface roots, more with age (3 to 7), from a trunk foot
+/// `off` sideways of the pot's center.
+fn root_plans(b: &Bonsai, base_r: f64, pot: &Pot, off: f64) -> Vec<RootPlan> {
+    let n = b.extras.roots.max(3);
+    (0..n)
+        .map(|i| {
+            let mut r = Rng::keyed(b.account_id, &format!("root/{i}"));
+            let az = mirror_az(
+                0.9 + f64::from(i) * 2.399_963 + r.range(-0.2, 0.2),
+                b.leader.side,
+            );
+            // Roots facing into the wind brace the tree: longer and thicker.
+            // And those on the uphill side of a leaning trunk.
+            let uphill = -b.leader.tilt.signum() * (b.leader.tilt.abs() / 0.55).min(1.0);
+            let brace = (-b.leader.sweep * math::cos(az))
+                .max(uphill * math::cos(az))
+                .max(0.0);
+            let u = r.unit();
+            let bend = b.leader.side * r.range(-0.3, 0.3);
+            let jitter = (r.range(0.85, 1.15), r.range(0.85, 1.15));
+            let mut plan = RootPlan {
+                az,
+                reach: root_reach(base_r, b.extras.nebari, pot.hw, az, u, brace, off),
+                bend,
+                jitter,
+                brace,
+                thick: 1.0,
+                drape: 0.0,
+            };
+            hold_on(b, &mut plan, i, (base_r, u), pot, off);
+            plan
+        })
+        .collect()
+}
+
+/// How a windswept or cascading tree's root `i` holds on, blended by how
+/// windswept and how cascading it is. Windswept: the first three stream
+/// upwind and run longer, the first to the rim and over its edge; those
+/// downwind stay short. Cascade: roots on the side it spills to reach the
+/// rim, and the first follows the trunk over the edge and a fifth of the
+/// way down the wall, thick. `(base_r, u)` are the trunk's radius at its
+/// foot and the root's own share of its reach.
+fn hold_on(b: &Bonsai, plan: &mut RootPlan, i: u32, (base_r, u): (f64, f64), pot: &Pot, off: f64) {
+    let half = math::TAU / 2.0;
+    // The rim's inner edge, where a root reaching it meets the lip.
+    let edge = pot.hw * 0.97;
+    let wind = b.leader.sweep.abs().min(1.0);
+    if wind > 0.0 {
+        let up = -b.leader.sweep.signum();
+        let upwind = if up > 0.0 { 0.0 } else { half };
+        if i < 3 {
+            // A little toward the viewer, so the longest shows.
+            let spread = [0.1, -0.45, 0.5][i as usize];
+            plan.az = turn_toward(plan.az, upwind + spread * up, wind);
+            plan.brace = plan.brace.max(wind);
+            let free = (base_r * (1.35 + u * (0.25 + 0.5 * b.extras.nebari.clamp(0.0, 1.0))))
+                .max(base_r * 1.6)
+                * (1.0 + wind);
+            let room =
+                to_rim(pot.hw * 0.78, plan.az, off) * (0.45 + 0.55 * math::cos(plan.az).abs());
+            plan.reach = free.min(room);
+            if i == 0 {
+                plan.reach = math::lerp(plan.reach, to_rim(edge, plan.az, off), wind);
+                plan.drape = pot.depth * 0.15 * ((wind - 0.4) / 0.6).clamp(0.0, 1.0);
+            }
+        } else if math::cos(plan.az) * up < 0.0 {
+            plan.reach *= 1.0 - 0.35 * wind;
+        }
+    }
+    let fall = b.leader.cascade.abs().min(1.0);
+    if fall > 0.0 {
+        let spill = b.leader.cascade.signum();
+        let toward = if spill > 0.0 { 0.0 } else { half };
+        if i == 0 {
+            plan.az = turn_toward(plan.az, toward + 0.12 * spill, fall);
+            plan.thick = 1.0 + 0.5 * fall;
+            plan.drape = plan.drape.max(pot.depth * 0.2 * fall);
+        }
+        let grip = ((math::cos(plan.az) * spill - 0.2) / 0.3).clamp(0.0, 1.0) * fall;
+        if grip > 0.0 {
+            plan.reach = math::lerp(plan.reach, to_rim(edge, plan.az, off), grip);
+        }
+    }
+}
+
 /// Surface roots, after a real maple's nebari: rounded ridges lying on the
 /// soil, each with a half-elliptic cross-section that widens into the trunk
 /// and flattens toward its tip. More roots with age (3 to 7), reaching
@@ -1953,9 +2073,8 @@ fn nebari(
     pot: &Pot,
     trunk: &[(V3, f64)],
     ls: (f64, f64),
-) -> (String, String, Vec<Vec<(f64, f64)>>) {
+) -> (String, String, String, Vec<Vec<(f64, f64)>>) {
     let bark = paints.bark;
-    let n = b.extras.roots.max(3);
     let age = b.extras.nebari.clamp(0.0, 1.0);
     let (x0, y0) = trunk.first().map_or((CENTER_X, SOIL_Y), |p| {
         let (x, y, _) = project(p.0);
@@ -1965,34 +2084,25 @@ fn nebari(
     let lit = if ls.0 < 0.0 { -1.0 } else { 1.0 };
     let mut roots: Vec<(f64, String)> = Vec::new();
     let mut hulls = Vec::new();
-    for i in 0..n {
-        let mut r = Rng::keyed(b.account_id, &format!("root/{i}"));
-        let az = mirror_az(
-            0.9 + f64::from(i) * 2.399_963 + r.range(-0.2, 0.2),
-            b.leader.side,
-        );
-        // Roots facing into the wind brace the tree: longer and thicker.
-        // And those on the uphill side of a leaning trunk.
-        let uphill = -b.leader.tilt.signum() * (b.leader.tilt.abs() / 0.55).min(1.0);
-        let brace = (-b.leader.sweep * math::cos(az))
-            .max(uphill * math::cos(az))
-            .max(0.0);
-        let reach = root_reach(
-            base_r,
-            b.extras.nebari,
-            pot.hw,
+    let mut over = String::new();
+    for (i, plan) in root_plans(b, base_r, pot, x0 - CENTER_X)
+        .into_iter()
+        .enumerate()
+    {
+        let RootPlan {
             az,
-            r.unit(),
+            reach,
+            bend,
+            jitter,
             brace,
-            x0 - CENTER_X,
-        );
-        let bend = b.leader.side * r.range(-0.3, 0.3);
+            thick,
+            ..
+        } = plan;
         // Front roots are seen across their width: slimmer, so each stays
         // its own root.
         let front_k = 1.0 - 0.3 * math::sin(az).max(0.0);
-        let w0 =
-            base_r * (0.26 + 0.14 * age) * r.range(0.85, 1.15) * front_k * (1.0 + 0.35 * brace);
-        let h0 = base_r * (0.3 + 0.2 * age) * r.range(0.85, 1.15) * (1.0 + 0.3 * brace);
+        let w0 = base_r * (0.26 + 0.14 * age) * jitter.0 * front_k * (1.0 + 0.35 * brace) * thick;
+        let h0 = base_r * (0.3 + 0.2 * age) * jitter.1 * (1.0 + 0.3 * brace) * thick;
         let from = base_r * 0.55;
         // Ground point, ground direction and screen offset of a ground vector.
         let ground = |a: f64, d: f64| (x0 + math::cos(a) * d, y0 + math::sin(a) * d * tilt);
@@ -2065,6 +2175,31 @@ fn nebari(
         );
         roots.push((math::sin(az), s));
         hulls.push(h);
+        // Over the rim's edge and down the pot's wall, outside it.
+        if plan.drape > 0.0 {
+            let (ex, ey) = ground(az + bend, reach);
+            let dir = if ex >= CENTER_X { 1.0 } else { -1.0 };
+            // One arch: up over the lip, then down along the outside of the
+            // wall to where it holds.
+            let t = plan.drape / pot.depth;
+            let lip = (CENTER_X + dir * (pot.hw + 3.0), ey.min(SOIL_Y) - 2.5);
+            let hold = (
+                CENTER_X + dir * (pot.half_width(t) + 0.8),
+                SOIL_Y + pot.depth * t,
+            );
+            let pts: Vec<(f64, f64)> = (0..=10)
+                .map(|j| {
+                    let s = f64::from(j) / 10.0;
+                    let (a, c) = (math::sq(1.0 - s), math::sq(s));
+                    let m = 2.0 * s * (1.0 - s);
+                    (
+                        a * ex + m * lip.0 + c * hold.0,
+                        a * ey + m * lip.1 + c * hold.1,
+                    )
+                })
+                .collect();
+            over.push_str(&drape(&pts, w0 * 0.55 + 0.35, bark, lit));
+        }
     }
     roots.sort_by(|a, b| a.0.total_cmp(&b.0));
     // Deep shade where the roots leave the trunk: the valleys between them.
@@ -2084,7 +2219,42 @@ fn nebari(
             back.push_str(&s);
         }
     }
-    (back, front, hulls)
+    (back, front, over, hulls)
+}
+
+/// A root hanging along `pts` over the rim and down the wall: `w` wide where
+/// it leaves the soil, narrowing to its tip, its ridge toward the light.
+fn drape(pts: &[(f64, f64)], w: f64, bark: Rgb, lit: f64) -> String {
+    let n = pts.len();
+    let side = |i: usize, sign: f64, share: f64| {
+        let (a, c) = (pts[i.saturating_sub(1)], pts[(i + 1).min(n - 1)]);
+        let t = norm((c.0 - a.0, c.1 - a.1));
+        let width = w * (1.0 - 0.65 * i as f64 / (n - 1) as f64) * share;
+        (pts[i].0 - t.1 * width * sign, pts[i].1 + t.0 * width * sign)
+    };
+    let mut outline = PathData::new();
+    outline.m(side(0, 1.0, 1.0));
+    for i in 1..n {
+        outline.l(side(i, 1.0, 1.0));
+    }
+    for i in (0..n).rev() {
+        outline.l(side(i, -1.0, 1.0));
+    }
+    outline.z();
+    let mut ridge = PathData::new();
+    ridge.m(side(0, -lit, 0.3));
+    for i in 1..n {
+        ridge.l(side(i, -lit, 0.3));
+    }
+    format!(
+        r#"<path d="{}" fill="{}" stroke="{}" stroke-width=".6" stroke-linejoin="round"/><path d="{}" fill="none" stroke="{}" stroke-width="{}" stroke-linecap="round"/>"#,
+        outline.as_str(),
+        bark.shift(-0.03, 0.0),
+        bark.shift(-0.1, 0.0),
+        ridge.as_str(),
+        bark.shift(0.05, 0.0),
+        Num(w * 0.35)
+    )
 }
 
 /// `svg` mirrored about the pot's center line; empty stays empty.
@@ -2435,6 +2605,115 @@ mod tests {
                         }
                     }
                 }
+            }
+        }
+    }
+
+    /// A tree in `style`, grown from the veteran fixture.
+    fn styled(style: crate::config::Style) -> Bonsai {
+        let mut config = Config::default();
+        config.tree.style = Some(style);
+        Bonsai::grow(
+            &crate::fixtures::by_name("veteran").unwrap().snapshot,
+            &config,
+            None,
+        )
+    }
+
+    /// A plain oval pot for the root tests.
+    fn root_pot() -> Pot {
+        Pot {
+            hw: 120.0,
+            ry: 20.0,
+            depth: 60.0,
+            bw: 105.0,
+            glaze: Rgb::hex(0x3e_5c76),
+            shape: crate::pot::Shape::Oval,
+            level: 3,
+        }
+    }
+
+    /// A windswept tree streams its roots upwind: the longest points into
+    /// the wind, reaches the rim and curls over it; every root downwind is
+    /// shorter than any upwind one.
+    #[test]
+    fn a_windswept_tree_streams_its_roots_upwind() {
+        let b = styled(crate::config::Style::Fukinagashi);
+        let pot = root_pot();
+        let up = -b.leader.sweep.signum();
+        let roots = root_plans(&b, 14.0, &pot, 0.0);
+        let longest = roots
+            .iter()
+            .max_by(|a, c| a.reach.total_cmp(&c.reach))
+            .unwrap();
+        assert!(math::cos(longest.az) * up > 0.7, "{:?}", longest);
+        assert!(
+            (longest.reach * math::cos(longest.az)).abs() >= pot.hw * 0.95,
+            "{:?}",
+            longest
+        );
+        assert!(longest.drape > 0.0, "{:?}", longest);
+        let upwind: Vec<f64> = roots
+            .iter()
+            .filter(|r| math::cos(r.az) * up > 0.3)
+            .map(|r| r.reach)
+            .collect();
+        let downwind: Vec<f64> = roots
+            .iter()
+            .filter(|r| math::cos(r.az) * up < -0.3)
+            .map(|r| r.reach)
+            .collect();
+        assert!(upwind.len() >= 2, "{roots:?}");
+        let shortest_up = upwind.iter().copied().fold(f64::INFINITY, f64::min);
+        assert!(downwind.iter().all(|&d| d < shortest_up), "{roots:?}");
+    }
+
+    /// A cascade grips the rim where it spills: its roots on that side reach
+    /// the rim, and one thick root follows the trunk over the edge and down
+    /// the wall, no further than a fifth of the pot's depth.
+    #[test]
+    fn a_cascade_holds_the_rim_where_it_spills() {
+        let b = styled(crate::config::Style::Kengai);
+        let pot = root_pot();
+        let spill = b.leader.cascade.signum();
+        let off = -0.15 * pot.hw * spill;
+        let roots = root_plans(&b, 14.0, &pot, off);
+        // How far from the pot's middle a root ends, on the soil.
+        let ends = |r: &RootPlan| {
+            (math::sq(off + r.reach * math::cos(r.az)) + math::sq(r.reach * math::sin(r.az))).sqrt()
+        };
+        assert!(
+            roots
+                .iter()
+                .filter(|r| math::cos(r.az) * spill > 0.5)
+                .all(|r| ends(r) >= pot.hw * 0.9),
+            "{roots:?}"
+        );
+        let over: Vec<&RootPlan> = roots.iter().filter(|r| r.drape > 0.0).collect();
+        assert_eq!(over.len(), 1, "{roots:?}");
+        assert!(math::cos(over[0].az) * spill > 0.7, "{roots:?}");
+        assert!(over[0].drape <= pot.depth / 5.0 + 1e-9, "{roots:?}");
+        assert!(over[0].thick > 1.2, "{roots:?}");
+    }
+
+    /// Other styles keep their roots as they were: inside the rim, none over
+    /// it, as long as `root_reach` makes them.
+    #[test]
+    fn other_styles_keep_their_roots() {
+        let pot = root_pot();
+        for style in [
+            crate::config::Style::Chokkan,
+            crate::config::Style::Moyogi,
+            crate::config::Style::Shakan,
+        ] {
+            let b = styled(style);
+            for r in root_plans(&b, 14.0, &pot, 0.0) {
+                assert_eq!(r.drape, 0.0, "{style:?}");
+                assert_eq!(r.thick, 1.0, "{style:?}");
+                assert!(
+                    (r.reach * math::cos(r.az)).abs() <= pot.hw * 0.78 + 1e-9,
+                    "{style:?}: {r:?}"
+                );
             }
         }
     }
