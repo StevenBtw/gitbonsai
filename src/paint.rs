@@ -2585,8 +2585,6 @@ mod tests {
         }
     }
 
-    /// A strand's groove starts as wide as the strand, then widens: at the
-    /// start it never pokes out of the trunk the strand leaves.
     /// A second trunk leaving the trunk low runs on down into the soil, so
     /// its start is cut at the soil, never a round end on the trunk's face;
     /// one leaving higher up keeps its start.
@@ -2609,6 +2607,8 @@ mod tests {
         assert_eq!(sunk.len(), 2);
     }
 
+    /// A strand's groove starts as wide as the strand, then widens: at the
+    /// start it never pokes out of the trunk the strand leaves.
     #[test]
     fn a_strands_groove_starts_at_its_own_width() {
         let seg: Vec<(f64, f64, f64)> = (0..19).map(|i| (0.0, -f64::from(i), 3.0)).collect();
