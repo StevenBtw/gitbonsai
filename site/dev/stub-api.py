@@ -31,13 +31,27 @@ WAITING = ["seedling", "a-long-login-still-waiting-to-grow-up"]
 def make_handler(args):
     entries = [
         {"login": l, "github_id": i + 1, "style": s, "languages": langs,
-         "added": f"2026-11-{21 - i:02d}T09:00:00Z", "grown": "2026-11-21T09:00:00Z", "stars": i % 3, "age_weeks": w}
+         "added": f"2026-11-{21 - i:02d}T09:00:00Z", "grown": "2026-11-21T09:00:00Z", "stars": i % 3, "age_weeks": w,
+         "progress": None}
         for i, (l, s, langs, w) in enumerate([] if args.empty else SEED)
     ]
     if not args.empty:  # shown, not grown yet: no style, picture or star
         entries[1:1] = [{"login": l, "github_id": 900 + i, "added": f"2026-11-{21 - i:02d}T12:00:00Z", "example": False,
-                         "stars": 0, "grown": None, "style": None, "languages": [], "age_weeks": None}
+                         "stars": 0, "grown": None, "style": None, "languages": [], "age_weeks": None, "progress": None}
                         for i, l in enumerate(WAITING)]
+        # The first waits its turn; the second grows 4 quarters a request, then is grown.
+        entries[2]["progress"] = {"done": 0, "total": 24}
+        # A grown tree being regrown keeps its picture; the page ignores its progress.
+        next(e for e in entries if e["login"] == "tj")["progress"] = {"done": 10, "total": 28}
+
+    def grow():
+        for e in entries:
+            p = e["progress"]
+            if e["grown"] is None and p:
+                p["done"] = min(p["done"] + 4, p["total"])
+                if p["done"] == p["total"]:
+                    e.update(grown="2026-11-22T12:00:00Z", style="moyogi", languages=["Python"], age_weeks=120,
+                             progress=None)
     stars = set()  # (client ip, lowercased login) pairs that are starred
     lock = threading.Lock()
 
@@ -71,7 +85,10 @@ def make_handler(args):
             q = dict(urllib.parse.parse_qsl(u.query, keep_blank_values=True))
             ip = self.client_address[0]
             if u.path == "/v1/gallery":
-                return self.send(200, {"entries": entries}, extra=[("Cache-Control", "public, max-age=60")])
+                with lock:
+                    grow()
+                    body = json.dumps({"entries": entries}).encode()
+                return self.send(200, body, extra=[("Cache-Control", "public, max-age=60")])
             if u.path == "/v1/gallery/starred":
                 with lock:
                     mine = [e["login"] for e in entries if (ip, e["login"].lower()) in stars]
@@ -178,7 +195,15 @@ def selftest(args):
     code, _, body = call(B)
     lst = json.loads(body)["entries"]
     grown = [e for e in lst if e["grown"]]
-    assert code == 200 and len(grown) == 8 and all(len(e) == 8 for e in grown) and len(lst) == 10, lst
+    assert code == 200 and len(grown) == 8 and all(len(e) == 9 for e in grown) and len(lst) == 10, lst
+    by = {e["login"]: e for e in lst}
+    assert by["seedling"]["progress"] is None and by["tj"]["progress"] == {"done": 10, "total": 28}
+    assert by[WAITING[1]]["progress"] == {"done": 4, "total": 24}, by[WAITING[1]]
+    for _ in range(5):
+        lst = json.loads(call(B)[2])["entries"]
+    late = next(e for e in lst if e["login"] == WAITING[1])
+    assert late["grown"] and late["style"] == "moyogi" and late["progress"] is None, late
+    lst = grown
     lst = grown
     before = lst[0]["stars"]
     a = json.loads(call(f"{B}/{lst[0]['login']}/star", "POST")[2])

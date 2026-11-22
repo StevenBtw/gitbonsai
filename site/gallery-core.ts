@@ -17,6 +17,13 @@ export interface Entry {
   stars: number;
   /** The tree's age in weeks; -1 when the API didn't say. */
   age_weeks: number;
+  /** How far its growth has come, in quarters of history fetched; null while it
+   *  waits its turn, and ignored on a grown tree, which keeps its picture. */
+  progress: Progress | null;
+}
+export interface Progress {
+  done: number;
+  total: number;
 }
 /** A tree that has grown, so it has a style and a picture. */
 export type Grown = Entry & { style: string; grown: string };
@@ -68,9 +75,35 @@ export function parseList(body: unknown): Entry[] {
   if (!Array.isArray(list)) return [];
   return list.filter(isEntry).map((e) => {
     const a = (e as { age_weeks?: unknown }).age_weeks;
-    return { ...e, age_weeks: typeof a === "number" && Number.isFinite(a) && a >= 0 ? Math.floor(a) : -1 };
+    return {
+      ...e,
+      age_weeks: typeof a === "number" && Number.isFinite(a) && a >= 0 ? Math.floor(a) : -1,
+      progress: parseProgress((e as { progress?: unknown }).progress),
+    };
   });
 }
+
+/** A `{done, total}` the bar can show: whole numbers, 0 <= done <= total, total > 0; null otherwise. */
+export function parseProgress(v: unknown): Progress | null {
+  if (!v || typeof v !== "object") return null;
+  const { done, total } = v as Record<string, unknown>;
+  if (!Number.isInteger(done) || !Number.isInteger(total)) return null;
+  const [d, t] = [done as number, total as number];
+  return d >= 0 && t > 0 && d <= t ? { done: d, total: t } : null;
+}
+
+/** How soon the page checks back, in ms: 5 s while a tree on show is growing,
+ *  30 s while the only ones not grown wait their turn (that can take a while),
+ *  null when every tree on show has grown. A grown tree being regrown keeps its
+ *  picture, so it never counts. */
+export function pollDelay(shown: Entry[]): number | null {
+  const waiting = shown.filter((e) => !isGrown(e));
+  if (!waiting.length) return null;
+  return waiting.some((e) => e.progress) ? 5000 : 30000;
+}
+
+/** What the bar says: "41 of 64 quarters". */
+export const progressText = (p: Progress): string => `${p.done} of ${p.total} ${p.total === 1 ? "quarter" : "quarters"}`;
 
 /** The age brackets, youngest first: [key, label]. The key is the first year of the bracket. */
 export const AGES: readonly (readonly [string, string])[] = [
