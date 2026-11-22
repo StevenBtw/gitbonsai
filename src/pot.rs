@@ -428,7 +428,11 @@ pub fn size(b: &Bonsai, scene: &Scene, base_r: f64, glaze: Rgb) -> Pot {
 /// Gives where a pot's feet start and end, top to bottom: tucked up behind
 /// the curve of its foot, peeking out below it.
 fn feet_span(pot: &Pot) -> (f64, f64) {
-    let top = SOIL_Y + pot.depth + pot.ry * 0.62;
+    let top = if pot.shape == Shape::Rect {
+        SOIL_Y + pot.depth + pot.ry - 2.0
+    } else {
+        SOIL_Y + pot.depth + pot.ry * 0.62
+    };
     (top, top + 6.0 + pot.ry * 0.2)
 }
 
@@ -499,6 +503,9 @@ fn feet(level: u8, pot: &Pot) -> String {
 /// Draws the pot's top as seen from a little above: a lighter rim ring, the
 /// dark inside of the wall at the back, and the soil set a little lower.
 pub fn top(pot: &Pot, soil: Rgb) -> String {
+    if pot.shape == Shape::Rect {
+        return top_rect(pot, soil);
+    }
     format!(
         r#"<ellipse cx="{CENTER_X}" cy="{SOIL_Y}" rx="{}" ry="{}" fill="{}"/><ellipse cx="{CENTER_X}" cy="{}" rx="{}" ry="{}" fill="{}"/><ellipse cx="{CENTER_X}" cy="{}" rx="{}" ry="{}" fill="{soil}"/>"#,
         Num(pot.hw),
@@ -592,6 +599,11 @@ pub fn moss(b: &Bonsai, paints: &Paints, pot: &Pot) -> (String, String) {
 /// The pot's front wall, lit from the left, with its tier's details: a left
 /// tree's is mirrored.
 pub fn front(b: &Bonsai, pot: &Pot) -> String {
+    match pot.shape {
+        Shape::Bowl => return front_bowl(b, pot),
+        Shape::Rect => return front_rect(b, pot),
+        Shape::Oval => {}
+    }
     let Pot {
         hw,
         ry,
@@ -721,6 +733,9 @@ const SHADE: [(f64, f64); 2] = [(0.2, -0.035), (0.38, -0.07)];
 /// the wall is, edge to edge with it. Lit from the left: mirror it for a
 /// left tree.
 pub fn rim(pot: &Pot) -> String {
+    if pot.shape == Shape::Rect {
+        return rim_rect(pot);
+    }
     let Pot { hw, ry, glaze, .. } = *pot;
     // Half over the soil's edge, half down the wall, as thick as a rim reads.
     let (top, lip) = (ry - 1.2, ry + 1.2);
@@ -745,6 +760,9 @@ pub fn rim(pot: &Pot) -> String {
 /// The pot's carved bands (tier 5 and up) and maker's seal (tier 6 and up),
 /// drawn after the kintsugi: the gold mends the clay under them.
 pub fn marks(b: &Bonsai, pot: &Pot) -> String {
+    if pot.shape != Shape::Oval {
+        return String::new();
+    }
     let Pot {
         hw,
         ry,
@@ -786,6 +804,443 @@ pub fn marks(b: &Bonsai, pot: &Pot) -> String {
     }
     // On the wall, as clipped in [`pot_front`]: a band's ends curve out past it.
     format!(r#"<g clip-path="url(#pw)">{s}</g>"#)
+}
+
+/// The scale of a pot's small details: 1 at a pot 200 wide.
+fn detail(pot: &Pot) -> f64 {
+    (pot.hw / 100.0).clamp(0.4, 2.0)
+}
+
+/// Writes the shade steps over a wall already drawn in its glaze: lit from
+/// the left, two darker steps to the right.
+fn shade_steps(s: &mut String, pot: &Pot, top: f64, bottom: f64) {
+    for (f, tone) in SHADE {
+        let _ = write!(
+            s,
+            r#"<rect x="{}" y="{}" width="{}" height="{}" fill="{}"/>"#,
+            Num(CENTER_X + pot.hw * f),
+            Num(top),
+            Num(pot.hw * 1.3),
+            Num(bottom - top + 2.0),
+            pot.glaze.shift(tone, 0.0)
+        );
+    }
+}
+
+/// Draws the hobnail bowl: a round belly, raised amber nubs in staggered
+/// rows on its glaze, a green glaze running down in drips, a plain rim band
+/// and a gloss streak, on a wooden saucer.
+fn front_bowl(b: &Bonsai, pot: &Pot) -> String {
+    let (hw, ry, d, bw) = (pot.hw, pot.ry, pot.depth, pot.bw);
+    let (cx, rim) = (CENTER_X, SOIL_Y);
+    let by = rim + d;
+    let k = detail(pot);
+    let mut s = String::new();
+    // The saucer, behind and under the bowl.
+    let (sx, sy) = (bw * 1.32, ry * bw / hw * 0.8);
+    let _ = write!(
+        s,
+        r##"<ellipse cx="{cx}" cy="{}" rx="{}" ry="{}" fill="#8c5d31"/><ellipse cx="{cx}" cy="{}" rx="{}" ry="{}" fill="#cf9c62"/><g fill="none" stroke="#a87442" stroke-width=".7" opacity=".6"><ellipse cx="{cx}" cy="{}" rx="{}" ry="{}"/><ellipse cx="{cx}" cy="{}" rx="{}" ry="{}"/></g>"##,
+        Num(by + 4.0 * k),
+        Num(sx),
+        Num(sy),
+        Num(by + 2.0 * k),
+        Num(sx),
+        Num(sy),
+        Num(by + 2.0 * k),
+        Num(sx * 0.86),
+        Num(sy * 0.86),
+        Num(by + 2.0 * k),
+        Num(sx * 0.95),
+        Num(sy * 0.95),
+    );
+    let mut wall = PathData::new();
+    wall.m((cx - hw, rim))
+        .a(hw, ry, false, (cx + hw, rim))
+        .c(
+            (cx + hw * 1.07, rim + d * 0.42),
+            (cx + bw * 1.22, by),
+            (cx + bw, by),
+        )
+        .a(bw, ry * bw / hw, true, (cx - bw, by))
+        .c(
+            (cx - bw * 1.22, by),
+            (cx - hw * 1.07, rim + d * 0.42),
+            (cx - hw, rim),
+        )
+        .z();
+    let _ = write!(
+        s,
+        r#"<clipPath id="pw"><path d="{w}"/></clipPath><path d="{w}" fill="{}"/><g clip-path="url(#pw)">"#,
+        pot.glaze,
+        w = wall.as_str()
+    );
+    shade_steps(&mut s, pot, rim, by + ry);
+    // The green runs down from about three quarters, in drips of uneven
+    // length, with a lighter edge where it meets the glaze above.
+    let mut r = Rng::keyed(b.account_id, "pot/bowl");
+    let edge_y = rim + d * 0.72;
+    let (mut run, mut edge) = (PathData::coarse(), PathData::coarse());
+    run.m((cx - hw * 1.2, edge_y));
+    edge.m((cx - hw * 1.2, edge_y - 1.2 * k));
+    let mut x = cx - hw * 1.2;
+    while x < cx + hw * 1.2 {
+        let w = r.range(7.0, 13.0) * k;
+        let dip = if r.unit() < 0.6 {
+            r.range(2.0, 10.0)
+        } else {
+            r.range(10.0, 16.0)
+        } * k
+            * 0.8;
+        run.q((x + w / 2.0, edge_y + dip), (x + w, edge_y));
+        edge.q(
+            (x + w / 2.0, edge_y + dip - 1.2 * k),
+            (x + w, edge_y - 1.2 * k),
+        );
+        x += w;
+    }
+    for p in [&mut run, &mut edge] {
+        p.l((cx + hw * 1.3, by + ry * 2.0))
+            .l((cx - hw * 1.3, by + ry * 2.0))
+            .z();
+    }
+    let _ = write!(
+        s,
+        r##"<path d="{}" fill="#c3b24a"/><path d="{}" fill="#93a52f"/>"##,
+        edge.as_str(),
+        run.as_str()
+    );
+    // Raised nubs in staggered rows that follow the curve: one drawn, all
+    // reused.
+    s.push_str(r##"<defs><g id="nub"><ellipse cy="1.3" rx="2.2" ry="2.5" fill="#1e0f04" opacity=".55"/><path d="M0-2.6C1.6-1 2 .6 0 2C-2 .6-1.6-1 0-2.6Z" fill="#d9a03c"/><ellipse cx="-.6" cy="-.9" rx=".55" ry=".75" fill="#fff3c4" opacity=".85"/></g></defs>"##);
+    let (tb, wb) = BELLY;
+    for (row, frac) in [0.22_f64, 0.38, 0.54, 0.7, 0.86].into_iter().enumerate() {
+        let belly = math::sin(std::f64::consts::PI * frac / (2.0 * tb)).max(0.0);
+        let half = hw + (bw * 1.1 - hw) * math::pow(frac, 1.6) + hw * (wb - 1.0) * belly;
+        let stagger = if row % 2 == 1 { 0.5 } else { 0.0 };
+        let n = 13;
+        for i in 0..n {
+            let t = (f64::from(i) + stagger + 0.25) / f64::from(n);
+            let a = std::f64::consts::PI * (1.0 - t);
+            let sc = (0.55 + 0.45 * math::sin(a))
+                * (0.85 + 0.25 * math::sin(std::f64::consts::PI * frac))
+                * k;
+            let _ = write!(
+                s,
+                r##"<use href="#nub" transform="translate({} {})scale({} {})"/>"##,
+                Num::coarse(cx + half * math::cos(a) * 0.96),
+                Num::coarse(rim + d * frac + ry * 0.75 * math::sin(a) * (1.0 - frac * 0.35)),
+                Num::coarse(sc * 1.05),
+                Num::coarse(sc * 1.25)
+            );
+        }
+    }
+    // The plain rim band's groove, and a gloss streak on the lit side.
+    let _ = write!(
+        s,
+        r##"<path d="M{} {}A{} {} 0 0 0 {} {}" fill="none" stroke="#24130a" stroke-width="1.2" opacity=".7"/><path d="M{} {}Q{} {} {} {}" fill="none" stroke="#fff" stroke-opacity=".22" stroke-width="{}" stroke-linecap="round"/>"##,
+        Num(cx - hw * 0.99),
+        Num(rim + 5.5 * k),
+        Num(hw * 0.99),
+        Num(ry),
+        Num(cx + hw * 0.99),
+        Num(rim + 5.5 * k),
+        Num(cx - hw * 0.78),
+        Num(rim + d * 0.16),
+        Num(cx - hw * 0.9),
+        Num(rim + d * 0.45),
+        Num(cx - hw * 0.66),
+        Num(rim + d * 0.78),
+        Num(3.0 * k)
+    );
+    s.push_str("</g>");
+    s
+}
+
+/// How far a rectangle's lip reaches past its wall on each side, and how
+/// deep the lip band is.
+fn lip_of(pot: &Pot) -> (f64, f64) {
+    let k = detail(pot);
+    match pot.level {
+        10 => (12.0 * k, 8.0 * k),
+        9 => (5.0 * k, 7.0 * k),
+        _ => (4.0 * k, 7.0 * k),
+    }
+}
+
+/// Writes `n` dots in one group, all in `fill`, scattered over the face of a
+/// rectangle between `y0` and `y1`.
+#[allow(clippy::too_many_arguments, reason = "one call per kind of speckle")]
+fn speckle(
+    s: &mut String,
+    r: &mut Rng,
+    pot: &Pot,
+    (y0, y1): (f64, f64),
+    n: usize,
+    fill: &str,
+    opacity: &str,
+    size: (f64, f64),
+) {
+    let k = detail(pot);
+    let _ = write!(s, r#"<g fill="{fill}" opacity="{opacity}">"#);
+    for _ in 0..n {
+        let _ = write!(
+            s,
+            r#"<circle cx="{}" cy="{}" r="{}"/>"#,
+            Num::coarse(CENTER_X + r.range(-1.0, 1.0) * pot.hw),
+            Num::coarse(r.range(y0, y1)),
+            Num::coarse(r.range(size.0, size.1) * k)
+        );
+    }
+    s.push_str("</g>");
+}
+
+/// Draws a rectangle's front: its feet, then its face under the lip,
+/// tapering to the foot, with each model's finish.
+fn front_rect(b: &Bonsai, pot: &Pot) -> String {
+    let (hw, ry, d, bw) = (pot.hw, pot.ry, pot.depth, pot.bw);
+    let cx = CENTER_X;
+    let k = detail(pot);
+    let (_, lip_h) = lip_of(pot);
+    let y0 = SOIL_Y + ry + lip_h;
+    let by = SOIL_Y + ry + d;
+    let mut s = feet(pot.level, pot);
+    let mut face = PathData::new();
+    match pot.level {
+        // Gently bulging sides, widest a third of the way down.
+        9 => {
+            face.m((cx - hw, y0))
+                .l((cx + hw, y0))
+                .c(
+                    (cx + hw * 1.03, y0 + (by - y0) * 0.3),
+                    (cx + bw * 1.02, by - 4.0 * k),
+                    (cx + bw, by),
+                )
+                .l((cx - bw, by))
+                .c(
+                    (cx - bw * 1.02, by - 4.0 * k),
+                    (cx - hw * 1.03, y0 + (by - y0) * 0.3),
+                    (cx - hw, y0),
+                );
+        }
+        // Tapering to the foot, with rounded corners.
+        10 => {
+            let cr = 9.0 * k;
+            face.m((cx - hw, y0))
+                .l((cx + hw, y0))
+                .l((cx + bw + cr * 0.3, by - cr))
+                .q((cx + bw, by), (cx + bw - cr, by))
+                .l((cx - bw + cr, by))
+                .q((cx - bw, by), (cx - bw - cr * 0.3, by - cr));
+        }
+        _ => {
+            face.m((cx - hw, y0))
+                .l((cx + hw, y0))
+                .l((cx + bw, by))
+                .l((cx - bw, by));
+        }
+    }
+    face.z();
+    let _ = write!(
+        s,
+        r#"<clipPath id="pw"><path d="{f}"/></clipPath><path d="{f}" fill="{}"/><g clip-path="url(#pw)">"#,
+        pot.glaze,
+        f = face.as_str()
+    );
+    shade_steps(&mut s, pot, y0, by);
+    let mut r = Rng::keyed(b.account_id, "pot/rect");
+    match pot.level {
+        // Vintage clay: fine grain, a faint mineral bloom near the foot, a
+        // carved panel, the maker's chop pressed into the clay.
+        8 => {
+            speckle(
+                &mut s,
+                &mut r,
+                pot,
+                (y0, by),
+                45,
+                "#4a2116",
+                ".45",
+                (0.3, 0.7),
+            );
+            speckle(
+                &mut s,
+                &mut r,
+                pot,
+                (y0, by),
+                25,
+                "#b07a5c",
+                ".4",
+                (0.3, 0.7),
+            );
+            s.push_str(r##"<g fill="#e8dccb" opacity=".13">"##);
+            for _ in 0..5 {
+                let _ = write!(
+                    s,
+                    r#"<ellipse cx="{}" cy="{}" rx="{}" ry="{}"/>"#,
+                    Num::coarse(cx + r.range(-0.8, 0.8) * bw),
+                    Num::coarse(by - r.range(2.0, 9.0) * k),
+                    Num::coarse(r.range(8.0, 18.0) * k),
+                    Num::coarse(r.range(1.5, 3.0) * k)
+                );
+            }
+            s.push_str("</g>");
+            let (px0, px1) = (
+                cx - f64::midpoint(hw, bw) + 8.0 * k,
+                cx + f64::midpoint(hw, bw) - 8.0 * k,
+            );
+            let (py0, py1) = (y0 + 6.0 * k, by - 8.0 * k);
+            let _ = write!(
+                s,
+                r##"<path d="M{} {}H{}L{} {}H{}Z" fill="none" stroke="#3d1a10" stroke-width="{}" opacity=".75"/><path d="M{} {}H{}" stroke="#b4795a" stroke-width=".8" opacity=".6"/>"##,
+                Num(px0),
+                Num(py0),
+                Num(px1),
+                Num(px1 - 2.0 * k),
+                Num(py1),
+                Num(px0 + 2.0 * k),
+                Num(1.3 * k),
+                Num(px0 + k),
+                Num(py0 + 1.3 * k),
+                Num(px1 - k)
+            );
+            let _ = write!(
+                s,
+                r##"<g class="chop" transform="translate({} {})scale({})"><rect width="8" height="8" rx=".6" fill="#3f1c12" opacity=".8"/><path d="M2 2h4M2 4h4M4 2v4" stroke="#9c6449" stroke-width=".6"/></g>"##,
+                Num(px1 - 13.0 * k),
+                Num(py1 - 12.0 * k),
+                Num(k)
+            );
+        }
+        // Glossy cobalt: long glassy highlights, a darker foot.
+        9 => {
+            let _ = write!(
+                s,
+                r##"<g class="gloss" stroke="#fff" stroke-linecap="round"><path d="M{} {}H{}" stroke-opacity=".28" stroke-width="{}"/><path d="M{} {}H{}" stroke-opacity=".16" stroke-width="{}"/></g><rect x="{}" y="{}" width="{}" height="{}" fill="{}" opacity=".6"/>"##,
+                Num(cx - hw * 0.85),
+                Num(y0 + (by - y0) * 0.22),
+                Num(cx + hw * 0.15),
+                Num(2.2 * k),
+                Num(cx - hw * 0.7),
+                Num(y0 + (by - y0) * 0.32),
+                Num(cx - hw * 0.1),
+                Num(1.4 * k),
+                Num(cx - hw * 1.1),
+                Num(by - 9.0 * k),
+                Num(hw * 2.2),
+                Num(12.0 * k),
+                pot.glaze.shift(-0.2, 0.0)
+            );
+        }
+        // Speckled green: dark and light speckles, a raised band, a line
+        // above the foot.
+        _ => {
+            speckle(
+                &mut s,
+                &mut r,
+                pot,
+                (y0, by),
+                90,
+                "#173a2e",
+                ".7",
+                (0.35, 1.0),
+            );
+            speckle(
+                &mut s,
+                &mut r,
+                pot,
+                (y0, by),
+                35,
+                "#b9d8c4",
+                ".6",
+                (0.35, 1.0),
+            );
+            let band = y0 + (by - y0) * 0.46;
+            let strip = |y: f64, h: f64, fill: Rgb| {
+                format!(
+                    r#"<rect x="{}" y="{}" width="{}" height="{}" fill="{fill}"/>"#,
+                    Num(cx - hw * 1.1),
+                    Num(y),
+                    Num(hw * 2.2),
+                    Num(h)
+                )
+            };
+            s.push_str(&strip(band, 3.2 * k, pot.glaze.shift(-0.15, 0.0)));
+            s.push_str(&strip(band - 1.4 * k, 1.4 * k, pot.glaze.shift(0.1, 0.0)));
+            s.push_str(&strip(by - 7.0 * k, 2.0 * k, pot.glaze.shift(-0.14, 0.0)));
+        }
+    }
+    s.push_str("</g>");
+    s
+}
+
+/// Draws a rectangle's lip band across its front, lit from the left: the
+/// speckled green's flares out and curves back under, the vintage clay's
+/// edges are worn lighter.
+fn rim_rect(pot: &Pot) -> String {
+    let (hw, ry) = (pot.hw, pot.ry);
+    let cx = CENTER_X;
+    let k = detail(pot);
+    let (over, lip_h) = lip_of(pot);
+    let lipw = hw + over;
+    let (y, y1) = (SOIL_Y + ry, SOIL_Y + ry + lip_h);
+    let band = |from: f64, fill: Rgb| {
+        let mut p = PathData::new();
+        p.m((from, y)).l((cx + lipw, y));
+        if pot.level == 10 {
+            p.q((cx + lipw, y1), (cx + hw, y1));
+        } else {
+            p.l((cx + lipw - k, y1));
+        }
+        if from < cx - hw {
+            if pot.level == 10 {
+                p.l((cx - hw, y1)).q((cx - lipw, y1), (cx - lipw, y));
+            } else {
+                p.l((cx - lipw + k, y1));
+            }
+        } else {
+            p.l((from, y1));
+        }
+        p.z();
+        format!(r#"<path d="{}" fill="{fill}"/>"#, p.as_str())
+    };
+    let mut s = band(cx - lipw, pot.glaze.shift(0.08, 0.0));
+    s.push_str(&band(cx + hw * 0.2, pot.glaze));
+    let edge = if pot.level == 8 { "#c99476" } else { "#fff" };
+    let _ = write!(
+        s,
+        r#"<path d="M{} {}H{}" stroke="{edge}" stroke-opacity=".35" stroke-width="{}" stroke-linecap="round"/>"#,
+        Num(cx - lipw + 5.0 * k),
+        Num(y + 1.4 * k),
+        Num(cx - lipw * 0.2),
+        Num(k)
+    );
+    s
+}
+
+/// Draws a rectangle's top from a little above: a lighter rim frame, the
+/// dark inside of the wall at the back, the soil set a little lower.
+fn top_rect(pot: &Pot, soil: Rgb) -> String {
+    let (hw, ry) = (pot.hw, pot.ry);
+    let cx = CENTER_X;
+    let k = detail(pot);
+    let (over, _) = lip_of(pot);
+    let lipw = hw + over;
+    let quad = |inset: f64, drop: f64, fill: Rgb| {
+        format!(
+            r#"<path d="M{} {}H{}L{} {}H{}Z" fill="{fill}"/>"#,
+            Num(cx - lipw + 4.0 * k + inset),
+            Num(SOIL_Y - ry + inset * 0.6 + drop),
+            Num(cx + lipw - 4.0 * k - inset),
+            Num(cx + lipw - inset),
+            Num(SOIL_Y + ry - inset * 0.6),
+            Num(cx - lipw + inset)
+        )
+    };
+    let mut s = quad(0.0, 0.0, pot.glaze.shift(0.12, 0.0));
+    s.push_str(&quad(4.0 * k, 0.0, pot.glaze.shift(-0.25, 0.0)));
+    s.push_str(&quad(5.0 * k, 1.6 * k, soil));
+    s
 }
 
 #[cfg(test)]
@@ -941,6 +1396,45 @@ mod tests {
                 !svg.contains("NaN") && !svg.contains("inf"),
                 "level {level}"
             );
+        }
+    }
+
+    /// The new pots stay cheap, so a heavy crown keeps its leaves under the
+    /// SVG budget: under 9 KB each at a 244 pot.
+    #[test]
+    fn new_pots_stay_cheap() {
+        let mut b = crate::Bonsai::grow(
+            &crate::fixtures::by_name("steady").unwrap().snapshot,
+            &Config::default(),
+            None,
+        );
+        for level in 7..11u8 {
+            b.extras.pot_tier = level;
+            let m = model(level);
+            let d = dims(
+                &Need {
+                    width: 244.0,
+                    trunk_depth: 40.0,
+                    cascade: 0.0,
+                    spill: None,
+                    base_r: 20.0,
+                },
+                m,
+            );
+            let pot = Pot {
+                hw: d.hw,
+                ry: d.ry,
+                depth: d.depth,
+                bw: d.bw,
+                glaze: Rgb::hex(m.glaze),
+                shape: m.shape,
+                level,
+            };
+            let bytes = front(&b, &pot).len()
+                + rim(&pot).len()
+                + marks(&b, &pot).len()
+                + top(&pot, Rgb::hex(0x5a4632)).len();
+            assert!(bytes < 9_000, "level {level}: {bytes} bytes");
         }
     }
 

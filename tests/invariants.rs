@@ -942,6 +942,62 @@ fn explain_shows_the_trees_size() {
     assert!(number("size") > 100.0);
 }
 
+/// Two trees in one row, both in the hobnail bowl, keep every id their own.
+#[test]
+fn a_row_of_two_bowls_keeps_its_ids_unique() {
+    let mut b = grow("veteran");
+    b.extras.pot_tier = 7;
+    let svg = render::svg(&b, &Config::default(), Theme::Light);
+    let row = gitbonsai::row::row(
+        &[("a".into(), svg.clone()), ("b".into(), svg)],
+        Theme::Light,
+    );
+    let mut ids: Vec<&str> = row
+        .split(r#"id=""#)
+        .skip(1)
+        .filter_map(|s| s.split('"').next())
+        .collect();
+    let n = ids.len();
+    ids.sort_unstable();
+    ids.dedup();
+    assert_eq!(ids.len(), n, "an id appears twice in the row");
+}
+
+/// A tree lit from its other side mirrors its whole pot, the new pots' gloss
+/// and chop included.
+#[test]
+fn a_left_lit_tree_mirrors_its_whole_pot() {
+    let mut seen = 0;
+    for f in fixtures::all() {
+        let mut b = Bonsai::grow(&f.snapshot, &Config::default(), None);
+        if b.is_empty() {
+            continue;
+        }
+        for level in [8u8, 9] {
+            b.extras.pot_tier = level;
+            let svg = render::svg(&b, &Config::default(), Theme::Light);
+            let Some(mirror) = svg.find("matrix(-1 0 0 1") else {
+                continue;
+            };
+            seen += 1;
+            let mark = if level == 8 {
+                "class=\"chop\""
+            } else {
+                "class=\"gloss\""
+            };
+            let at = svg
+                .find(mark)
+                .unwrap_or_else(|| panic!("{} level {level}: no {mark}", f.name));
+            assert!(
+                at > mirror,
+                "{} level {level}: {mark} drawn outside the mirror",
+                f.name
+            );
+        }
+    }
+    assert!(seen > 0, "no fixture is lit from the left");
+}
+
 /// A tree with no contributions yet is a seedling in its training pot, with
 /// a rim, in the middle of its frame.
 #[test]
@@ -1137,8 +1193,10 @@ fn a_language_picked_up_this_week_is_alive() {
 /// never runs across them.
 #[test]
 fn kintsugi_runs_under_the_bands_and_seal() {
-    let b = grow("veteran");
-    assert!(b.extras.pot_tier >= 6 && !b.archived.is_empty());
+    let mut b = grow("veteran");
+    assert_ne!(b.archived.len(), 0, "the veteran has archived repos");
+    // The antique pot: its carved bands and maker's seal.
+    b.extras.pot_tier = 6;
     let svg = render::svg(&b, &Config::default(), Theme::Light);
     let gold = svg.find(r#"clip-path="url(#pc)""#).expect("kintsugi");
     let seal = svg.find(r##"fill="#7a2e22""##).expect("a maker's seal");
