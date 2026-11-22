@@ -24,6 +24,189 @@ use crate::rng::Rng;
 use crate::scene::{Scene, TILT, project};
 use crate::style::{CENTER_X, SOIL_Y};
 
+/// The outline a pot is built on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Shape {
+    /// An oval: an elliptical rim over a tapering wall.
+    Oval,
+    /// A deep round bowl with a belly.
+    Bowl,
+    /// A rectangle seen from a little above.
+    Rect,
+}
+
+/// The feet a pot stands on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Feet {
+    /// No feet: the pot stands on its base.
+    None,
+    /// Two small plain feet.
+    Plain,
+    /// Two carved cloud feet.
+    Cloud,
+    /// Two bracket feet with a notch.
+    Bracket,
+    /// Small blocks under the corners.
+    Corner,
+    /// Small rounded feet.
+    Round,
+}
+
+/// One pot of the ladder, as data: its shape, glaze and feet.
+#[derive(Debug, Clone, Copy)]
+pub struct Model {
+    /// Its name, as `explain` gives it.
+    pub name: &'static str,
+    /// The outline it is built on.
+    pub shape: Shape,
+    /// Its glaze, or its clay when unglazed.
+    pub glaze: u32,
+    /// Whether it is glazed: only a glazed pot takes `[pot] glaze`.
+    pub glazed: bool,
+    /// How much deeper than the trunk rule it is drawn.
+    pub depth_factor: f64,
+    /// What it stands on.
+    pub feet: Feet,
+    /// Its feet's colour, or `None` for a darker shade of the pot.
+    pub feet_color: Option<u32>,
+}
+
+const fn pot(
+    name: &'static str,
+    shape: Shape,
+    glaze: u32,
+    glazed: bool,
+    depth_factor: f64,
+    feet: Feet,
+    feet_color: Option<u32>,
+) -> Model {
+    Model {
+        name,
+        shape,
+        glaze,
+        glazed,
+        depth_factor,
+        feet,
+        feet_color,
+    }
+}
+
+/// The ladder: the pot of each level, earned by the longest streak
+/// ([`crate::extras::POT_TIERS`]). Round pots first, then the bowl, then
+/// the rectangles.
+pub const MODELS: [Model; 11] = [
+    pot(
+        "training pot",
+        Shape::Oval,
+        0x2e2e2e,
+        false,
+        1.0,
+        Feet::None,
+        None,
+    ),
+    pot(
+        "terracotta",
+        Shape::Oval,
+        0xb5653f,
+        false,
+        1.0,
+        Feet::None,
+        None,
+    ),
+    pot(
+        "clay pot on feet",
+        Shape::Oval,
+        0x6b4e3d,
+        false,
+        1.0,
+        Feet::Plain,
+        None,
+    ),
+    pot(
+        "blue glazed oval",
+        Shape::Oval,
+        0x3e5c76,
+        true,
+        1.0,
+        Feet::Plain,
+        Some(0x8b8e91),
+    ),
+    pot(
+        "celadon on cloud feet",
+        Shape::Oval,
+        0x8fb5a0,
+        true,
+        1.0,
+        Feet::Cloud,
+        Some(0xc4a568),
+    ),
+    pot(
+        "crackle with a carved band",
+        Shape::Oval,
+        0x5f7d86,
+        true,
+        1.0,
+        Feet::Cloud,
+        Some(0xddd8cc),
+    ),
+    pot(
+        "antique",
+        Shape::Oval,
+        0x5a4636,
+        true,
+        1.0,
+        Feet::Cloud,
+        Some(0xc9a23a),
+    ),
+    pot(
+        "hobnail bowl",
+        Shape::Bowl,
+        0x4b2a0f,
+        true,
+        1.6,
+        Feet::None,
+        None,
+    ),
+    pot(
+        "vintage clay rectangle",
+        Shape::Rect,
+        0x7a3f2c,
+        false,
+        1.5,
+        Feet::Cloud,
+        None,
+    ),
+    pot(
+        "glossy cobalt rectangle",
+        Shape::Rect,
+        0x23468f,
+        true,
+        1.0,
+        Feet::Round,
+        Some(0x8a4a2e),
+    ),
+    pot(
+        "speckled green rectangle",
+        Shape::Rect,
+        0x3e8a70,
+        true,
+        1.0,
+        Feet::Bracket,
+        None,
+    ),
+];
+
+/// Gives the pot of `level`; past the top you get the top pot.
+pub fn model(level: u8) -> &'static Model {
+    &MODELS[usize::from(level).min(MODELS.len() - 1)]
+}
+
+/// The look of today's drawing for `level`, until each pot draws as its
+/// model: the round pots keep theirs, the new ones stand in as the antique.
+fn look(level: u8) -> u8 {
+    level.min(6)
+}
+
 /// The pot, as drawn: half-width, rim half-height, depth, foot half-width.
 #[derive(Debug, Clone, Copy)]
 pub struct Pot {
@@ -79,19 +262,19 @@ pub fn size(b: &Bonsai, scene: &Scene, base_r: f64, glaze: Rgb) -> Pot {
     }
 }
 
-/// The glaze for the pot tier; the config glaze applies from tier 3.
-pub fn glaze(tier: u8, config: &Config, paints: &Paints) -> Rgb {
-    let glaze = config.pot.glaze;
-    let body = match tier {
-        0 => paints.plastic,
-        1 => Rgb::hex(0xb5653f),
-        2 => Rgb::hex(0x6b4e3d),
-        3 => glaze.unwrap_or(Rgb::hex(0x3e5c76)),
-        4 => glaze.unwrap_or(Rgb::hex(0x8fb5a0)),
-        5 => glaze.unwrap_or(Rgb::hex(0x5f7d86)),
-        _ => glaze.unwrap_or(Rgb::hex(0x5a4636)),
+/// Gives the pot's glaze for `level`: the model's, or the configured glaze
+/// on a glazed pot; lifted a little on the dark theme, except the plastic
+/// training pot, which takes the theme's own plastic.
+pub fn glaze(level: u8, config: &Config, paints: &Paints) -> Rgb {
+    let m = model(level);
+    let body = if level == 0 {
+        paints.plastic
+    } else if m.glazed {
+        config.pot.glaze.unwrap_or(Rgb::hex(m.glaze))
+    } else {
+        Rgb::hex(m.glaze)
     };
-    if tier > 0 && paints.dark {
+    if level > 0 && paints.dark {
         body.shift(0.05, 0.0)
     } else {
         body
@@ -158,7 +341,7 @@ pub fn front(b: &Bonsai, pot: &Pot) -> String {
         bw,
         glaze,
     } = *pot;
-    let tier = b.extras.pot_tier;
+    let tier = look(b.extras.pot_tier);
     let bottom = SOIL_Y + depth;
     let dark = glaze.shift(-0.08, 0.0);
     let mut s = String::new();
@@ -334,7 +517,7 @@ pub fn marks(b: &Bonsai, pot: &Pot) -> String {
         bw,
         glaze,
     } = *pot;
-    let tier = b.extras.pot_tier;
+    let tier = look(b.extras.pot_tier);
     let dark = glaze.shift(-0.08, 0.0);
     let mut s = String::new();
     if tier >= 5 {
@@ -367,4 +550,31 @@ pub fn marks(b: &Bonsai, pot: &Pot) -> String {
     }
     // On the wall, as clipped in [`pot_front`]: a band's ends curve out past it.
     format!(r#"<g clip-path="url(#pw)">{s}</g>"#)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Eight round pots first, then the bowl, then three rectangles, each
+    /// earned by a longer streak.
+    #[test]
+    fn the_ladder_runs_round_then_the_bowl_then_rectangles() {
+        let shapes: Vec<Shape> = (0..11).map(|l| model(l).shape).collect();
+        assert!(shapes[..7].iter().all(|s| *s == Shape::Oval), "{shapes:?}");
+        assert_eq!(shapes[7], Shape::Bowl);
+        assert!(shapes[8..].iter().all(|s| *s == Shape::Rect), "{shapes:?}");
+        assert_eq!(model(10).name, "speckled green rectangle");
+        assert_eq!(
+            crate::extras::POT_TIERS,
+            [4, 13, 26, 39, 52, 78, 104, 136, 174, 216]
+        );
+    }
+
+    /// Only glazed pots take a configured glaze.
+    #[test]
+    fn unglazed_pots_keep_their_clay() {
+        let glazed: Vec<u8> = (0..11).filter(|&l| model(l).glazed).collect();
+        assert_eq!(glazed, vec![3, 4, 5, 6, 7, 9, 10]);
+    }
 }

@@ -11,8 +11,9 @@ pub const LEVELS: [f64; 11] = [
     300_000.0,
 ];
 
-/// Longest-streak thresholds, in weeks, of pot tiers 1 through 6.
-pub const POT_TIERS: [u32; 6] = [4, 13, 26, 52, 104, 208];
+/// Longest-streak thresholds, in weeks, of pot levels 1 through 10
+/// ([`crate::pot::MODELS`]).
+pub const POT_TIERS: [u32; 10] = [4, 13, 26, 39, 52, 78, 104, 136, 174, 216];
 
 /// Weeks over which moss recedes after a streak ends.
 pub const MOSS_RECEDE_WEEKS: f64 = 8.0;
@@ -62,7 +63,7 @@ impl Extras {
 
         let (level, bloom) = blossoms(timeline);
 
-        #[allow(clippy::cast_possible_truncation, reason = "at most 6")]
+        #[allow(clippy::cast_possible_truncation, reason = "at most 10")]
         let pot_tier = tier as u8;
         Self {
             nebari: n,

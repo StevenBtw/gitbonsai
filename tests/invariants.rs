@@ -942,6 +942,17 @@ fn explain_shows_the_trees_size() {
     assert!(number("size") > 100.0);
 }
 
+/// `explain` names the tree's pot with its level.
+#[test]
+fn explain_names_the_pot() {
+    let report = gitbonsai::explain::report(&grow("showcase"));
+    let line = report
+        .lines()
+        .find(|l| l.trim_start().starts_with("pot "))
+        .unwrap_or_else(|| panic!("no pot line in\n{report}"));
+    assert!(line.contains("level 3, blue glazed oval"), "{line}");
+}
+
 /// Work declared in `[leaves.private_periods]` is that language everywhere:
 /// its own color, a place in the legend, and in `explain`.
 #[test]

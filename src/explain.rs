@@ -211,7 +211,12 @@ pub fn report(b: &Bonsai) -> String {
         e.longest_streak
     );
     let _ = writeln!(out, "  moss                {}", pct(e.moss));
-    let _ = writeln!(out, "  pot tier            {}", e.pot_tier);
+    let _ = writeln!(
+        out,
+        "  pot                 level {}, {}",
+        e.pot_tier,
+        crate::pot::model(e.pot_tier).name
+    );
     let _ = writeln!(
         out,
         "  level               {} (samaras on {} of side leaves)",
