@@ -2,6 +2,21 @@
 
 All notable changes to gitbonsai, a Japanese maple bonsai grown from GitHub activity. A change to how a tree grows or looks is at least a minor version, because people notice their tree changing; a patch only fixes drawing bugs, wood or leaves drawn where they were never meant to be.
 
+## [0.5.2] - 2026-11-22
+
+Fix release: a second trunk no longer shows a round end on the trunk's face, `gitbonsai collect` reports how far it has come, and the exhibition shows trees that have not grown yet. Only trees with a second trunk change, and only at the foot. The additions change no tree, so this ships as a patch.
+
+### Added
+
+- **`gitbonsai collect` reports its progress**: it prints `progress <done>/<total>` on stderr once it knows how many quarters to fetch, and again after each one, so a caller can show how far collection has come. `--quiet` leaves it out with the other status lines.
+- **The exhibition shows trees that have not grown yet**: a tree put on show before its first growth appears with its name and "Not grown yet", and with Remove for its owner, until its picture is ready.
+
+### Fixed
+
+- **A second trunk meets the soil**: where a second trunk leaves the trunk near its foot and passes in front of it, it runs straight down into the soil, instead of ending in a round end on the trunk's face as it did on some days in 0.5.1.
+- **The timelapse caption keeps its height**: on gitbonsai.dev the player no longer jumps when a caption runs to a second line.
+- **The timelapse picks fit on phones**: each pick is as wide as its label, so no label is cut off.
+
 ## [0.5.1] - 2026-11-22
 
 Visual polish release: drawing faults from 0.5.0 are fixed, formal upright trees stand ever so slightly taller, and a timelapse can follow the tree's growth instead of the calendar. Most trees look a little different, pots, formal uprights and trees with fine or dead twigs the most. The additions and the changes under Changed (taller formal uprights, roomier pots, rows lit as one, bark on small trunks) would make this a minor version; it ships as a patch because they finish the look of 0.5.0.

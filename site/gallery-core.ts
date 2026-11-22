@@ -5,18 +5,22 @@
 /** The API's base URL; build.sh puts the real one (or a local stub's) in. */
 export const API = "@API@";
 
-/** One tree in the gallery, as GET /v1/gallery lists it. */
+/** One tree in the gallery, as GET /v1/gallery lists it. A tree that hasn't
+ *  grown yet has no style or picture: `grown` and `style` are null. */
 export interface Entry {
   login: string;
   github_id: number;
-  style: string;
+  style: string | null;
   languages: string[];
   added: string;
-  grown: string;
+  grown: string | null;
   stars: number;
   /** The tree's age in weeks; -1 when the API didn't say. */
   age_weeks: number;
 }
+/** A tree that has grown, so it has a style and a picture. */
+export type Grown = Entry & { style: string; grown: string };
+export const isGrown = (e: Entry): e is Grown => e.grown !== null && e.style !== null;
 export type Sort = "new" | "stars" | "az";
 /** The page's filters; "" means any. */
 export interface Query {
@@ -49,10 +53,10 @@ function isEntry(v: unknown): v is Entry {
   return (
     typeof e.login === "string" && cleanLogin(e.login) === e.login &&
     typeof e.github_id === "number" &&
-    typeof e.style === "string" &&
+    // Grown, with a style and a picture, or waiting, with neither.
+    ((typeof e.style === "string" && typeof e.grown === "string") || (e.style === null && e.grown === null)) &&
     isStrings(e.languages) &&
     typeof e.added === "string" &&
-    typeof e.grown === "string" &&
     typeof e.stars === "number" && Number.isFinite(e.stars)
   );
 }
@@ -163,6 +167,6 @@ export function authUrl(login: string, action: Action, legend: boolean): string 
 }
 
 /** The URL of a gallery tree's picture; `?v=` changes whenever the tree is regrown. */
-export function svgUrl(e: Entry, theme: Theme, legend: boolean): string {
+export function svgUrl(e: Grown, theme: Theme, legend: boolean): string {
   return `${API}/v1/gallery/${encodeURIComponent(e.login)}/${legend ? "legend-" : ""}${theme}.svg?v=${encodeURIComponent(e.grown)}`;
 }

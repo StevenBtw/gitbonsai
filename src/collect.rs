@@ -188,15 +188,18 @@ pub fn collect(
     let fetch_from = if kept.is_some() { cut.max(from) } else { from };
     if first_year.is_some() {
         let quarters = quarters(fetch_from, observed_on);
+        let total = quarters.len();
+        // A stable line for the gallery server's progress bar: done/total quarters.
+        progress(&format!("progress 0/{total}"));
         for (i, window) in quarters.iter().enumerate() {
             progress(&format!(
-                "{} .. {} ({}/{})",
+                "{} .. {} ({}/{total})",
                 window.from,
                 window.to,
                 i + 1,
-                quarters.len()
             ));
             fetch_window(api, &login, *window, &mut acc)?;
+            progress(&format!("progress {}/{total}", i + 1));
         }
     }
 
@@ -1195,6 +1198,34 @@ mod tests {
             assert_eq!(pair[0].to.add_days(1), pair[1].from);
         }
         assert!(q.iter().all(|w| w.len_days() <= 92));
+    }
+
+    /// The server reads `progress <done>/<total>`: 0 once the quarters are
+    /// known, then one line after each quarter is fetched.
+    #[test]
+    fn progress_counts_the_quarters_fetched() {
+        let fake = Fake {
+            split_above: 400,
+            calls: RefCell::new(0),
+        };
+        let mut lines = Vec::new();
+        let observed: Date = "2026-09-30".parse().unwrap();
+        collect(&fake, "octo", observed, None, false, &mut |l| {
+            if l.starts_with("progress ") {
+                lines.push(l.to_string());
+            }
+        })
+        .unwrap();
+        // 2026's first three quarters.
+        assert_eq!(
+            lines,
+            [
+                "progress 0/3",
+                "progress 1/3",
+                "progress 2/3",
+                "progress 3/3"
+            ]
+        );
     }
 
     #[test]

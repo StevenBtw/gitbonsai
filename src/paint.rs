@@ -542,6 +542,22 @@ fn whips(
     (0..n).map(|i| dead(i) && !forked[root[i]]).collect()
 }
 
+/// Runs wood that leaves the trunk low, within its own width of the foot at
+/// `foot_y`, on straight down into the soil as the trunk does: the soil cut
+/// then squares its start, which otherwise shows as a round end on the
+/// trunk's face whenever the wood sorts in front there. Whether it did.
+fn into_soil(seg: &mut Vec<(f64, f64, f64)>, foot_y: f64) -> bool {
+    let Some(&(x, y, r)) = seg.first() else {
+        return false;
+    };
+    // Too high to reach the soil, or in it already.
+    if y + 2.0 * r < foot_y || y >= foot_y {
+        return false;
+    }
+    seg.splice(0..0, [(x, y + 2.0 * r, r), (x, y + r, r)]);
+    true
+}
+
 /// Dead wood narrows toward its end the more it has bleached, to a point
 /// when white.
 pub fn weather_tip(pts: &mut [(f64, f64, f64, f64)], bleach: f64) {
@@ -775,6 +791,16 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
     };
     let mut out = Painted::default();
     let mut items: Vec<(f64, String)> = Vec::new();
+    // The trunk's foot on the canvas, where it goes into the soil.
+    let (fx, foot_y) =
+        scene
+            .chains
+            .first()
+            .and_then(|c| c.0.first())
+            .map_or((CENTER_X, SOIL_Y), |p| {
+                let (x, y, _) = project(p.0);
+                (x, y)
+            });
     let mut extent = (f64::MAX, f64::MIN, SOIL_Y);
     // The lowest point drawn: a cascade hangs below the pot.
     let mut low = SOIL_Y;
@@ -798,6 +824,12 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
     // Trunk pieces as drawn: (item, outline points, dead). A dead main trunk,
     // or one with a shari, always shows: a strand crossing it passes behind.
     let mut trunk_pieces: Vec<(usize, Vec<(f64, f64, f64)>, bool)> = Vec::new();
+    // A low strand's run into the soil, (item, where in its paint, path):
+    // added only if the strand ends up in front of the trunk's foot, where
+    // it shows, so a tree that never shows it keeps every byte for leaves.
+    let mut soil_runs: Vec<(usize, usize, String)> = Vec::new();
+    // The main trunk's lowest piece, by item.
+    let mut trunk_foot: Option<usize> = None;
     // Each shari as measured on the trunk: (item, where in its paint, strip
     // points, how high it reaches, fill and ink).
     let mut sharis: Vec<(
@@ -1031,6 +1063,15 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                 let (x, y, r) = seg[0];
                 seg.splice(0..0, [(x, y + 2.0 * r, r), (x, y + r, r)]);
             }
+            // So does a living second trunk leaving it low, as a piece of
+            // its own under the strand, which keeps its shape (dead wood
+            // starts where it was cut).
+            let soil = (start == 0 && strand && !*jin && scene.joins.contains_key(&ci))
+                .then(|| {
+                    let mut run = vec![seg[0]];
+                    into_soil(&mut run, foot_y).then(|| tube(&run, false, false))
+                })
+                .flatten();
             let depth = join.map_or(
                 fine[start..=end].iter().map(|p| p.3).sum::<f64>() / (end - start + 1) as f64,
                 |j| j.1,
@@ -1073,8 +1114,8 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                 // A strand lies in a soft groove of its own shadow: it reads
                 // apart from the trunk without an outline.
                 let wide = groove(&seg, start == 0);
-                format!(
-                    r#"<path d="{}" fill="{}"/><path d="{}" fill="{}"/>"#,
+                let shadow = format!(
+                    r#"<path d="{}" fill="{}"/>"#,
                     tube_from(
                         &wide,
                         start == 0 && scene.joins.contains_key(&ci),
@@ -1083,6 +1124,22 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                     )
                     .as_str(),
                     base.shift(-0.1, 0.0),
+                );
+                // The run into the soil goes between the groove and the
+                // strand, in the strand's color.
+                if let Some(run) = &soil {
+                    soil_runs.push((
+                        items.len(),
+                        shadow.len(),
+                        format!(
+                            r#"<path d="{}" fill="{}"/>"#,
+                            run.as_str(),
+                            base.shift(0.03, 0.0)
+                        ),
+                    ));
+                }
+                format!(
+                    r#"{shadow}<path d="{}" fill="{}"/>"#,
                     d.as_str(),
                     base.shift(0.03, 0.0)
                 )
@@ -1323,6 +1380,9 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                 living.push((items.len(), outline.clone()));
             }
             wood_pieces.push(outline);
+            if ci == 0 && start == 0 {
+                trunk_foot = Some(items.len());
+            }
             items.push((depth, s));
             start = end;
         }
@@ -1341,6 +1401,11 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
             .map(|t| items[t.0].0 - 1.0)
             .fold(items[*live].0, f64::min);
         items[*live].0 = behind;
+    }
+    for (item, at_byte, run) in soil_runs {
+        if trunk_foot.is_none_or(|t| items[item].0 > items[t].0) {
+            items[item].1.insert_str(at_byte, &run);
+        }
     }
     // Beside living wood in front of the trunk the pale strip would read as
     // part of that wood: the shari narrows to its point below it.
@@ -1801,14 +1866,7 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
     // The trunk goes into the soil: across its footprint nothing of it shows
     // below its foot, so no flare, strand end or wood run down into the soil
     // lies on the soil under the roots.
-    let (fx, fy) = scene
-        .chains
-        .first()
-        .and_then(|c| c.0.first())
-        .map_or((CENTER_X, SOIL_Y), |p| {
-            let (x, y, _) = project(p.0);
-            (x, y)
-        });
+    let fy = foot_y;
     let fr = base_r * 1.5;
     let mut cut = PathData::coarse();
     cut.m((fx - 4000.0, fy - 4000.0))
@@ -2550,6 +2608,28 @@ mod tests {
             let shade = crown_shadow(&pads, at);
             assert!(shade < 0.05, "{why}: {shade}");
         }
+    }
+
+    /// A second trunk leaving the trunk low runs on down into the soil, so
+    /// its start is cut at the soil, never a round end on the trunk's face;
+    /// one leaving higher up keeps its start.
+    #[test]
+    fn a_strand_leaving_the_trunk_low_runs_into_the_soil() {
+        let mut low = vec![(254.0, 396.5, 7.4), (254.0, 390.0, 7.0)];
+        assert!(into_soil(&mut low, 404.0));
+        assert!(
+            low[0].1 > 404.0,
+            "starts at {:.1}, above the soil",
+            low[0].1
+        );
+        assert!(low.iter().all(|p| (p.0 - 254.0).abs() < 1e-9));
+        let mut high = vec![(254.0, 396.5, 0.9), (254.0, 390.0, 0.9)];
+        assert!(!into_soil(&mut high, 404.0));
+        assert_eq!(high.len(), 2);
+        // Wood already starting in the soil is cut there as it is.
+        let mut sunk = vec![(257.3, 405.3, 0.2), (250.0, 400.0, 0.2)];
+        assert!(!into_soil(&mut sunk, 404.0));
+        assert_eq!(sunk.len(), 2);
     }
 
     /// A strand's groove starts as wide as the strand, then widens: at the

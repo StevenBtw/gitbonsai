@@ -126,3 +126,32 @@ test("the age filter, and entries without an age", () => {
   assert.deepEqual(g.view(kept, { ...base, age: "0" }), []);
   assert.equal(g.view(kept, base).length, 1);
 });
+
+// A tree shown before it has grown, exactly as GET /v1/gallery sends it.
+const waitingEntry = (login, added = "2026-11-10T00:00:00Z") => ({
+  login, github_id: 7, added, example: false, stars: 0, grown: null, style: null, languages: [], age_weeks: null,
+});
+
+test("a waiting entry parses, and a bad one is still dropped", () => {
+  const [w] = g.parseList({ entries: [waitingEntry("sprout")] });
+  assert.equal(w.login, "sprout");
+  assert.equal(w.grown, null);
+  assert.equal(w.style, null);
+  assert.equal(w.age_weeks, -1);
+  assert.equal(g.isGrown(w), false);
+  assert.equal(g.isGrown(e("tj")), true);
+  // The guard holds what its type promises, even for an entry that never went through parseList.
+  assert.equal(g.isGrown(e("tj", { style: null })), false);
+  for (const bad of [{ grown: 5 }, { style: 3 }, { grown: "", style: null }, { grown: null, style: "moyogi" }, { languages: null }]) {
+    assert.deepEqual(g.parseList({ entries: [{ ...waitingEntry("sprout"), ...bad }] }), [], JSON.stringify(bad));
+  }
+});
+
+test("waiting entries leave a style or language filter, and sort by added", () => {
+  const all = [e("tj", { added: "2026-11-01T00:00:00Z" }), ...g.parseList({ entries: [waitingEntry("sprout", "2026-11-05T00:00:00Z")] })];
+  const base = { search: "", style: "", language: "", age: "", sort: "new" };
+  assert.deepEqual(g.view(all, { ...base, style: "moyogi" }).map((x) => x.login), ["tj"]);
+  assert.deepEqual(g.view(all, { ...base, language: "Rust" }).map((x) => x.login), ["tj"]);
+  assert.deepEqual(g.view(all, base).map((x) => x.login), ["sprout", "tj"]);
+  assert.deepEqual(g.view(all, { ...base, search: "spr" }).map((x) => x.login), ["sprout"]);
+});

@@ -25,12 +25,19 @@ SEED = [  # the site's plates: login, style, languages
 ]
 
 
+WAITING = ["seedling", "a-long-login-still-waiting-to-grow-up"]
+
+
 def make_handler(args):
     entries = [
         {"login": l, "github_id": i + 1, "style": s, "languages": langs,
          "added": f"2026-11-{21 - i:02d}T09:00:00Z", "grown": "2026-11-21T09:00:00Z", "stars": i % 3, "age_weeks": w}
         for i, (l, s, langs, w) in enumerate([] if args.empty else SEED)
     ]
+    if not args.empty:  # shown, not grown yet: no style, picture or star
+        entries[1:1] = [{"login": l, "github_id": 900 + i, "added": f"2026-11-{21 - i:02d}T12:00:00Z", "example": False,
+                         "stars": 0, "grown": None, "style": None, "languages": [], "age_weeks": None}
+                        for i, l in enumerate(WAITING)]
     stars = set()  # (client ip, lowercased login) pairs that are starred
     lock = threading.Lock()
 
@@ -80,7 +87,10 @@ def make_handler(args):
                 flag = "mismatch" if login.startswith("x-") else "cancelled" if login.startswith("c-") else None
                 if action == "add":
                     flag = flag or "added"
-                    if flag == "added" and not find(login):
+                    w = find(login)
+                    if flag == "added" and w and not w["grown"]:
+                        flag = "growing"  # in the exhibition already, not grown yet
+                    if flag == "added" and not w:
                         entries.insert(0, {"login": login, "github_id": 1000 + len(entries), "style": "moyogi",
                                            "languages": ["Python"], "added": "2026-11-22T09:00:00Z",
                                            "grown": "2026-11-22T09:00:00Z", "stars": 0, "age_weeks": 120})
@@ -93,9 +103,11 @@ def make_handler(args):
                 return self.send(302, b"", "text/plain", [("Location", loc)])
             t = re.match(r"^/v1/tree/([^/]+)$", u.path)
             if t:  # "See your own tree", so a sign-in that comes back can grow the tree again
-                e = find(t.group(1)) or {"login": t.group(1), "style": "moyogi"}
+                found = find(t.group(1))
+                grown = found if found and found["grown"] else None  # a waiting tree grows like any other
+                e = grown or {"login": t.group(1), "style": "moyogi"}
                 leg = "-legend" if q.get("legend") == "1" else ""
-                own = e["login"].lower() if find(t.group(1)) else "showcase"
+                own = e["login"].lower() if grown else "showcase"
 
                 def pic(th):
                     try:
@@ -105,7 +117,8 @@ def make_handler(args):
                 return self.send(200, {"login": e["login"], "observed_on": "2026-W47", "style": e["style"], "gitbonsai": "stub",
                                        "legend": bool(leg), "light": pic("light"), "dark": pic("dark")})
             m = re.match(r"^/v1/gallery/([^/]+)/(legend-)?(light|dark)\.svg$", u.path)
-            if m and find(m.group(1)):
+            found = find(m.group(1)) if m else None  # one lookup: a removal may land in between
+            if found and found["grown"]:
                 name = m.group(1).lower()  # the plates' files are named in lower case
                 path = f"{args.hero}/{name}{'-legend' if m.group(2) else ''}-{m.group(3)}.svg"
                 try:
@@ -124,7 +137,7 @@ def make_handler(args):
             if args.ratelimit:
                 return self.send(429, {"error": "rate_limited"}, extra=[("Retry-After", "5")])
             e = find(m.group(1))
-            if not e:
+            if not e or not e["grown"]:
                 return self.send(404, {"error": "not_found"})
             key = (self.client_address[0], e["login"].lower())
             with lock:
@@ -164,7 +177,9 @@ def selftest(args):
     srv, B = run()
     code, _, body = call(B)
     lst = json.loads(body)["entries"]
-    assert code == 200 and len(lst) == 8 and all(len(e) == 8 for e in lst), lst
+    grown = [e for e in lst if e["grown"]]
+    assert code == 200 and len(grown) == 8 and all(len(e) == 8 for e in grown) and len(lst) == 10, lst
+    lst = grown
     before = lst[0]["stars"]
     a = json.loads(call(f"{B}/{lst[0]['login']}/star", "POST")[2])
     assert a["starred"] is True and a["stars"] == before + 1, a
@@ -176,6 +191,11 @@ def selftest(args):
     assert code == 302 and "gallery=added&login=tj" in h["Location"], (code, dict(h))
     assert call(f"{B}/auth?login=a--b&action=add&legend=0")[0] == 400
     assert call(f"{B}/tj/dark.svg?v=x")[0] == 200 and call(f"{B}/tj/legend-light.svg")[0] == 200
+    tree = json.loads(call(B.replace("/v1/gallery", "/v1/tree/seedling"))[2])
+    assert isinstance(tree["style"], str), tree  # a waiting tree grows like any other
+    code, h, _ = call(f"{B}/auth?login=seedling&action=add&legend=0")
+    assert code == 302 and "gallery=growing&login=seedling" in h["Location"], (code, dict(h))
+    assert call(f"{B}/seedling/dark.svg")[0] == 404 and call(f"{B}/seedling/star", "POST")[0] == 404
     assert call(f"{B}/nobody/dark.svg")[0] == 404 and call(f"{B}/tj-dark.svg")[0] == 404
     srv.shutdown()
     srv, B = run(["--fail"])
