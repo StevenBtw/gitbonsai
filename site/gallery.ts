@@ -205,6 +205,13 @@ function paintWaiting(wait: HTMLElement, e: Entry): void {
     return;
   }
   const said = progressText(p);
+  const svg = wait.querySelector<SVGElement>(".grow-bar");
+  if (wait.dataset.state === "queued" && svg) {
+    // Its turn came: the trunk rises from the pot, not from where it was hidden.
+    svg.style.setProperty("--k", "0");
+    wait.dataset.state = "growing";
+    svg.getBoundingClientRect(); // the empty pot is laid out before it grows
+  }
   wait.dataset.state = "growing";
   bar.setAttribute("role", "progressbar");
   bar.setAttribute("aria-label", `@${e.login}'s tree growing`);
@@ -213,7 +220,7 @@ function paintWaiting(wait: HTMLElement, e: Entry): void {
   bar.setAttribute("aria-valuenow", String(p.done));
   bar.setAttribute("aria-valuetext", said);
   if (text) text.textContent = said;
-  wait.querySelector<SVGElement>(".grow-bar")?.style.setProperty("--k", String(p.done / p.total));
+  svg?.style.setProperty("--k", String(p.done / p.total));
   // A ring across the trunk for each year it has passed. The trunk is drawn
   // full height and scaled to done/total, so a ring sits at its year's share
   // of what has grown.
@@ -233,24 +240,34 @@ function paintWaiting(wait: HTMLElement, e: Entry): void {
    visible: every 5 s while one grows, every 30 s while they only wait their
    turn. Each changes in place, so focus and scroll stay where they are. */
 let pollTimer: number | undefined;
+let polling = false; // one request at a time, so an older answer never overwrites a newer one
+// Trees taken out since the page loaded: they stay until the next load, but no longer keep it checking.
+const gone = new Set<string>();
 function schedulePoll(): void {
   window.clearTimeout(pollTimer);
   pollTimer = undefined;
-  const delay = pollDelay(shown);
+  if (polling) return; // the request under way schedules the next
+  const delay = pollDelay(shown.filter((e) => !gone.has(e.login.toLowerCase())));
   if (!document.hidden && delay !== null) pollTimer = window.setTimeout(() => void poll(), delay);
 }
 async function poll(): Promise<void> {
+  polling = true;
   try {
     const r = await fetch(`${API}/v1/gallery`, { cache: "no-store" });
     if (r.ok) {
       const fresh = parseList(await r.json());
+      let grew = false;
       for (const old of shown.filter((x) => !isGrown(x))) {
         const f = fresh[findIndex(fresh, old.login)];
-        if (!f) continue; // taken out meanwhile: it stays until the next load
+        if (!f) {
+          gone.add(old.login.toLowerCase());
+          continue;
+        }
         Object.assign(old, f);
         const el = grid.querySelector<HTMLElement>(`article[data-login="${CSS.escape(old.login)}"]`);
         if (!el) continue;
         if (isGrown(old)) {
+          grew = true;
           // Grown: its card becomes a grown one, focus kept on the card.
           const had = el.contains(document.activeElement);
           const next = card(old, shown.indexOf(old));
@@ -261,11 +278,21 @@ async function poll(): Promise<void> {
           if (wait) paintWaiting(wait, old);
         }
       }
+      if (grew) fillLanguages(); // a tree just grown may bring a language the filter lacks
     }
   } catch {}
+  polling = false;
   schedulePoll();
 }
 document.addEventListener("visibilitychange", schedulePoll);
+
+/** The language filter's options from the trees on show, keeping the choice made. */
+function fillLanguages(): void {
+  const chosen = lang.value;
+  while (lang.options.length > 1) lang.remove(1); // the first is "any"
+  for (const l of languagesByCount(all)) lang.append(new Option(l, l));
+  lang.value = chosen;
+}
 
 function query(): Query {
   const s = sort.value;
@@ -405,7 +432,7 @@ async function load(): Promise<void> {
     status.textContent = "The exhibition can't be reached right now. Try again in a while.";
     return;
   }
-  for (const l of languagesByCount(all)) lang.append(new Option(l, l));
+  fillLanguages();
   render();
   if (removed) status.textContent = resultText("remove", removed.flag, removed.login);
   const deep = decodeURIComponent(location.hash.slice(1));

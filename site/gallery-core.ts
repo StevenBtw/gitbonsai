@@ -83,13 +83,16 @@ export function parseList(body: unknown): Entry[] {
   });
 }
 
-/** A `{done, total}` the bar can show: whole numbers, 0 <= done <= total, total > 0; null otherwise. */
+/** The most quarters a history can have: a hundred years. */
+const MAX_QUARTERS = 400;
+
+/** A `{done, total}` the bar can show: whole numbers, 0 <= done <= total, 0 < total <= 400; null otherwise. */
 export function parseProgress(v: unknown): Progress | null {
   if (!v || typeof v !== "object") return null;
   const { done, total } = v as Record<string, unknown>;
   if (!Number.isInteger(done) || !Number.isInteger(total)) return null;
   const [d, t] = [done as number, total as number];
-  return d >= 0 && t > 0 && d <= t ? { done: d, total: t } : null;
+  return d >= 0 && t > 0 && d <= t && t <= MAX_QUARTERS ? { done: d, total: t } : null;
 }
 
 /** How soon the page checks back, in ms: 5 s while a tree on show is growing,

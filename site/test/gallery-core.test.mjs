@@ -160,7 +160,10 @@ test("progress parses, and a bad one becomes null without dropping the entry", (
   const one = (progress) => g.parseList({ entries: [{ ...waitingEntry("sprout"), progress }] });
   assert.deepEqual(one({ done: 41, total: 64 })[0].progress, { done: 41, total: 64 });
   assert.deepEqual(one({ done: 0, total: 3 })[0].progress, { done: 0, total: 3 });
-  for (const bad of [null, undefined, { done: 65, total: 64 }, { done: -1, total: 4 }, { done: 1.5, total: 4 }, { done: 1, total: 0 }, { done: "3", total: 4 }, 7]) {
+  assert.deepEqual(one({ done: 400, total: 400 })[0].progress, { done: 400, total: 400 });
+  // A hundred years of quarters at most, and never an unsafe number: the year rings are drawn one by one.
+  const big = 2 ** 53;
+  for (const bad of [null, undefined, { done: 65, total: 64 }, { done: -1, total: 4 }, { done: 1.5, total: 4 }, { done: 1, total: 0 }, { done: "3", total: 4 }, 7, { done: 1, total: 401 }, { done: big, total: big }]) {
     const [e] = one(bad);
     assert.equal(e?.login, "sprout", JSON.stringify(bad));
     assert.equal(e.progress, null, JSON.stringify(bad));
