@@ -365,9 +365,10 @@ fn rendering_is_deterministic() {
     }
 }
 
-/// The budget: at most 215 KB, 2,500 elements and 80 animated elements.
+/// The budget: at most 241 KB, 2,800 elements and 80 animated elements.
 /// 0.3.0 raised it from 150 KB for crowns with 1.5 times the leaves; 0.4.0
-/// from 190 KB for the windswept and formal upright crowns.
+/// from 190 KB for the windswept and formal upright crowns; 0.6.0 from
+/// 215 KB and 2,500 elements by 12% for the new pots' detail.
 #[test]
 fn every_output_stays_within_budget() {
     for fixture in fixtures::all() {
@@ -390,8 +391,12 @@ fn every_output_stays_within_budget() {
                 .iter()
                 .map(|c| svg.matches(c).count())
                 .sum::<usize>();
-                assert!(svg.len() <= 215 * 1024, "{label}: {} bytes", svg.len());
-                assert!(elements <= 2500, "{label}: {elements} elements");
+                assert!(
+                    svg.len() <= render::SVG_BUDGET,
+                    "{label}: {} bytes",
+                    svg.len()
+                );
+                assert!(elements <= 2800, "{label}: {elements} elements");
                 assert!(animated <= 80, "{label}: {animated} animated");
             }
         }
@@ -515,7 +520,11 @@ fn the_legend_explains_without_spoiling() {
             for theme in Theme::ALL {
                 let svg = render::svg(&bonsai, &config, theme);
                 let label = format!("{}/{side:?}/{}", fixture.name, theme.name());
-                assert!(svg.len() <= 215 * 1024, "{label}: {} bytes", svg.len());
+                assert!(
+                    svg.len() <= render::SVG_BUDGET,
+                    "{label}: {} bytes",
+                    svg.len()
+                );
                 if bonsai.is_empty() {
                     assert!(!svg.contains("<text"), "{label}: nothing to explain yet");
                     continue;
@@ -940,6 +949,62 @@ fn explain_shows_the_trees_size() {
     };
     assert!(number("trunk at its foot") > 1.0);
     assert!(number("size") > 100.0);
+}
+
+/// Kintsugi mends the pot it is on: its gold clips to the same wall the pot
+/// is drawn with, oval, bowl or rectangle.
+#[test]
+fn kintsugi_follows_every_pots_wall() {
+    let mut b = grow("veteran");
+    assert_ne!(b.archived.len(), 0, "the veteran has archived repos");
+    let clip = |svg: &str, id: &str| -> String {
+        let at = svg
+            .find(&format!(r#"<clipPath id="{id}"><path d=""#))
+            .unwrap_or_else(|| panic!("no clip {id}"));
+        let rest = &svg[at..];
+        let start = rest.find(r#"<path d=""#).unwrap() + 9;
+        rest[start..start + rest[start..].find('"').unwrap()].to_string()
+    };
+    for level in [1u8, 3, 6, 7, 8, 9, 10] {
+        b.extras.pot_tier = level;
+        let svg = render::svg(&b, &Config::default(), Theme::Light);
+        assert_eq!(clip(&svg, "pc"), clip(&svg, "pw"), "level {level}");
+    }
+}
+
+/// Each pot is mended its own way: nothing on the plastic training pot,
+/// bare cracks in the terracotta, copper staples across the cracks in the
+/// clay pot on feet, silver laid in black lacquer on the vintage clay, gold
+/// on the glazed pots.
+#[test]
+fn each_pot_is_mended_its_own_way() {
+    let mut b = grow("veteran");
+    for level in 0..11u8 {
+        b.extras.pot_tier = level;
+        let svg = render::svg(&b, &Config::default(), Theme::Light);
+        let gold = svg.contains(r##"fill="#c9972f""##);
+        let staples = svg.contains(r#"<g id="stp""#);
+        let silver = svg.contains(r##"stroke="#a9aaa6""##);
+        match level {
+            0 => assert!(!svg.contains("url(#pc)"), "level {level} is mended"),
+            8 => assert!(
+                silver && !gold && !staples,
+                "level {level}: silver {silver}"
+            ),
+            1 => assert!(
+                svg.contains("url(#pc)") && !staples && !gold && !silver,
+                "level {level}: staples {staples}, gold {gold}, silver {silver}"
+            ),
+            2 => assert!(
+                staples && !gold && !silver,
+                "level {level}: staples {staples}"
+            ),
+            _ => assert!(
+                gold && !staples && !silver,
+                "level {level}: gold {gold}, staples {staples}"
+            ),
+        }
+    }
 }
 
 /// Two trees in one row, both in the hobnail bowl, keep every id their own.
@@ -2059,21 +2124,32 @@ fn the_pot_never_shrinks() {
     }
 }
 
+/// The pot's shadow on the table in a light picture, its middle and the foot
+/// line it lies at; none under the bowl and the rectangles.
+fn table_shadow(svg: &str) -> Option<(f64, f64)> {
+    let at = svg.find(r##"fill="#3b3226" opacity=".16"/>"##)?;
+    let element = svg[..at].rsplit('<').next().expect("its element");
+    let attr = |name: &str| -> f64 {
+        let key = format!(" {name}=\"");
+        element
+            .split(&key)
+            .nth(1)
+            .and_then(|v| v.split('"').next())
+            .and_then(|v| v.parse().ok())
+            .unwrap_or_else(|| panic!("no {name} in {element}"))
+    };
+    Some((attr("cx"), attr("cy")))
+}
+
 /// The pot changes only at a repotting, its depth too: between two springs,
 /// with no repotting in a growth spurt, the pot keeps its width and depth
 /// however much the trunk thickens.
 #[test]
 fn the_pot_keeps_its_depth_between_repottings() {
-    // The pot's foot, from its shadow on the table.
-    let foot = |b: &Bonsai| {
-        let svg = render::svg(b, &Config::default(), Theme::Light);
-        svg.split(r##"" ry="4" fill="#3b3226" opacity=".16""##)
-            .next()
-            .and_then(|s| s.rsplit(r#"cy=""#).next())
-            .and_then(|s| s.split('"').next())
-            .and_then(|s| s.parse::<f64>().ok())
-            .expect("a pot shadow")
-    };
+    // The pot's foot, from its shadow on the table: an oval's; the bowl and
+    // the rectangles have none, and their depth rule is tested in `pot`.
+    let foot =
+        |b: &Bonsai| table_shadow(&render::svg(b, &Config::default(), Theme::Light)).map(|s| s.1);
     let (mut held, mut spurts) = (0, 0);
     for name in ["steady", "showcase", "veteran", "comeback", "polyglot"] {
         let frames: Vec<_> = monthly(name)
@@ -2083,6 +2159,9 @@ fn the_pot_keeps_its_depth_between_repottings() {
             .collect();
         for pair in frames.windows(2) {
             let ((_, pot_a, foot_a, level_a), (day, pot_b, foot_b, level_b)) = (pair[0], pair[1]);
+            let (Some(foot_a), Some(foot_b)) = (foot_a, foot_b) else {
+                continue;
+            };
             // Repotted on the first of March, the start of spring; or a new
             // pot earned by a longer streak, which comes the day it is earned.
             if day.ymd().1 == 3 || level_a != level_b {
@@ -2167,19 +2246,8 @@ fn the_trunk_ends_at_its_foot_and_twigs_are_drawn_one_by_one() {
 fn one_light_lights_a_row_from_one_side() {
     // The pot's middle on the canvas.
     const CENTER_X: f64 = 256.0;
-    let shadow = |svg: &str| -> f64 {
-        let at = svg
-            .find(r##"ry="4" fill="#3b3226" opacity=".16"/>"##)
-            .expect("a soil shadow");
-        let cx = &svg[..at]
-            .rsplit(r#"<ellipse cx=""#)
-            .next()
-            .expect("its ellipse");
-        cx.split('"')
-            .next()
-            .and_then(|v| v.parse().ok())
-            .expect("its cx")
-    };
+    // Read from an oval's shadow; the bowl and the rectangles cast none.
+    let shadow = |svg: &str| table_shadow(svg).map(|s| s.0);
     let soil = |svg: &str| {
         svg.split(r#"<clipPath id="soil">"#)
             .nth(1)
@@ -2196,7 +2264,7 @@ fn one_light_lights_a_row_from_one_side() {
         let own = render::svg(&b, &Config::default(), Theme::Light);
         let lit = render::svg(&b, &row, Theme::Light);
         assert!(
-            shadow(&lit) > CENTER_X,
+            shadow(&lit).is_none_or(|x| x > CENTER_X),
             "{}: the row is not lit from the upper left",
             f.name
         );
@@ -2206,10 +2274,10 @@ fn one_light_lights_a_row_from_one_side() {
             "{}: the row's light moved the tree",
             f.name
         );
-        if b.leader.side < 0.0 {
+        if b.leader.side < 0.0 && shadow(&own).is_some() {
             left += 1;
             assert!(
-                shadow(&own) < CENTER_X,
+                shadow(&own).is_some_and(|x| x < CENTER_X),
                 "{}: a left tree on its own is not lit from its open side, the upper right",
                 f.name
             );

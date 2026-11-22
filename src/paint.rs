@@ -1777,20 +1777,7 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
     };
 
     let body = &mut out.body;
-    // The pot's own shadow on the table, soft-edged, the light from the upper
-    // left: the pot sits down instead of floating.
-    let foot = SOIL_Y + pot.depth;
-    let shade = if paints.dark { "#000" } else { "#3b3226" };
-    let _ = write!(
-        body,
-        r#"<ellipse cx="{}" cy="{}" rx="{}" ry="4" fill="{shade}" opacity=".16"/><ellipse cx="{}" cy="{}" rx="{}" ry="2.4" fill="{shade}" opacity=".26"/>"#,
-        Num(CENTER_X + 5.0 * lit),
-        Num(foot + 1.2),
-        Num(pot.bw * 1.18),
-        Num(CENTER_X + 3.5 * lit),
-        Num(foot + 0.8),
-        Num(pot.bw * 1.02),
-    );
+    body.push_str(&crate::pot::shadow(&pot, lit, paints.dark));
     body.push_str(&egg.behind);
     body.push_str(&crate::pot::top(&pot, paints.soil));
     // The canopy's soft shadow on the soil.
@@ -1871,9 +1858,9 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
         body.push_str(&drip_ends(&scene, &paints, &pot, animate));
     }
     // The pot is lit as the tree is.
-    let front = crate::pot::front(b, &pot);
+    let front = crate::pot::front(b, &pot, paints.dark);
     body.push_str(&if lit < 0.0 { mirror(&front) } else { front });
-    body.push_str(&eggs::kintsugi(&b.archived, seed, &pot));
+    body.push_str(&eggs::kintsugi(&b.archived, seed, &pot, paints.dark));
     // The maker's seal sits on the pot's shaded half: mirrored with it.
     let marks = crate::pot::marks(b, &pot);
     body.push_str(&if lit < 0.0 { mirror(&marks) } else { marks });
