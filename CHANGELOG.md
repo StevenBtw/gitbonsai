@@ -4,21 +4,26 @@ All notable changes to gitbonsai, a Japanese maple bonsai grown from GitHub acti
 
 ## [0.6.0] - 2026-11-23
 
-Pot release: the pot ladder grows from seven pots to eleven, with a hobnail bowl and three rectangles, and each pot is sized by the soil it holds. Every tree with a streak stands in a redrawn pot, and most in a different one; the trees themselves are unchanged. `gitbonsai explain` names the pot and measures the tree.
+Pots and roots release: the pot ladder grows from seven pots to eleven, with a hobnail bowl and three rectangles, each pot sized by the soil it holds, and windswept and cascade trees grow roots that hold on. Every tree with a streak stands in a redrawn pot, most in a different one, and every tree changes size by up to 3.5% as the styles move closer together. `gitbonsai explain` names the pot and measures the tree.
 
 ### Added
 
 - **Four new pots**: a longest streak of 104 weeks earns a hobnail bowl on a bamboo saucer, 136 weeks a vintage clay rectangle, 174 weeks a glossy cobalt rectangle and 216 weeks a speckled green rectangle with a flared lip.
 - **`gitbonsai explain` describes the pot and the tree's size**: a `pot` line gives the pot's level and name, a `trunk at its foot` line the trunk's width where it meets the soil, and a `size` line the wood and foliage, so styles can be compared.
+- **Windswept and cascade trees hold on with their roots**: a windswept tree streams up to three long roots upwind toward the rim, and a cascade's roots reach for the rim on the side it spills to, one of them thick; every root stays inside the pot.
+- **A cascade's white trunk takes its roots with it**: under a classic-language trunk turned white, all roots but two turn white and thinner.
 - **The exhibition shows a tree growing**: a tree waiting its turn shows a seedling in its pot, and a growing one its trunk rising as its history comes in, with a ring for each year.
 
 ### Changed
 
 - **Pots come sooner**: the ladder has eleven levels at 4, 13, 26, 39, 52, 78, 104, 136, 174 and 216 weeks (it was seven, up to 208 weeks); the celadon oval now comes at 39 weeks and the antique at 78.
-- **Each pot holds the soil the tree needs**: the round pots, the bowl and the rectangles each measure their own volume; a cascade's pot holds as much soil as the upright pot would, 0.7 times as deep as it is wide, instead of up to 2.3 times as much.
+- **The styles are closer in size**: grown from the same work, chokkan, moyogi and shakan trees are 3.5% bigger and windswept and cascade trees 3.5% smaller, which moves each style about 5% (by `explain`'s size) toward the others.
+- **Each pot holds the soil the tree needs**: the round pots, the bowl and the rectangles each measure their own volume; a cascade's pot holds as much soil as the upright pot would, narrower and 0.7 times as deep as it is wide.
 - **Pots are at least 0.6 of the crown's spread**: a broad crown no longer stands in a pot much narrower than itself.
 - **Big pots go deeper, within limits**: a pot can be a quarter of its width deep (at least 56), the bowl at most 0.38 and a rectangle at most 0.27 of its width.
 - **Pots have rims, feet and moss cushions**: each pot has its own rim and feet in its own colours, and moss grows in soft cushions.
+- **The bowl and the rectangles hold their soil below the rim**: 9% of the depth below in the bowl and 3.5% in a rectangle, with the inner walls showing above it; the round pots stay filled to the brim.
+- **Rectangles are seen from the ovals' angle**: a rectangle's top face is as deep as an oval's of the same width, and drawn without perspective.
 - **Only the round pots cast a shadow**: the bowl and the rectangles stand without the soft shadow under the oval pots.
 - **SVGs stay under 241 KB and 2,800 elements**: up 12% from 215 KB and 2,500, for the new pots' detail; a heavier crown still keeps fewer, larger leaves.
 
