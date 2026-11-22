@@ -303,6 +303,26 @@ impl Model {
     }
 }
 
+/// Finds how far from the pot's middle a cascade's trunk spills over the
+/// rim, less the trunk's radius and a little room: the nearest point where
+/// any of its wood drops below the rim, since the hanging trunk is a chain
+/// of its own. `None` for a tree that doesn't cascade.
+fn spill_of(b: &Bonsai, scene: &Scene, base_r: f64) -> Option<f64> {
+    if b.leader.cascade == 0.0 {
+        return None;
+    }
+    scene
+        .chains
+        .iter()
+        .filter_map(|c| {
+            c.0.iter()
+                .map(|p| project(p.0))
+                .find(|p| p.1 > SOIL_Y + 2.0 && (p.0 - CENTER_X).abs() > base_r)
+                .map(|p| (p.0 - CENTER_X).abs() - base_r - 4.0)
+        })
+        .reduce(f64::min)
+}
+
 /// Gives the size of pot `m` for what a tree needs.
 ///
 /// The width is the tree's size step. The depth is the trunk's width at its
@@ -399,17 +419,24 @@ pub struct Pot {
 pub fn size(b: &Bonsai, scene: &Scene, base_r: f64, glaze: Rgb) -> Pot {
     let level = b.extras.pot_tier;
     let m = model(level);
-    // Where the trunk spills over the rim, for a cascade.
-    let spill = (b.leader.cascade != 0.0)
-        .then(|| {
-            scene.chains.first().and_then(|c| {
-                c.0.iter()
-                    .map(|p| project(p.0))
-                    .find(|p| p.1 > SOIL_Y + 2.0 && (p.0 - CENTER_X).abs() > base_r)
-                    .map(|p| (p.0 - CENTER_X).abs() - base_r - 4.0)
-            })
-        })
-        .flatten();
+    // A rectangle's lip reaches past its wall, a share of its width: its
+    // wall stays that much further in.
+    let spill = spill_of(b, scene, base_r).map(|s| {
+        if m.shape == Shape::Rect {
+            let probe = Pot {
+                hw: 100.0,
+                ry: 0.0,
+                depth: 0.0,
+                bw: 0.0,
+                glaze,
+                shape: Shape::Rect,
+                level,
+            };
+            s / (1.0 + lip_of(&probe).0 / 100.0)
+        } else {
+            s
+        }
+    });
     // Repotted in steps as the tree grows ([`Bonsai::grow`]): as deep as the
     // trunk it was repotted for is wide, the usual rule.
     let d = dims(
@@ -1713,6 +1740,39 @@ mod tests {
         assert_eq!(oval.rim_y(), SOIL_Y);
         // The bowl reads deepest, a rectangle just below its frame.
         const { assert!(BOWL_INSET > RECT_INSET && RECT_INSET > 0.0) };
+    }
+
+    /// A cascade's pot keeps inside the point where its trunk spills over
+    /// the rim, a rectangle's lip included, so the hanging wood never runs
+    /// behind the rim.
+    #[test]
+    fn a_cascade_pot_keeps_inside_where_the_trunk_spills() {
+        for name in ["veteran", "legacy"] {
+            let mut config = Config::default();
+            config.tree.style = Some(crate::config::Style::Kengai);
+            let mut b = Bonsai::grow(
+                &crate::fixtures::by_name(name).unwrap().snapshot,
+                &config,
+                None,
+            );
+            let scene = Scene::build(&b);
+            let base_r = b.foot_girth();
+            let spill = spill_of(&b, &scene, base_r).unwrap_or_else(|| panic!("{name}: no spill"));
+            for level in [3, 9, 10] {
+                b.extras.pot_tier = level;
+                let pot = size(&b, &scene, base_r, Rgb::hex(0));
+                let over = if pot.shape == Shape::Rect {
+                    lip_of(&pot).0
+                } else {
+                    0.0
+                };
+                assert!(
+                    pot.hw + over <= spill.max(2.0 * base_r) + 1e-6,
+                    "{name} {level}: {} + {over} past {spill}",
+                    pot.hw
+                );
+            }
+        }
     }
 
     /// A pot's feet tuck up behind its curved foot and peek out below it,

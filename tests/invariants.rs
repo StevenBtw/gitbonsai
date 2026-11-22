@@ -2358,7 +2358,7 @@ fn styles_move_towards_one_size_by_at_most_five_percent() {
             BASELINE[i]
         );
         assert!(
-            (now[i] / BASELINE[i] - 1.0).abs() <= 0.055,
+            (now[i] / BASELINE[i] - 1.0).abs() <= 0.05,
             "style {i} moved {}",
             now[i] / BASELINE[i]
         );

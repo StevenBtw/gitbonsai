@@ -2082,7 +2082,7 @@ fn hold_on(b: &Bonsai, plan: &mut RootPlan, i: u32, (base_r, u): (f64, f64), pot
         if i < 3 {
             // A little toward the viewer, so the longest shows.
             let spread = [0.1, -0.45, 0.5][i as usize];
-            plan.az = turn_toward(plan.az, upwind + spread * up, wind);
+            plan.az = clear_of_front(turn_toward(plan.az, upwind + spread * up, wind));
             plan.brace = plan.brace.max(wind);
             let free = (base_r * (1.35 + u * (0.25 + 0.5 * b.extras.nebari.clamp(0.0, 1.0))))
                 .max(base_r * 1.6)
@@ -2102,7 +2102,7 @@ fn hold_on(b: &Bonsai, plan: &mut RootPlan, i: u32, (base_r, u): (f64, f64), pot
         let spill = b.leader.cascade.signum();
         let toward = if spill > 0.0 { 0.0 } else { half };
         if i == 0 {
-            plan.az = turn_toward(plan.az, toward + 0.12 * spill, fall);
+            plan.az = clear_of_front(turn_toward(plan.az, toward + 0.12 * spill, fall));
             plan.thick = 1.0 + 0.5 * fall;
         }
         let grip = ((math::cos(plan.az) * spill - 0.2) / 0.3).clamp(0.0, 1.0) * fall;
@@ -2771,14 +2771,29 @@ mod tests {
         for name in [
             "veteran", "legacy", "steady", "showcase", "polyglot", "comeback",
         ] {
-            let b = Bonsai::grow(
+            let mut b = Bonsai::grow(
                 &crate::fixtures::by_name(name).unwrap().snapshot,
                 &Config::default(),
                 None,
             );
-            for r in root_plans(&b, 14.0, &pot, 0.0) {
-                let off = turn_toward(r.az, math::TAU / 4.0, 1.0) - r.az;
-                assert!(off.abs() >= 0.45 - 1e-9, "{name}: {r:?}");
+            // Partly windswept or cascading too, as a mix of styles grows:
+            // their roots turn part of the way upwind or toward the spill.
+            for (sweep, cascade) in [
+                (0.0, 0.0),
+                (0.4, 0.0),
+                (-0.4, 0.0),
+                (-0.8, 0.0),
+                (0.0, 0.3),
+                (0.0, -0.3),
+                (0.0, 0.5),
+                (0.3, -0.3),
+            ] {
+                b.leader.sweep = sweep;
+                b.leader.cascade = cascade;
+                for r in root_plans(&b, 14.0, &pot, 0.0) {
+                    let off = turn_toward(r.az, math::TAU / 4.0, 1.0) - r.az;
+                    assert!(off.abs() >= 0.45 - 1e-9, "{name} {sweep} {cascade}: {r:?}");
+                }
             }
         }
     }

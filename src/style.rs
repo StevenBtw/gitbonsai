@@ -231,15 +231,20 @@ impl Leader {
 fn style_size(style: Style) -> f64 {
     match style {
         Style::Chokkan | Style::Moyogi | Style::Shakan => UPRIGHT_SIZE,
-        Style::Fukinagashi | Style::Kengai => SPREAD_SIZE,
+        Style::Fukinagashi => WINDSWEPT_SIZE,
+        Style::Kengai => CASCADE_SIZE,
     }
 }
 
 /// The scale of an upright tree: chokkan, moyogi and shakan.
 const UPRIGHT_SIZE: f64 = 1.035;
 
-/// The scale of a windswept or cascade tree.
-const SPREAD_SIZE: f64 = 0.965;
+/// The scale of a windswept tree: a touch less than a cascade's, so the
+/// largest style still moves at most 5%.
+const WINDSWEPT_SIZE: f64 = 0.968;
+
+/// The scale of a cascade tree.
+const CASCADE_SIZE: f64 = 0.965;
 
 /// How much bigger `leader`'s tree grows for its style: the styles'
 /// factors blended as [`Leader::mixed`] blends them, or its own when the
