@@ -995,6 +995,7 @@ pub fn kintsugi(archived: &[String], seed: u64, pot: &Pot) -> String {
         depth,
         bw,
         glaze,
+        ..
     } = *pot;
     let at = |a: f64, t: f64| {
         let rad = hw + (bw - hw) * t;
@@ -1142,6 +1143,8 @@ mod tests {
             depth: 20.0,
             bw: 50.0,
             glaze: Rgb::hex(0),
+            shape: crate::pot::Shape::Oval,
+            level: 3,
         };
         let ground = (&[][..], &[][..]);
         let mut soil = Vec::new();
@@ -1196,6 +1199,8 @@ mod tests {
             depth: 30.0,
             bw: 90.0,
             glaze: Rgb::hex(0),
+            shape: crate::pot::Shape::Oval,
+            level: 3,
         };
         let trunk = [vec![
             (CENTER_X, SOIL_Y + 12.0, 10.0),

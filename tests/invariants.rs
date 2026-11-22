@@ -942,6 +942,24 @@ fn explain_shows_the_trees_size() {
     assert!(number("size") > 100.0);
 }
 
+/// A broad crown stands in a pot at least six tenths as wide as it spreads.
+#[test]
+fn a_broad_crown_gets_a_pot_at_least_six_tenths_its_spread() {
+    for f in fixtures::all() {
+        let b = Bonsai::grow(&f.snapshot, &Config::default(), None);
+        if b.leader.cascade.abs() > 0.0 || b.is_empty() {
+            continue;
+        }
+        let spread = b.crown_spread();
+        assert!(
+            b.pot >= 0.6 * spread - 1e-9,
+            "{}: pot {} for a crown {spread:.0} wide",
+            f.name,
+            b.pot
+        );
+    }
+}
+
 /// `explain` names the tree's pot with its level.
 #[test]
 fn explain_names_the_pot() {
@@ -1983,12 +2001,13 @@ fn the_pot_keeps_its_depth_between_repottings() {
         let frames: Vec<_> = monthly(name)
             .into_iter()
             .filter(|(_, b)| !b.is_empty() && !gitbonsai::sprout::is_sprout(b))
-            .map(|(day, b)| (day, b.pot, foot(&b)))
+            .map(|(day, b)| (day, b.pot, foot(&b), b.extras.pot_tier))
             .collect();
         for pair in frames.windows(2) {
-            let ((_, pot_a, foot_a), (day, pot_b, foot_b)) = (pair[0], pair[1]);
-            // Repotted on the first of March, the start of spring.
-            if day.ymd().1 == 3 {
+            let ((_, pot_a, foot_a, level_a), (day, pot_b, foot_b, level_b)) = (pair[0], pair[1]);
+            // Repotted on the first of March, the start of spring; or a new
+            // pot earned by a longer streak, which comes the day it is earned.
+            if day.ymd().1 == 3 || level_a != level_b {
                 continue;
             }
             // Out of season, in a growth spurt: deeper with its width, unless

@@ -144,6 +144,13 @@ const FULL_POT: f64 = 1.6;
 /// smallest pots gets none: a size up it would look like a seedling in a tray.
 const AHEAD: f64 = 1.15;
 
+/// Gives the pot size a tree needs from its height on the canvas, the pot
+/// its full size calls for, and its crown's spread: 0.62 of the height, the
+/// full size's pot, or six tenths of the spread, whichever is most.
+fn pot_need_of(height: f64, full: f64, spread: f64) -> f64 {
+    (height * 0.62).max(full).max(0.6 * spread)
+}
+
 /// The smallest pot that holds `need`, or the largest.
 fn pot_for(need: f64) -> f64 {
     POTS.iter()
@@ -216,12 +223,39 @@ impl Bonsai {
                 .map_or(1.0, |p| p.1)
     }
 
-    /// How big a pot the tree needs, from what never shrinks: 0.62 of its
-    /// height on the canvas, or the pot its crown's full size calls for,
-    /// whichever is more. So its pot never gets smaller.
+    /// How big a pot the tree needs: 0.62 of its height on the canvas, the
+    /// pot its crown's full size calls for, or six tenths of its crown's
+    /// spread ([`Self::crown_spread`]), whichever is most.
     fn pot_need(&self) -> f64 {
-        let full = growth::dome::full_size(&self.timeline, &self.periods) * FULL_POT;
-        (self.skeleton.height * scene::WORLD * 0.62).max(full)
+        pot_need_of(
+            self.skeleton.height * scene::WORLD,
+            growth::dome::full_size(&self.timeline, &self.periods) * FULL_POT,
+            self.crown_spread(),
+        )
+    }
+
+    /// Measures how wide the crown spreads on the canvas above the rim: its
+    /// leaf clouds and its wood. A cascade's limb hanging below the rim
+    /// doesn't count, so a cascade's pot never grows with its spill. You get
+    /// 0 for a tree with nothing above the soil.
+    pub fn crown_spread(&self) -> f64 {
+        let sk = &self.skeleton;
+        let wood = sk
+            .nodes
+            .iter()
+            .filter(|n| n.p.1 < style::SOIL_Y)
+            .map(|n| (n.p.0, n.p.0));
+        let clouds = sk
+            .clouds
+            .iter()
+            .filter(|c| c.c.1 < style::SOIL_Y)
+            .map(|c| (c.c.0 - c.rx, c.c.0 + c.rx));
+        let (lo, hi) = wood
+            .chain(clouds)
+            .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), (a, b)| {
+                (lo.min(a), hi.max(b))
+            });
+        (hi - lo).max(0.0)
     }
 
     /// The tree for `snapshot` as of `as_of`, before its pot is chosen.
@@ -622,6 +656,14 @@ fn past_reach(
 #[cfg(test)]
 mod leaf_tests {
     use super::*;
+
+    /// A broad crown asks for a pot six tenths its spread, even when its
+    /// height and full size ask for less.
+    #[test]
+    fn a_broad_crown_asks_for_a_wider_pot() {
+        assert!((pot_need_of(100.0, 80.0, 350.0) - 210.0).abs() < 1e-9);
+        assert!((pot_need_of(100.0, 80.0, 50.0) - 80.0).abs() < 1e-9);
+    }
 
     /// A language too new for the past months keeps today's leaves: missing
     /// there is not zero.
