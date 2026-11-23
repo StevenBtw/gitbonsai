@@ -597,13 +597,20 @@ fn past_reach(
             let cut = folded.cut(day);
             // How formal upright that month stood, and how big its style
             // grew it, as its style then.
-            let mix = crate::style::Mix::of(&cut);
-            let chokkan = style.map_or_else(
-                || mix.weight(crate::config::Style::Chokkan),
-                |s| f64::from(u8::from(s == crate::config::Style::Chokkan)),
-            );
-            let scale =
-                style.map_or_else(|| crate::style::size_of_mix(mix), crate::style::style_size);
+            let (chokkan, scale) = match style {
+                Some(s) => (
+                    f64::from(u8::from(s == crate::config::Style::Chokkan)),
+                    crate::style::style_size(s),
+                ),
+                // Only a style the history chooses needs that month's mix.
+                None => {
+                    let mix = crate::style::Mix::of(&cut);
+                    (
+                        mix.weight(crate::config::Style::Chokkan),
+                        crate::style::size_of_mix(mix),
+                    )
+                }
+            };
             let then = Timeline::new(&cut);
             let tree = growth::life::Life::of(&then, periods)
                 .and_then(|life| {
