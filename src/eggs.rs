@@ -325,7 +325,8 @@ const POT_FULL: f64 = 110.0;
 /// reaches from its centre: to each side, down to its front, and up.
 /// The spot keeps its sides on the soil, its front short of the rim's lip
 /// (one asked for too far forward lies back from it) and clear of the eggs
-/// in `soil`; of those, the nearest that keeps off the wood and roots in
+/// in `soil`; where the rim stands above the soil, on the bowl and a
+/// rectangle, up to 40% of the egg may sit behind it instead; of those, the nearest that keeps off the wood and roots in
 /// `ground`, else the one that covers least of them. With no spot left it
 /// gets none: the egg is left out rather than laid on another.
 fn settle(
@@ -336,11 +337,14 @@ fn settle(
     (wood, roots): (&[Vec<(f64, f64, f64)>], &[Vec<(f64, f64)>]),
 ) -> Option<(f64, f64)> {
     // The soil as drawn, kept 2 inside its edge and the lip.
-    let (sx, sy) = (pot.hw - 6.0, (pot.ry - 4.0).max(1.0));
+    let (reach_x, reach_y) = pot.soil_reach();
+    let (sx, sy) = (reach_x - 6.0, (reach_y - 4.0).max(1.0));
     let on_soil =
         |x: f64, y: f64| math::sq((x - CENTER_X) / sx) + math::sq((y - SOIL_Y - 0.6) / sy) <= 1.0;
-    let room = (0.85 * pot.hw - r).max(0.0);
+    let room = (0.85 * reach_x - r).max(0.0);
     let step = (0.5 * r).max(1.0);
+    let behind = pot.shape != crate::pot::Shape::Oval;
+    let rect = pot.shape == crate::pot::Shape::Rect;
     let (_, x, y) = (0..60)
         .map(|i| {
             let k = step * f64::from((i + 1) / 2);
@@ -348,13 +352,26 @@ fn settle(
         })
         .filter(|x| (x - CENTER_X).abs() <= room)
         .map(|x| {
-            let across = ((x - CENTER_X) / sx).clamp(-1.0, 1.0);
-            let front = SOIL_Y + 0.6 + sy * (1.0 - across * across).sqrt();
-            (x, at.1.min(front - down))
+            let lowest = if behind {
+                // At least 60% of it above the rim's front edge.
+                pot.rim_front_y(x) + up - 0.6 * (up + down)
+            } else {
+                let across = ((x - CENTER_X) / sx).clamp(-1.0, 1.0);
+                SOIL_Y + 0.6 + sy * (1.0 - across * across).sqrt() - down
+            };
+            (x, at.1.min(lowest))
         })
         .filter(|&(x, y)| {
-            on_soil(x - r, y)
-                && on_soil(x + r, y)
+            let sides = if rect {
+                // Within the opening, clear of the frame at the sides.
+                (x - CENTER_X).abs() + r <= reach_x - 2.0
+            } else if behind {
+                // Its top on the soil; its front may go behind the rim.
+                on_soil(x - r, y - up) && on_soil(x + r, y - up)
+            } else {
+                on_soil(x - r, y) && on_soil(x + r, y)
+            };
+            sides
                 && soil
                     .iter()
                     .all(|&(a, b, q)| math::sq(a - x) + math::sq(b - y) >= math::sq(r + q))
@@ -996,8 +1013,8 @@ enum Mend {
     Gold,
     /// A fine silver seam laid in black lacquer, on the vintage clay.
     Silver,
-    /// A hairline in the clay with copper staples across it, on the clay
-    /// pot on feet.
+    /// A hairline in the clay with copper staples across it, on the brown
+    /// clay oval.
     Staples,
     /// The bare hairline, on the terracotta.
     Crack,
@@ -1005,7 +1022,7 @@ enum Mend {
 
 /// Kintsugi: every archived repository is a break in the pot, mended the
 /// pot's own way: gold on a glazed pot, silver in black lacquer on the
-/// vintage clay, copper staples on the clay pot on feet, a bare crack in the
+/// vintage clay, copper staples on the brown clay oval, a bare crack in the
 /// terracotta, and nothing on the plastic training pot. A break starts at the rim and runs down past the foot
 /// (clipped by the pot, so it continues underneath), meandering on two scales
 /// with a width that swells and thins like poured lacquer. Breaks sit at
@@ -1301,7 +1318,7 @@ mod tests {
         assert_eq!(peek(&last), (None, Some((19.0, 319.0))));
     }
 
-    /// A crack in the clay pot on feet gets a copper staple about every 20
+    /// A crack in the brown clay oval gets a copper staple about every 20
     /// units, at least two: a mend, not a seam of stitches.
     #[test]
     fn staples_sit_about_twenty_apart() {
@@ -1402,34 +1419,66 @@ mod tests {
         }
     }
 
-    /// On a rectangle the soil eggs keep inside its opening: clear of its
-    /// sides and behind its front edge.
+    /// Every soil egg, asked for anywhere on the soil, the front edge too,
+    /// on the bowl and on each rectangle: its sides on the soil, and at
+    /// least 60% of it above the rim's front edge, the rest behind the rim.
+    /// One asked for at the front stays there, partly behind the rim,
+    /// instead of moving back.
     #[test]
-    fn soil_eggs_stay_inside_a_rectangles_opening() {
-        let pot = Pot {
-            hw: 100.0,
-            ry: 22.0,
-            depth: 40.0,
-            bw: 88.0,
-            glaze: Rgb::hex(0),
-            shape: crate::pot::Shape::Rect,
-            level: 8,
-        };
+    fn soil_eggs_show_at_least_sixty_percent_above_the_rim() {
+        let w = WORLD;
+        // (half-width, down, up) of each soil egg as drawn at full size.
+        let mut eggs = vec![
+            (4.0 * 1.1, 1.0 * 1.1, 2.0 * 1.1),
+            (7.0 * 1.25, 2.1 * 1.25, 6.0 * 1.25),
+            (8.0 * 1.5, 2.0 * 1.5, 4.0 * 1.5),
+            (4.4 * 1.5, 2.2 * 1.5, 2.2 * 1.5),
+            (3.8 * 1.25, 1.9 * 1.25, 1.9 * 1.25),
+        ];
+        for half in [5.5, 6.5, 9.0, 12.0] {
+            eggs.push((half * 1.3, 3.0 * 1.3, 4.0 * 1.3));
+        }
         let ground = (&[][..], &[][..]);
-        let mut soil = Vec::new();
-        for (i, x) in [-90.0, -50.0, 0.0, 50.0, 90.0].into_iter().enumerate() {
-            let (r, d) = (6.0, 3.0);
-            let at = (
-                CENTER_X + x,
-                SOIL_Y + 15.0 - f64::from(u8::try_from(i).unwrap_or(0)),
-            );
-            if let Some((ex, ey)) = settle(&mut soil, at, (r, d, 2.0 * d), &pot, ground) {
-                assert!(
-                    (ex - CENTER_X).abs() + r <= pot.hw - 4.0,
-                    "{ex} reaches the side"
-                );
-                assert!(ey + d <= pot.rim_front_y(ex), "{ey} past the front edge");
+        for (shape, level) in [
+            (crate::pot::Shape::Bowl, 7),
+            (crate::pot::Shape::Rect, 8),
+            (crate::pot::Shape::Rect, 9),
+            (crate::pot::Shape::Rect, 10),
+        ] {
+            let pot = Pot {
+                hw: 110.0,
+                ry: 20.0,
+                depth: 50.0,
+                bw: 90.0,
+                glaze: Rgb::hex(0),
+                shape,
+                level,
+            };
+            let mut partly = false;
+            for &(r, down, up) in &eggs {
+                let (r, down, up) = (r * w, down * w, up * w);
+                for x in [-0.6, -0.3, 0.0, 0.3, 0.6] {
+                    for y in [0.0, 0.5, 1.0, 1.5] {
+                        let at = (CENTER_X + x * pot.hw, SOIL_Y + y * pot.ry);
+                        let Some((ex, ey)) =
+                            settle(&mut Vec::new(), at, (r, down, up), &pot, ground)
+                        else {
+                            continue;
+                        };
+                        let shown = (pot.rim_front_y(ex) - (ey - up)) / (up + down);
+                        assert!(
+                            shown >= 0.6 - 1e-9,
+                            "{level}: an egg {r} wide at {ex} {ey} shows {shown:.2}"
+                        );
+                        assert!(
+                            (ex - CENTER_X).abs() + r <= pot.soil_reach().0,
+                            "{level}: an egg {r} wide at {ex} reaches past the side"
+                        );
+                        partly |= shown < 0.99;
+                    }
+                }
             }
+            assert!(partly, "{level}: no egg sits partly behind the rim");
         }
     }
 

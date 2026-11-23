@@ -999,7 +999,7 @@ fn kintsugi_follows_every_pots_wall() {
 
 /// Each pot is mended its own way: nothing on the plastic training pot,
 /// bare cracks in the terracotta, copper staples across the cracks in the
-/// clay pot on feet, silver laid in black lacquer on the vintage clay, gold
+/// brown clay oval, silver laid in black lacquer on the vintage clay, gold
 /// on the glazed pots.
 #[test]
 fn each_pot_is_mended_its_own_way() {
@@ -2152,12 +2152,17 @@ fn the_pot_never_shrinks() {
     }
 }
 
-/// The pot's shadow on the table in a light picture, its middle and the foot
-/// line it lies at; none under the bowl and the rectangles.
-fn table_shadow(svg: &str) -> Option<(f64, f64)> {
-    let at = svg.find(r##"fill="#3b3226" opacity=".16"/>"##)?;
-    let element = svg[..at].rsplit('<').next().expect("its element");
-    let attr = |name: &str| -> f64 {
+/// The pot's shadow on the table in a light picture: the middle of its last,
+/// widest step, the one furthest from the light; and the line a round pot's
+/// base or the bowl's saucer stands on, the middle of its contact step (a
+/// rectangle's shadow is a flat slab, without one).
+fn table_shadow(svg: &str) -> Option<(f64, Option<f64>)> {
+    let step = |op: &str| {
+        let end = format!(r#"opacity="{op}"/>"#);
+        svg.split('<')
+            .find(|e| e.contains(r##"fill="#3b3226""##) && e.trim_end().ends_with(&end))
+    };
+    let attr = |element: &str, name: &str| -> f64 {
         let key = format!(" {name}=\"");
         element
             .split(&key)
@@ -2166,7 +2171,19 @@ fn table_shadow(svg: &str) -> Option<(f64, f64)> {
             .and_then(|v| v.parse().ok())
             .unwrap_or_else(|| panic!("no {name} in {element}"))
     };
-    Some((attr("cx"), attr("cy")))
+    let (contact, last) = (step("0.34")?, step("0.04")?);
+    let middle = if last.starts_with("ellipse") {
+        attr(last, "cx")
+    } else {
+        let d = last.split(" d=\"").nth(1)?.split('"').next()?;
+        let n: Vec<f64> = d
+            .split(|c: char| c.is_ascii_alphabetic() || c == ' ')
+            .filter_map(|v| v.parse().ok())
+            .collect();
+        f64::midpoint(n[3], n[5])
+    };
+    let line = contact.starts_with("ellipse").then(|| attr(contact, "cy"));
+    Some((middle, line))
 }
 
 /// The pot changes only at a repotting, its depth too: between two springs,
@@ -2174,10 +2191,11 @@ fn table_shadow(svg: &str) -> Option<(f64, f64)> {
 /// however much the trunk thickens.
 #[test]
 fn the_pot_keeps_its_depth_between_repottings() {
-    // The pot's foot, from its shadow on the table: an oval's; the bowl and
-    // the rectangles have none, and their depth rule is tested in `pot`.
-    let foot =
-        |b: &Bonsai| table_shadow(&render::svg(b, &Config::default(), Theme::Light)).map(|s| s.1);
+    // The pot's foot, from its shadow on the table: a round pot's base or the
+    // bowl's saucer; a rectangle's depth rule is tested in `pot`.
+    let foot = |b: &Bonsai| {
+        table_shadow(&render::svg(b, &Config::default(), Theme::Light)).and_then(|s| s.1)
+    };
     let (mut held, mut spurts) = (0, 0);
     for name in ["steady", "showcase", "veteran", "comeback", "polyglot"] {
         let frames: Vec<_> = monthly(name)
@@ -2200,7 +2218,7 @@ fn the_pot_keeps_its_depth_between_repottings() {
             if pot_b > pot_a {
                 spurts += 1;
                 assert!(
-                    foot_b > foot_a || foot_a - 405.2 > 55.9,
+                    foot_b > foot_a || foot_a - 404.0 > 55.9,
                     "{name} {day}: repotted from {pot_a} to {pot_b}, the foot stays at {foot_a}"
                 );
                 continue;
