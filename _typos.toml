@@ -15,3 +15,5 @@ shakan = "shakan"
 kengai = "kengai"
 fukinagashi = "fukinagashi"
 sokan = "sokan"
+# Crate names: flate2 (read as "flate")
+flate = "flate"
