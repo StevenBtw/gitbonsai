@@ -8,7 +8,7 @@ Pots and roots release: the pot ladder grows from seven pots to eleven, with a h
 
 ### Added
 
-- **Four new pots**: a longest streak of 104 weeks earns a hobnail bowl on a bamboo saucer, 136 weeks a vintage clay rectangle, 174 weeks a glossy cobalt rectangle and 216 weeks a speckled green rectangle with a flared lip.
+- **Four new pots**: a longest streak of 104 weeks earns a hobnail bowl on a bamboo saucer, 156 weeks a vintage clay rectangle, 207 weeks a glossy cobalt rectangle and 259 weeks a speckled green rectangle with a flared lip.
 - **`gitbonsai explain` describes the pot and the tree's size**: a `pot` line gives the pot's level and name, a `trunk at its foot` line the trunk's width where it meets the soil, and a `size` line the wood and foliage, so styles can be compared.
 - **Windswept and cascade trees hold on with their roots**: a windswept tree streams up to three long roots upwind toward the rim, and a cascade's roots reach for the rim on the side it spills to, one of them thick; every root stays inside the pot.
 - **A cascade's white trunk takes its roots with it**: under a classic-language trunk turned white, all roots but two turn white and thinner.
@@ -16,7 +16,7 @@ Pots and roots release: the pot ladder grows from seven pots to eleven, with a h
 
 ### Changed
 
-- **Pots come sooner**: the ladder has eleven levels at 4, 13, 26, 39, 52, 78, 104, 136, 174 and 216 weeks (it was seven, up to 208 weeks); the celadon oval now comes at 39 weeks and the antique at 78.
+- **Eleven pots**: the ladder has eleven levels at 4, 13, 26, 39, 52, 78, 104, 156, 207 and 259 weeks (it was seven, up to 208 weeks); the celadon oval now comes at 39 weeks and the antique at 78, sooner than before.
 - **The styles are closer in size**: grown from the same work, chokkan, moyogi and shakan trees are 3.5% bigger and windswept and cascade trees 3.5% smaller, which moves each style about 5% (by `explain`'s size) toward the others.
 - **Each pot holds the soil the tree needs**: the round pots, the bowl and the rectangles each measure their own volume; a cascade's pot holds as much soil as the upright pot would, narrower and 0.7 times as deep as it is wide.
 - **Pots are at least 0.6 of the crown's spread**: a broad crown no longer stands in a pot much narrower than itself.
