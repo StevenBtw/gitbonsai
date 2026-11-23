@@ -2,7 +2,7 @@
 
 All notable changes to gitbonsai, a Japanese maple bonsai grown from GitHub activity. A change to how a tree grows or looks is at least a minor version, because people notice their tree changing; a patch only fixes drawing bugs, wood or leaves drawn where they were never meant to be.
 
-## [0.6.1] - 2026-11-24
+## [0.6.1] - 2026-11-23
 
 Pot meta rebalance and shadow update: pots stand without feet and cast one stepped shadow, soil heaps up gently with a fine grain, moss grows as star moss, and the rectangles are seen flatter, with a higher rim, the finest two with a detailed rim. Every tree's picture changes around its pot, which would make this a minor version; it ships as 0.6.1 because it finishes the pots of 0.6.0. gitbonsai.dev gets an icon.
 
