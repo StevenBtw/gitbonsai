@@ -13,22 +13,25 @@ Pots and roots release: the pot ladder grows from seven pots to eleven, with a h
 - **Windswept and cascade trees hold on with their roots**: a windswept tree streams up to three long roots upwind toward the rim, and a cascade's roots reach for the rim on the side it spills to, one of them thick; every root stays inside the pot.
 - **A cascade's white trunk takes its roots with it**: under a classic-language trunk turned white, all roots but two turn white and thinner.
 - **The exhibition shows a tree growing**: a tree waiting its turn shows a seedling in its pot, and a growing one its trunk rising as its history comes in, with a ring for each year.
+- **gitbonsai.dev has an icon**: a bonsai in its pot, cut from a disc, in the browser tab (following the browser's light or dark mode) and on a phone's home screen.
 
 ### Changed
 
 - **Eleven pots**: after the training pot, ten more come at a longest streak of 4, 13, 26, 39, 52, 78, 104, 156, 207 and 259 weeks (it was six more, up to 208 weeks); the celadon oval now comes at 39 weeks and the antique at 78, sooner than before.
 - **The styles are closer in size**: grown from the same work, chokkan, moyogi and shakan trees are 3.5% bigger and windswept and cascade trees 3.5% smaller, which moves each style about 5% (by `explain`'s size) toward the others.
-- **Each pot holds the soil the tree needs**: the round pots, the bowl and the rectangles each measure their own volume; a cascade's pot holds as much soil as the upright pot would, narrower and 0.7 times as deep as it is wide.
+- **Each pot holds the soil the tree needs**: the round pots, the bowl and the rectangles each measure their own volume; a cascade's pot holds as much soil as the upright pot would, narrower and 0.7 times as deep as it is wide (the bowl keeps its shape).
 - **Pots are at least 0.6 of the crown's spread**: a broad crown no longer stands in a pot much narrower than itself.
-- **Big pots go deeper, within limits**: a pot can be a quarter of its width deep (at least 56), the bowl at most 0.38 and a rectangle at most 0.27 of its width.
+- **Big pots go deeper, within limits**: a pot can be a quarter of its width deep (at least 56), a rectangle at most 0.27 of its width.
+- **The bowl has one shape**: it is always 0.38 as deep as it is wide, whatever the trunk, and only its size follows the tree.
 - **Pots have rims, feet and moss cushions**: each pot has its own rim and feet in its own colours, and moss grows in soft cushions.
 - **The bowl and the rectangles hold their soil below the rim**: 9% of the depth below in the bowl and 3.5% in a rectangle, with the inner walls showing above it; the round pots stay filled to the brim.
-- **Rectangles are seen from the ovals' angle**: a rectangle's top face is as deep as an oval's of the same width, and drawn without perspective.
-- **Only the round pots cast a shadow**: the bowl and the rectangles stand without the soft shadow under the oval pots.
+- **Rectangles are seen from the ovals' angle**: a rectangle's top face is as deep as an oval's of the same width, narrowing a touch toward the back.
+- **The bowl and the rectangles cast a contact shadow**: a tight, soft shadow where the saucer or the feet meet the table, instead of the wider one under the round pots.
 - **SVGs stay under 241 KB and 2,800 elements**: up 12% from 215 KB and 2,500, for the new pots' detail; a heavier crown still keeps fewer, larger leaves.
 
 ### Fixed
 
+- **Picking another tree on the site no longer jumps**: the new tree, its place on the plate and its caption change together once it has loaded, instead of the old tree showing at the new one's size until then.
 - **The exhibition's progress never goes back**: one check runs at a time, so an older answer can no longer roll the bar back, and trees that leave the queue stop being checked.
 - **The exhibition's language filter knows new trees**: languages from a freshly grown tree appear in the filter.
 
