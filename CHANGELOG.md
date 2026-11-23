@@ -16,7 +16,7 @@ Pots and roots release: the pot ladder grows from seven pots to eleven, with a h
 
 ### Changed
 
-- **Eleven pots**: the ladder has eleven levels at 4, 13, 26, 39, 52, 78, 104, 156, 207 and 259 weeks (it was seven, up to 208 weeks); the celadon oval now comes at 39 weeks and the antique at 78, sooner than before.
+- **Eleven pots**: after the training pot, ten more come at a longest streak of 4, 13, 26, 39, 52, 78, 104, 156, 207 and 259 weeks (it was six more, up to 208 weeks); the celadon oval now comes at 39 weeks and the antique at 78, sooner than before.
 - **The styles are closer in size**: grown from the same work, chokkan, moyogi and shakan trees are 3.5% bigger and windswept and cascade trees 3.5% smaller, which moves each style about 5% (by `explain`'s size) toward the others.
 - **Each pot holds the soil the tree needs**: the round pots, the bowl and the rectangles each measure their own volume; a cascade's pot holds as much soil as the upright pot would, narrower and 0.7 times as deep as it is wide.
 - **Pots are at least 0.6 of the crown's spread**: a broad crown no longer stands in a pot much narrower than itself.
