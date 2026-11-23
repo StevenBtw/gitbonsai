@@ -18,23 +18,23 @@ Unless you set a style, your last three years mostly pick the shape: steady work
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/row-top-dark.svg" />
-    <img src="assets/row-top-light.svg" width="87%" alt="Four bonsai at one scale: a simulated sprout three days in and the same account months later, then the trees of StevenBtw and jacobwilliams" />
+    <img src="assets/row-top-light.svg" width="84%" alt="Four bonsai at one scale, smallest first: a simulated sprout three days in and the same account months later, then the trees of jacobwilliams and StevenBtw" />
   </picture>
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/row-bottom-dark.svg" />
-    <img src="assets/row-bottom-light.svg" width="100%" alt="Three more bonsai at the same scale: the trees of tj, torvalds and steipete" />
+    <img src="assets/row-bottom-light.svg" width="100%" alt="Three more bonsai at the same scale, smallest first: the trees of steipete, tj and torvalds" />
   </picture>
 </p>
 
-From top left:
+From top left, smallest to largest:
 
 - **Sprout** (simulated): three days and 12 contributions in, its seed leaves still open.
 - **Newcomer**: the same account a few months in, a thin seedling.
-- **[@StevenBtw](https://github.com/StevenBtw)**: 9 years of Python and Rust; quiet summers swept it windswept.
 - **[@jacobwilliams](https://github.com/jacobwilliams)**: 13 years, mostly Fortran; a semi-cascade over the rim, its Fortran trunk white and still growing.
+- **[@StevenBtw](https://github.com/StevenBtw)**: 9 years of Python and Rust; quiet summers swept it windswept.
+- **[@steipete](https://github.com/steipete)**: 17 years; new languages on new strands, its crown standing up strong again after a windy spell.
 - **[@tj](https://github.com/tj)**: 19 years; long pauses slant it, and resting since 2021, bare for the winter.
 - **[@torvalds](https://github.com/torvalds)**: 16 years of C every week; a thick formal upright.
-- **[@steipete](https://github.com/steipete)**: 17 years; new languages on new strands, its crown standing up strong again after a windy spell.
 
 The five real trees are grown from their public GitHub activity with `gitbonsai collect <login>` and `gitbonsai render`. Look closely: a tree may hide a few small surprises of its own.
 
