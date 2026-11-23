@@ -32,6 +32,15 @@ test("parseList reads entries and drops malformed ones", () => {
   assert.equal(g.parseList({ entries: [{ ...good, languages: [] }] }).length, 1);
 });
 
+test("parseWholeList keeps an answer only when every entry reads", () => {
+  const good = e("tj");
+  assert.deepEqual(g.parseWholeList({ entries: [good] }).map((x) => x.login), ["tj"]);
+  assert.deepEqual(g.parseWholeList({ entries: [] }), []);
+  // One malformed entry, or no list at all: the whole answer is set aside.
+  assert.equal(g.parseWholeList({ entries: [good, { ...good, login: undefined }] }), null);
+  for (const bad of [null, 42, {}, { entries: 3 }, "x"]) assert.equal(g.parseWholeList(bad), null);
+});
+
 test("parseStarred lowercases and tolerates junk", () => {
   assert.deepEqual([...g.parseStarred({ starred: ["StevenBtw"] })], ["stevenbtw"]);
   assert.equal(g.parseStarred({}).size, 0);

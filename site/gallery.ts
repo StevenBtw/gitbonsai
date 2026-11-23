@@ -11,6 +11,7 @@ import {
   languagesByCount,
   pollDelay,
   parseList,
+  parseWholeList,
   parseResult,
   parseStarred,
   progressText,
@@ -254,8 +255,10 @@ async function poll(): Promise<void> {
   polling = true;
   try {
     const r = await fetch(`${API}/v1/gallery`, { cache: "no-store" });
-    if (r.ok) {
-      const fresh = parseList(await r.json());
+    // A partial or malformed answer is set aside and tried again: a tree it
+    // left out may still be there.
+    const fresh = r.ok ? parseWholeList(await r.json()) : null;
+    if (fresh) {
       let grew = false;
       for (const old of shown.filter((x) => !isGrown(x))) {
         const f = fresh[findIndex(fresh, old.login)];

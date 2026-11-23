@@ -243,16 +243,41 @@ const BOWL_INSET: f64 = 0.09;
 /// depth: enough for a thin line of inner wall.
 const RECT_INSET: f64 = 0.035;
 
-/// How far down a bowl's wall its belly is widest, and by how much.
-const BELLY: (f64, f64) = (1.0 / 3.0, 1.07);
+/// The bowl's wall is one curve from the rim to the foot: it leaves the rim
+/// toward this share of the rim's half-width, this share of the depth down
+/// (its shoulder)...
+const SHOULDER: (f64, f64) = (1.07, 0.42);
 
-/// Gives a bowl's half-width a fraction `t` of the way down: through the rim
-/// `hw`, the belly and the foot `bw`.
+/// ...and comes into the foot from this share of the foot's half-width, so
+/// it swells a little below the rim and rounds in to a small foot.
+const FOOT_SWELL: f64 = 1.22;
+
+/// Gives a bowl's half-width a fraction `t` of the way down, on the curve
+/// its wall is drawn with: from the rim `hw` to the foot `bw`.
 fn belly(hw: f64, bw: f64, t: f64) -> f64 {
-    let (tb, wb) = BELLY;
-    hw * (t - tb) * (t - 1.0) / tb
-        + hw * wb * t * (t - 1.0) / (tb * (tb - 1.0))
-        + bw * t * (t - tb) / (1.0 - tb)
+    let (sx, sy) = SHOULDER;
+    // The curve's height grows along it: find where it is `t` down.
+    let at = |u: f64, a: f64, b: f64, c: f64, d: f64| {
+        let v = 1.0 - u;
+        v * v * v * a + 3.0 * v * v * u * b + 3.0 * v * u * u * c + u * u * u * d
+    };
+    // At the rim and the foot the curve is where it starts and ends.
+    if t <= 0.0 {
+        return hw;
+    }
+    if t >= 1.0 {
+        return bw;
+    }
+    let (mut lo, mut hi) = (0.0_f64, 1.0_f64);
+    for _ in 0..50 {
+        let mid = f64::midpoint(lo, hi);
+        if at(mid, 0.0, sy, 1.0, 1.0) < t {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    at(hi, hw, hw * sx, bw * FOOT_SWELL, bw)
 }
 
 impl Model {
@@ -667,14 +692,14 @@ impl Pot {
                 wall.m((cx - hw, rim))
                     .a(hw, ry, false, (cx + hw, rim))
                     .c(
-                        (cx + hw * 1.07, rim + d * 0.42),
-                        (cx + bw * 1.22, by),
+                        (cx + hw * SHOULDER.0, rim + d * SHOULDER.1),
+                        (cx + bw * FOOT_SWELL, by),
                         (cx + bw, by),
                     )
                     .a(bw, ry * bw / hw, true, (cx - bw, by))
                     .c(
-                        (cx - bw * 1.22, by),
-                        (cx - hw * 1.07, rim + d * 0.42),
+                        (cx - bw * FOOT_SWELL, by),
+                        (cx - hw * SHOULDER.0, rim + d * SHOULDER.1),
                         (cx - hw, rim),
                     )
                     .z();
@@ -1640,7 +1665,8 @@ mod tests {
     }
 
     /// The wall's half-width down the pot: straight on an oval and a
-    /// rectangle, swelling to its belly a third of the way down a bowl.
+    /// rectangle, and on a bowl the curve its wall is drawn with, widest a
+    /// sixth of the way down.
     #[test]
     fn a_bowls_wall_swells_at_its_belly() {
         let mut pot = Pot {
@@ -1653,7 +1679,14 @@ mod tests {
             level: 7,
         };
         assert!((pot.half_width(0.0) - 100.0).abs() < 1e-9);
-        assert!((pot.half_width(1.0 / 3.0) - 107.0).abs() < 1e-9);
+        // The drawn wall's own numbers (hw 100, bw 69).
+        for (t, w) in [(1.0 / 6.0, 101.301), (0.5, 97.293), (0.75, 89.306)] {
+            assert!(
+                (pot.half_width(t) - w).abs() < 0.01,
+                "{t}: {}",
+                pot.half_width(t)
+            );
+        }
         assert!((pot.half_width(1.0) - 69.0).abs() < 1e-9);
         pot.shape = Shape::Rect;
         assert!((pot.half_width(0.5) - 84.5).abs() < 1e-9);

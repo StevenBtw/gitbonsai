@@ -226,9 +226,10 @@ impl Leader {
 
 /// How much bigger a tree of `style` grows than its work alone makes it:
 /// grown from the same contributions, the uprights would come out smaller
-/// than the windswept and cascade trees, so each moves about 5% of its size
-/// (as `explain` measures it) toward the others.
-fn style_size(style: Style) -> f64 {
+/// than the windswept and cascade trees. Scaling the whole tree 3.5% (3.2%
+/// for a windswept one) moves each style's size, as `explain` measures it
+/// with wood and foliage, about 5% toward the others.
+pub fn style_size(style: Style) -> f64 {
     match style {
         Style::Chokkan | Style::Moyogi | Style::Shakan => UPRIGHT_SIZE,
         Style::Fukinagashi => WINDSWEPT_SIZE,
@@ -251,12 +252,18 @@ const CASCADE_SIZE: f64 = 0.965;
 /// style is configured.
 pub fn size_factor(leader: &Leader) -> f64 {
     match leader.mix {
-        Some(mix) => Style::ALL
-            .iter()
-            .map(|&s| mix.weight(s) * style_size(s))
-            .sum(),
+        Some(mix) => size_of_mix(mix),
         None => style_size(leader.style),
     }
+}
+
+/// How much bigger a tree grows for where `mix` puts it between the
+/// styles: their factors blended by its weights.
+pub fn size_of_mix(mix: Mix) -> f64 {
+    Style::ALL
+        .iter()
+        .map(|&s| mix.weight(s) * style_size(s))
+        .sum()
 }
 
 /// Where a tree stands between the five styles, from its last three years.

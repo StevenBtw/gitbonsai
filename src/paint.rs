@@ -1904,7 +1904,7 @@ fn to_rim(rim: f64, az: f64, off: f64) -> f64 {
 /// seen end-on is no round knob.
 fn root_width(w0: f64, t: f64, az: f64) -> f64 {
     let facing = math::sin(az).max(0.0);
-    w0 * (1.0 - 0.5 * t) * (1.0 + 0.35 * math::sq(math::sq(1.0 - t))) * (1.0 - 0.9 * facing * t * t)
+    w0 * (1.0 - 0.5 * t) * (1.0 + 0.35 * math::sq(math::sq(1.0 - t))) * (1.0 - facing * t * t)
         + 0.35 * (1.0 - facing * t)
 }
 
@@ -2757,7 +2757,7 @@ mod tests {
     fn a_root_facing_us_ends_in_a_point() {
         let front = root_width(10.0, 1.0, math::TAU / 4.0);
         let side = root_width(10.0, 1.0, 0.0);
-        assert!(front < 1.0, "{front}");
+        assert!(front.abs() < 1e-9, "{front}");
         assert!((side - (10.0 * 0.5 + 0.35)).abs() < 1e-9, "{side}");
         assert!((root_width(10.0, 0.0, math::TAU / 4.0) - root_width(10.0, 0.0, 0.0)).abs() < 1e-9);
     }

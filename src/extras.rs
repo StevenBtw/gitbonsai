@@ -34,7 +34,7 @@ pub struct Extras {
     pub longest_streak: u32,
     /// Moss coverage of the soil, 0 to 1.
     pub moss: f64,
-    /// Pot tier, 0 to 6. Never goes down, because the longest streak can't.
+    /// Pot tier, 0 to 10. Never goes down, because the longest streak can't.
     pub pot_tier: u8,
     /// The highest blossom level reached, 0 to 11.
     pub level: u8,

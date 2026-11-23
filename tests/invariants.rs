@@ -114,6 +114,28 @@ fn monthly(name: &str) -> Vec<(gitbonsai::date::Date, Bonsai)> {
         .collect()
 }
 
+/// A tree never shrinks as its style drifts: a trunk keeps the height of its
+/// tallest month, however its style weighs its size since.
+#[test]
+fn a_tree_never_shrinks_as_its_style_drifts() {
+    let mut shrunk = Vec::new();
+    for name in [
+        "steady", "showcase", "veteran", "comeback", "polyglot", "dormant", "mono", "private",
+    ] {
+        let mut tallest = 0.0_f64;
+        for (day, b) in monthly(name) {
+            let h = b.skeleton.height;
+            if h < tallest - 0.5 {
+                shrunk.push(format!(
+                    "{name} {day}: {h:.1} below its tallest {tallest:.1}"
+                ));
+            }
+            tallest = tallest.max(h);
+        }
+    }
+    assert!(shrunk.is_empty(), "{shrunk:#?}");
+}
+
 /// The tree grows, it doesn't jump: month to month the height and the root's
 /// girth never drop,
 /// dead wood arrives a little at a time and is never cleared away, and the

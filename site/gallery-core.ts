@@ -83,6 +83,16 @@ export function parseList(body: unknown): Entry[] {
   });
 }
 
+/** The entries of `body` when every one of them reads, `null` when any is
+ *  malformed or there is no list: an answer that may leave a tree out, so the
+ *  page can't tell a tree taken away from one it failed to read. */
+export function parseWholeList(body: unknown): Entry[] | null {
+  const list = body && typeof body === "object" ? (body as { entries?: unknown }).entries : undefined;
+  if (!Array.isArray(list)) return null;
+  const read = parseList(body);
+  return read.length === list.length ? read : null;
+}
+
 /** The most quarters a history can have: a hundred years. */
 const MAX_QUARTERS = 400;
 

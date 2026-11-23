@@ -634,6 +634,10 @@ pub struct Reach {
     /// What a formal upright's trunk carries for its steady years, as flow:
     /// kept once grown, like the girth.
     pub trunk: f64,
+    /// The largest scale its style has given it
+    /// ([`crate::style::size_factor`]): kept once grown, so a tree drifting
+    /// toward a smaller style never shrinks.
+    pub scale: f64,
 }
 
 /// What the tree of `life` reaches today, and its measures for averaging;
@@ -660,6 +664,7 @@ impl Reach {
             irr: f64::midpoint(self.irr, recent.irr),
             girth: self.girth,
             trunk: self.trunk,
+            scale: self.scale,
         }
     }
 
@@ -673,6 +678,7 @@ impl Reach {
             irr: self.irr.max(other.irr),
             girth: self.girth.max(other.girth),
             trunk: self.trunk.max(other.trunk),
+            scale: self.scale.max(other.scale),
         }
     }
 }
@@ -862,6 +868,7 @@ impl<'a> Ctx<'a> {
                 let (target, f) = girth_target(life);
                 trunk_extra(life, tier, target) * f
             },
+            scale: 0.0,
         };
         Self {
             reach,
@@ -3764,7 +3771,7 @@ pub fn grow(
         tree(&mut sk, &life, seed, &leader.canonical(), past, recent);
         // Grown from the same work, each style comes out a little nearer
         // the others' size.
-        sk.scale(crate::style::size_factor(leader));
+        sk.scale(crate::style::size_factor(leader).max(past.scale));
         if leader.side < 0.0 {
             sk.mirror();
         }
