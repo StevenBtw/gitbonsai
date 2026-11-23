@@ -319,7 +319,7 @@ const EX: Example[] = [
   ["stevenbtw", "@StevenBtw", "real", "Around 9 years; Python and Rust on two trunks. Quiet summers without commits swept it to one side: windswept."],
   ["tj", "@tj", "real", "Around 19 years; JavaScript, later Go. Long pauses slant it; resting since 2021, so bare for the winter."],
   ["torvalds", "@torvalds", "real", "Around 16 years of C, every single week: a thick, symmetric formal upright."],
-  ["steipete", "@steipete", "real", "Around 17 years; TypeScript is the trunk, with Swift on its own strand. Quiet spells between bursts of work start to bend its crown downwind, an upright turning windswept."],
+  ["steipete", "@steipete", "real", "Around 17 years; TypeScript is the trunk, with Swift on its own strand. Quiet spells between bursts of work once bent its crown downwind; it stands up strong again, a windswept tree turning back upright."],
 ];
 const PLAY = "M8 5.5v13l10.5-6.5z";
 const PAUSE = "M7 5h3.5v14H7zM13.5 5H17v14h-3.5z";

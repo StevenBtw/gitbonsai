@@ -529,8 +529,8 @@ mod tests {
                 let svg = render::svg(&b, &Config::default(), theme);
                 assert_eq!(svg, render::svg(&b, &Config::default(), theme), "{n}");
                 let elements = svg.matches('<').count() - svg.matches("</").count();
-                assert!(svg.len() <= 215 * 1024, "{n}: {} bytes", svg.len());
-                assert!(elements <= 2500, "{n}: {elements} elements");
+                assert!(svg.len() <= render::SVG_BUDGET, "{n}: {} bytes", svg.len());
+                assert!(elements <= 2800, "{n}: {elements} elements");
             }
         }
         // Every style draws the same sprout.

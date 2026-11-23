@@ -53,7 +53,7 @@ plate() {
 }
 plate sprout Sprout fixture:newbie --as-of 2026-08-01
 plate newcomer Newcomer fixture:newbie
-# The Showcase wears a terracotta glaze, so the examples show more than one pot.
+# The Showcase with every setting at its default (site/showcase.toml).
 plate showcase Showcase fixture:showcase --config "$site/showcase.toml"
 for who in stevenbtw:@StevenBtw jacobwilliams:@jacobwilliams tj:@tj torvalds:@torvalds steipete:@steipete; do
   plate "${who%%:*}" "${who#*:}" "$site/snapshots/${who%%:*}.snapshot.json"

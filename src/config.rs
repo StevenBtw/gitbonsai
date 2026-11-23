@@ -144,7 +144,7 @@ impl Default for BlossomsConfig {
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, default)]
 pub struct PotConfig {
-    /// The glaze, used from pot tier 3 up.
+    /// The glaze of a glazed pot (levels 3 to 7, 9 and 10); unglazed clay keeps its own colour.
     pub glaze: Option<Rgb>,
 }
 

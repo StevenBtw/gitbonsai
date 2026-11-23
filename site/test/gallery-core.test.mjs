@@ -32,6 +32,15 @@ test("parseList reads entries and drops malformed ones", () => {
   assert.equal(g.parseList({ entries: [{ ...good, languages: [] }] }).length, 1);
 });
 
+test("parseWholeList keeps an answer only when every entry reads", () => {
+  const good = e("tj");
+  assert.deepEqual(g.parseWholeList({ entries: [good] }).map((x) => x.login), ["tj"]);
+  assert.deepEqual(g.parseWholeList({ entries: [] }), []);
+  // One malformed entry, or no list at all: the whole answer is set aside.
+  assert.equal(g.parseWholeList({ entries: [good, { ...good, login: undefined }] }), null);
+  for (const bad of [null, 42, {}, { entries: 3 }, "x"]) assert.equal(g.parseWholeList(bad), null);
+});
+
 test("parseStarred lowercases and tolerates junk", () => {
   assert.deepEqual([...g.parseStarred({ starred: ["StevenBtw"] })], ["stevenbtw"]);
   assert.equal(g.parseStarred({}).size, 0);
@@ -160,7 +169,10 @@ test("progress parses, and a bad one becomes null without dropping the entry", (
   const one = (progress) => g.parseList({ entries: [{ ...waitingEntry("sprout"), progress }] });
   assert.deepEqual(one({ done: 41, total: 64 })[0].progress, { done: 41, total: 64 });
   assert.deepEqual(one({ done: 0, total: 3 })[0].progress, { done: 0, total: 3 });
-  for (const bad of [null, undefined, { done: 65, total: 64 }, { done: -1, total: 4 }, { done: 1.5, total: 4 }, { done: 1, total: 0 }, { done: "3", total: 4 }, 7]) {
+  assert.deepEqual(one({ done: 400, total: 400 })[0].progress, { done: 400, total: 400 });
+  // A hundred years of quarters at most, and never an unsafe number: the year rings are drawn one by one.
+  const big = 2 ** 53;
+  for (const bad of [null, undefined, { done: 65, total: 64 }, { done: -1, total: 4 }, { done: 1.5, total: 4 }, { done: 1, total: 0 }, { done: "3", total: 4 }, 7, { done: 1, total: 401 }, { done: big, total: big }]) {
     const [e] = one(bad);
     assert.equal(e?.login, "sprout", JSON.stringify(bad));
     assert.equal(e.progress, null, JSON.stringify(bad));

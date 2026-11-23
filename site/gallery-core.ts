@@ -83,13 +83,26 @@ export function parseList(body: unknown): Entry[] {
   });
 }
 
-/** A `{done, total}` the bar can show: whole numbers, 0 <= done <= total, total > 0; null otherwise. */
+/** The entries of `body` when every one of them reads, `null` when any is
+ *  malformed or there is no list: an answer that may leave a tree out, so the
+ *  page can't tell a tree taken away from one it failed to read. */
+export function parseWholeList(body: unknown): Entry[] | null {
+  const list = body && typeof body === "object" ? (body as { entries?: unknown }).entries : undefined;
+  if (!Array.isArray(list)) return null;
+  const read = parseList(body);
+  return read.length === list.length ? read : null;
+}
+
+/** The most quarters a history can have: a hundred years. */
+const MAX_QUARTERS = 400;
+
+/** A `{done, total}` the bar can show: whole numbers, 0 <= done <= total, 0 < total <= 400; null otherwise. */
 export function parseProgress(v: unknown): Progress | null {
   if (!v || typeof v !== "object") return null;
   const { done, total } = v as Record<string, unknown>;
   if (!Number.isInteger(done) || !Number.isInteger(total)) return null;
   const [d, t] = [done as number, total as number];
-  return d >= 0 && t > 0 && d <= t ? { done: d, total: t } : null;
+  return d >= 0 && t > 0 && d <= t && t <= MAX_QUARTERS ? { done: d, total: t } : null;
 }
 
 /** How soon the page checks back, in ms: 5 s while a tree on show is growing,

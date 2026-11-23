@@ -114,6 +114,28 @@ fn monthly(name: &str) -> Vec<(gitbonsai::date::Date, Bonsai)> {
         .collect()
 }
 
+/// A tree never shrinks as its style drifts: a trunk keeps the height of its
+/// tallest month, however its style weighs its size since.
+#[test]
+fn a_tree_never_shrinks_as_its_style_drifts() {
+    let mut shrunk = Vec::new();
+    for name in [
+        "steady", "showcase", "veteran", "comeback", "polyglot", "dormant", "mono", "private",
+    ] {
+        let mut tallest = 0.0_f64;
+        for (day, b) in monthly(name) {
+            let h = b.skeleton.height;
+            if h < tallest - 0.5 {
+                shrunk.push(format!(
+                    "{name} {day}: {h:.1} below its tallest {tallest:.1}"
+                ));
+            }
+            tallest = tallest.max(h);
+        }
+    }
+    assert!(shrunk.is_empty(), "{shrunk:#?}");
+}
+
 /// The tree grows, it doesn't jump: month to month the height and the root's
 /// girth never drop,
 /// dead wood arrives a little at a time and is never cleared away, and the
@@ -365,9 +387,10 @@ fn rendering_is_deterministic() {
     }
 }
 
-/// The budget: at most 215 KB, 2,500 elements and 80 animated elements.
+/// The budget: at most 241 KB, 2,800 elements and 80 animated elements.
 /// 0.3.0 raised it from 150 KB for crowns with 1.5 times the leaves; 0.4.0
-/// from 190 KB for the windswept and formal upright crowns.
+/// from 190 KB for the windswept and formal upright crowns; 0.6.0 from
+/// 215 KB and 2,500 elements by 12% for the new pots' detail.
 #[test]
 fn every_output_stays_within_budget() {
     for fixture in fixtures::all() {
@@ -390,8 +413,12 @@ fn every_output_stays_within_budget() {
                 .iter()
                 .map(|c| svg.matches(c).count())
                 .sum::<usize>();
-                assert!(svg.len() <= 215 * 1024, "{label}: {} bytes", svg.len());
-                assert!(elements <= 2500, "{label}: {elements} elements");
+                assert!(
+                    svg.len() <= render::SVG_BUDGET,
+                    "{label}: {} bytes",
+                    svg.len()
+                );
+                assert!(elements <= 2800, "{label}: {elements} elements");
                 assert!(animated <= 80, "{label}: {animated} animated");
             }
         }
@@ -515,7 +542,11 @@ fn the_legend_explains_without_spoiling() {
             for theme in Theme::ALL {
                 let svg = render::svg(&bonsai, &config, theme);
                 let label = format!("{}/{side:?}/{}", fixture.name, theme.name());
-                assert!(svg.len() <= 215 * 1024, "{label}: {} bytes", svg.len());
+                assert!(
+                    svg.len() <= render::SVG_BUDGET,
+                    "{label}: {} bytes",
+                    svg.len()
+                );
                 if bonsai.is_empty() {
                     assert!(!svg.contains("<text"), "{label}: nothing to explain yet");
                     continue;
@@ -735,6 +766,9 @@ fn a_pause_leaves_a_window() {
     let (lo, hi) = dome::window_band(&Timeline::new(&snapshot)).expect("comeback paused");
     assert!(hi - lo > 10.0, "{lo}..{hi}");
     let bonsai = Bonsai::grow(&snapshot, &Config::default(), None);
+    // The window grows and shrinks with the tree's style.
+    let f = gitbonsai::style::size_factor(&bonsai.leader);
+    let (lo, hi) = (lo * f, hi * f);
     for c in &bonsai.skeleton.clouds {
         let h = gitbonsai::style::SOIL_Y - c.c.1;
         assert!(
@@ -922,6 +956,187 @@ fn explain_shows_private_work() {
     assert!(line.contains('%'), "{line}");
 }
 
+/// `explain` gives the tree's size on the canvas: the trunk at its foot, and
+/// its wood and foliage taken together, so styles can be compared.
+#[test]
+fn explain_shows_the_trees_size() {
+    let report = gitbonsai::explain::report(&grow("showcase"));
+    let number = |key: &str| -> f64 {
+        let line = report
+            .lines()
+            .find(|l| l.trim_start().starts_with(key))
+            .unwrap_or_else(|| panic!("no {key} line in\n{report}"));
+        line.trim_start()[key.len()..]
+            .split_whitespace()
+            .next()
+            .and_then(|n| n.parse().ok())
+            .unwrap_or_else(|| panic!("no number in {line}"))
+    };
+    assert!(number("trunk at its foot") > 1.0);
+    assert!(number("size") > 100.0);
+}
+
+/// Kintsugi mends the pot it is on: its gold clips to the same wall the pot
+/// is drawn with, oval, bowl or rectangle.
+#[test]
+fn kintsugi_follows_every_pots_wall() {
+    let mut b = grow("veteran");
+    assert_ne!(b.archived.len(), 0, "the veteran has archived repos");
+    let clip = |svg: &str, id: &str| -> String {
+        let at = svg
+            .find(&format!(r#"<clipPath id="{id}"><path d=""#))
+            .unwrap_or_else(|| panic!("no clip {id}"));
+        let rest = &svg[at..];
+        let start = rest.find(r#"<path d=""#).unwrap() + 9;
+        rest[start..start + rest[start..].find('"').unwrap()].to_string()
+    };
+    for level in [1u8, 3, 6, 7, 8, 9, 10] {
+        b.extras.pot_tier = level;
+        let svg = render::svg(&b, &Config::default(), Theme::Light);
+        assert_eq!(clip(&svg, "pc"), clip(&svg, "pw"), "level {level}");
+    }
+}
+
+/// Each pot is mended its own way: nothing on the plastic training pot,
+/// bare cracks in the terracotta, copper staples across the cracks in the
+/// clay pot on feet, silver laid in black lacquer on the vintage clay, gold
+/// on the glazed pots.
+#[test]
+fn each_pot_is_mended_its_own_way() {
+    let mut b = grow("veteran");
+    for level in 0..11u8 {
+        b.extras.pot_tier = level;
+        let svg = render::svg(&b, &Config::default(), Theme::Light);
+        let gold = svg.contains(r##"fill="#c9972f""##);
+        let staples = svg.contains(r#"<g id="stp""#);
+        let silver = svg.contains(r##"stroke="#a9aaa6""##);
+        match level {
+            0 => assert!(!svg.contains("url(#pc)"), "level {level} is mended"),
+            8 => assert!(
+                silver && !gold && !staples,
+                "level {level}: silver {silver}"
+            ),
+            1 => assert!(
+                svg.contains("url(#pc)") && !staples && !gold && !silver,
+                "level {level}: staples {staples}, gold {gold}, silver {silver}"
+            ),
+            2 => assert!(
+                staples && !gold && !silver,
+                "level {level}: staples {staples}"
+            ),
+            _ => assert!(
+                gold && !staples && !silver,
+                "level {level}: gold {gold}, staples {staples}"
+            ),
+        }
+    }
+}
+
+/// Two trees in one row, both in the hobnail bowl, keep every id their own.
+#[test]
+fn a_row_of_two_bowls_keeps_its_ids_unique() {
+    let mut b = grow("veteran");
+    b.extras.pot_tier = 7;
+    let svg = render::svg(&b, &Config::default(), Theme::Light);
+    let row = gitbonsai::row::row(
+        &[("a".into(), svg.clone()), ("b".into(), svg)],
+        Theme::Light,
+    );
+    let mut ids: Vec<&str> = row
+        .split(r#"id=""#)
+        .skip(1)
+        .filter_map(|s| s.split('"').next())
+        .collect();
+    let n = ids.len();
+    ids.sort_unstable();
+    ids.dedup();
+    assert_eq!(ids.len(), n, "an id appears twice in the row");
+}
+
+/// A tree lit from its other side mirrors its whole pot, the new pots' gloss
+/// and chop included.
+#[test]
+fn a_left_lit_tree_mirrors_its_whole_pot() {
+    let mut seen = 0;
+    for f in fixtures::all() {
+        let mut b = Bonsai::grow(&f.snapshot, &Config::default(), None);
+        if b.is_empty() {
+            continue;
+        }
+        for level in [8u8, 9] {
+            b.extras.pot_tier = level;
+            let svg = render::svg(&b, &Config::default(), Theme::Light);
+            let Some(mirror) = svg.find("matrix(-1 0 0 1") else {
+                continue;
+            };
+            seen += 1;
+            let mark = if level == 8 {
+                "class=\"chop\""
+            } else {
+                "class=\"gloss\""
+            };
+            let at = svg
+                .find(mark)
+                .unwrap_or_else(|| panic!("{} level {level}: no {mark}", f.name));
+            assert!(
+                at > mirror,
+                "{} level {level}: {mark} drawn outside the mirror",
+                f.name
+            );
+        }
+    }
+    assert!(seen > 0, "no fixture is lit from the left");
+}
+
+/// A tree with no contributions yet is a seedling in its training pot, with
+/// a rim, in the middle of its frame.
+#[test]
+fn a_seedling_keeps_its_training_pot() {
+    let mut snapshot = fixtures::by_name("steady").unwrap().snapshot;
+    snapshot.days.clear();
+    let b = Bonsai::grow(&snapshot, &Config::default(), None);
+    assert!(b.is_empty());
+    assert_eq!(b.extras.pot_tier, 0);
+    let svg = render::svg(&b, &Config::default(), Theme::Light);
+    assert!(
+        svg.contains("M256 404Q254 396 257 389"),
+        "the seedling's stem"
+    );
+    assert!(
+        svg.contains(r##"fill="#2e2e2e""##),
+        "the plastic training pot"
+    );
+}
+
+/// A broad crown stands in a pot at least six tenths as wide as it spreads.
+#[test]
+fn a_broad_crown_gets_a_pot_at_least_six_tenths_its_spread() {
+    for f in fixtures::all() {
+        let b = Bonsai::grow(&f.snapshot, &Config::default(), None);
+        if b.leader.cascade.abs() > 0.0 || b.is_empty() {
+            continue;
+        }
+        let spread = b.crown_spread();
+        assert!(
+            b.pot >= 0.6 * spread - 1e-9,
+            "{}: pot {} for a crown {spread:.0} wide",
+            f.name,
+            b.pot
+        );
+    }
+}
+
+/// `explain` names the tree's pot with its level.
+#[test]
+fn explain_names_the_pot() {
+    let report = gitbonsai::explain::report(&grow("showcase"));
+    let line = report
+        .lines()
+        .find(|l| l.trim_start().starts_with("pot "))
+        .unwrap_or_else(|| panic!("no pot line in\n{report}"));
+    assert!(line.contains("level 1, terracotta"), "{line}");
+}
+
 /// Work declared in `[leaves.private_periods]` is that language everywhere:
 /// its own color, a place in the legend, and in `explain`.
 #[test]
@@ -1068,8 +1283,10 @@ fn a_language_picked_up_this_week_is_alive() {
 /// never runs across them.
 #[test]
 fn kintsugi_runs_under_the_bands_and_seal() {
-    let b = grow("veteran");
-    assert!(b.extras.pot_tier >= 6 && !b.archived.is_empty());
+    let mut b = grow("veteran");
+    assert_ne!(b.archived.len(), 0, "the veteran has archived repos");
+    // The antique pot: its carved bands and maker's seal.
+    b.extras.pot_tier = 6;
     let svg = render::svg(&b, &Config::default(), Theme::Light);
     let gold = svg.find(r#"clip-path="url(#pc)""#).expect("kintsugi");
     let seal = svg.find(r##"fill="#7a2e22""##).expect("a maker's seal");
@@ -1814,15 +2031,18 @@ fn a_cascade_shows_its_foliage() {
         let s = gitbonsai::Snapshot::load(std::path::Path::new(&path)).unwrap();
         trees.push((name.to_string(), s));
     }
-    let shown = |s: &gitbonsai::Snapshot, style: Style| -> usize {
-        visible_leaves(&Bonsai::grow(s, &config(style), None))
-            .values()
-            .sum()
+    // Leaves shown, as if each style grew to the same scale: the styles'
+    // sizes are balanced apart from how a cascade carries its foliage.
+    let shown = |s: &gitbonsai::Snapshot, style: Style| -> f64 {
+        let b = Bonsai::grow(s, &config(style), None);
+        let n: usize = visible_leaves(&b).values().sum();
+        let f = gitbonsai::style::size_factor(&b.leader);
+        n as f64 / (f * f)
     };
     let mut thin = Vec::new();
     for (name, s) in &trees {
         let (cascade, upright) = (shown(s, Style::Kengai), shown(s, Style::Moyogi));
-        let share = cascade as f64 / upright as f64;
+        let share = cascade / upright;
         // Stacked in its pads it showed 22 to 36% (0.4.0); laid side by side
         // it shows 40 to 54%. An arc never carries as much as a crown.
         if share < 0.38 {
@@ -1932,32 +2152,47 @@ fn the_pot_never_shrinks() {
     }
 }
 
+/// The pot's shadow on the table in a light picture, its middle and the foot
+/// line it lies at; none under the bowl and the rectangles.
+fn table_shadow(svg: &str) -> Option<(f64, f64)> {
+    let at = svg.find(r##"fill="#3b3226" opacity=".16"/>"##)?;
+    let element = svg[..at].rsplit('<').next().expect("its element");
+    let attr = |name: &str| -> f64 {
+        let key = format!(" {name}=\"");
+        element
+            .split(&key)
+            .nth(1)
+            .and_then(|v| v.split('"').next())
+            .and_then(|v| v.parse().ok())
+            .unwrap_or_else(|| panic!("no {name} in {element}"))
+    };
+    Some((attr("cx"), attr("cy")))
+}
+
 /// The pot changes only at a repotting, its depth too: between two springs,
 /// with no repotting in a growth spurt, the pot keeps its width and depth
 /// however much the trunk thickens.
 #[test]
 fn the_pot_keeps_its_depth_between_repottings() {
-    // The pot's foot, from its shadow on the table.
-    let foot = |b: &Bonsai| {
-        let svg = render::svg(b, &Config::default(), Theme::Light);
-        svg.split(r##"" ry="4" fill="#3b3226" opacity=".16""##)
-            .next()
-            .and_then(|s| s.rsplit(r#"cy=""#).next())
-            .and_then(|s| s.split('"').next())
-            .and_then(|s| s.parse::<f64>().ok())
-            .expect("a pot shadow")
-    };
+    // The pot's foot, from its shadow on the table: an oval's; the bowl and
+    // the rectangles have none, and their depth rule is tested in `pot`.
+    let foot =
+        |b: &Bonsai| table_shadow(&render::svg(b, &Config::default(), Theme::Light)).map(|s| s.1);
     let (mut held, mut spurts) = (0, 0);
     for name in ["steady", "showcase", "veteran", "comeback", "polyglot"] {
         let frames: Vec<_> = monthly(name)
             .into_iter()
             .filter(|(_, b)| !b.is_empty() && !gitbonsai::sprout::is_sprout(b))
-            .map(|(day, b)| (day, b.pot, foot(&b)))
+            .map(|(day, b)| (day, b.pot, foot(&b), b.extras.pot_tier))
             .collect();
         for pair in frames.windows(2) {
-            let ((_, pot_a, foot_a), (day, pot_b, foot_b)) = (pair[0], pair[1]);
-            // Repotted on the first of March, the start of spring.
-            if day.ymd().1 == 3 {
+            let ((_, pot_a, foot_a, level_a), (day, pot_b, foot_b, level_b)) = (pair[0], pair[1]);
+            let (Some(foot_a), Some(foot_b)) = (foot_a, foot_b) else {
+                continue;
+            };
+            // Repotted on the first of March, the start of spring; or a new
+            // pot earned by a longer streak, which comes the day it is earned.
+            if day.ymd().1 == 3 || level_a != level_b {
                 continue;
             }
             // Out of season, in a growth spurt: deeper with its width, unless
@@ -2039,19 +2274,8 @@ fn the_trunk_ends_at_its_foot_and_twigs_are_drawn_one_by_one() {
 fn one_light_lights_a_row_from_one_side() {
     // The pot's middle on the canvas.
     const CENTER_X: f64 = 256.0;
-    let shadow = |svg: &str| -> f64 {
-        let at = svg
-            .find(r##"ry="4" fill="#3b3226" opacity=".16"/>"##)
-            .expect("a soil shadow");
-        let cx = &svg[..at]
-            .rsplit(r#"<ellipse cx=""#)
-            .next()
-            .expect("its ellipse");
-        cx.split('"')
-            .next()
-            .and_then(|v| v.parse().ok())
-            .expect("its cx")
-    };
+    // Read from an oval's shadow; the bowl and the rectangles cast none.
+    let shadow = |svg: &str| table_shadow(svg).map(|s| s.0);
     let soil = |svg: &str| {
         svg.split(r#"<clipPath id="soil">"#)
             .nth(1)
@@ -2068,7 +2292,7 @@ fn one_light_lights_a_row_from_one_side() {
         let own = render::svg(&b, &Config::default(), Theme::Light);
         let lit = render::svg(&b, &row, Theme::Light);
         assert!(
-            shadow(&lit) > CENTER_X,
+            shadow(&lit).is_none_or(|x| x > CENTER_X),
             "{}: the row is not lit from the upper left",
             f.name
         );
@@ -2078,14 +2302,87 @@ fn one_light_lights_a_row_from_one_side() {
             "{}: the row's light moved the tree",
             f.name
         );
-        if b.leader.side < 0.0 {
+        if b.leader.side < 0.0 && shadow(&own).is_some() {
             left += 1;
             assert!(
-                shadow(&own) < CENTER_X,
+                shadow(&own).is_some_and(|x| x < CENTER_X),
                 "{}: a left tree on its own is not lit from its open side, the upper right",
                 f.name
             );
         }
     }
     assert!(left > 0, "no fixture grows left");
+}
+
+/// Each style's median size, relative to the mean of the five styles a
+/// fixture grows into: (chokkan, moyogi, shakan, fukinagashi, kengai).
+/// Fixtures whose five trees are alike (too young for a style) are left out.
+fn style_sizes() -> [f64; 5] {
+    use gitbonsai::config::Style;
+    let styles = [
+        Style::Chokkan,
+        Style::Moyogi,
+        Style::Shakan,
+        Style::Fukinagashi,
+        Style::Kengai,
+    ];
+    let mut rel: Vec<Vec<f64>> = vec![Vec::new(); 5];
+    for f in fixtures::all() {
+        let sizes: Vec<f64> = styles
+            .iter()
+            .map(|&s| {
+                let mut c = Config::default();
+                c.tree.style = Some(s);
+                let b = Bonsai::grow(&f.snapshot, &c, None);
+                if b.is_empty() || gitbonsai::sprout::is_sprout(&b) {
+                    0.0
+                } else {
+                    gitbonsai::timelapse::shape(&b).iter().sum::<f64>()
+                }
+            })
+            .collect();
+        let (lo, hi) = sizes.iter().fold((f64::INFINITY, 0.0_f64), |(lo, hi), &s| {
+            (lo.min(s), hi.max(s))
+        });
+        if lo <= 0.0 || hi - lo < 1e-6 * hi {
+            continue;
+        }
+        let mean = sizes.iter().sum::<f64>() / 5.0;
+        for (i, s) in sizes.iter().enumerate() {
+            rel[i].push(s / mean);
+        }
+    }
+    let mut out = [0.0; 5];
+    for (o, r) in out.iter_mut().zip(rel.iter_mut()) {
+        r.sort_by(f64::total_cmp);
+        let n = r.len();
+        *o = f64::midpoint(r[(n - 1) / 2], r[n / 2]);
+    }
+    out
+}
+
+/// The styles move towards one size, each by at most 5%: grown from the
+/// same work, the uprights grow 5% and the windswept and cascade trees
+/// shrink 5%, measured as `explain` measures a tree's size. The baseline is
+/// the fixtures' before 0.6.0.
+#[test]
+fn styles_move_towards_one_size_by_at_most_five_percent() {
+    const BASELINE: [f64; 5] = [0.867, 0.889, 0.891, 1.236, 1.078];
+    const MOVE: [f64; 5] = [1.05, 1.05, 1.05, 0.95, 0.95];
+    let now = style_sizes();
+    eprintln!("style sizes now: {now:?}");
+    for i in 0..5 {
+        let want = BASELINE[i] * MOVE[i];
+        assert!(
+            (now[i] - want).abs() < 0.015,
+            "style {i}: {} (baseline {}, want {want})",
+            now[i],
+            BASELINE[i]
+        );
+        assert!(
+            (now[i] / BASELINE[i] - 1.0).abs() <= 0.05,
+            "style {i} moved {}",
+            now[i] / BASELINE[i]
+        );
+    }
 }

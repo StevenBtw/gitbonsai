@@ -982,26 +982,55 @@ pub fn eggs(
     e
 }
 
-/// Kintsugi: every archived repository is a break in the pot, mended with
-/// gold. A break starts at the rim and runs down past the foot (clipped by the
-/// pot, so it continues underneath), meandering on two scales with a width
-/// that swells and thins like poured lacquer. Breaks sit at golden-angle steps
-/// around the pot in archive order, so archiving another repository never
-/// moves an old one; only those on the front half are visible.
-pub fn kintsugi(archived: &[String], seed: u64, pot: &Pot) -> String {
+/// How a pot's breaks are mended.
+#[derive(Clone, Copy, PartialEq)]
+enum Mend {
+    /// Gold in lacquer, on a glazed pot.
+    Gold,
+    /// A fine silver seam laid in black lacquer, on the vintage clay.
+    Silver,
+    /// A hairline in the clay with copper staples across it, on the clay
+    /// pot on feet.
+    Staples,
+    /// The bare hairline, on the terracotta.
+    Crack,
+}
+
+/// Kintsugi: every archived repository is a break in the pot, mended the
+/// pot's own way: gold on a glazed pot, silver in black lacquer on the
+/// vintage clay, copper staples on the clay pot on feet, a bare crack in the
+/// terracotta, and nothing on the plastic training pot. A break starts at the rim and runs down past the foot
+/// (clipped by the pot, so it continues underneath), meandering on two scales
+/// with a width that swells and thins like poured lacquer. Breaks sit at
+/// golden-angle steps around the pot in archive order, so archiving another
+/// repository never moves an old one; only those on the front half are
+/// visible. `dark` lifts the silver on a dark page.
+pub fn kintsugi(archived: &[String], seed: u64, pot: &Pot, dark: bool) -> String {
+    let mend = match pot.level {
+        0 => return String::new(),
+        1 => Mend::Crack,
+        8 => Mend::Silver,
+        level if crate::pot::model(level).glazed => Mend::Gold,
+        _ => Mend::Staples,
+    };
     let Pot {
         hw,
         ry,
         depth,
         bw,
         glaze,
+        ..
     } = *pot;
+    // A seam runs down the wall: round it on an oval or a bowl, over a
+    // bowl's belly, straight down a rectangle's face.
     let at = |a: f64, t: f64| {
-        let rad = hw + (bw - hw) * t;
-        (
-            CENTER_X + rad * math::cos(a),
-            SOIL_Y + depth * t + ry * math::sin(a),
-        )
+        let rad = pot.half_width(t.clamp(0.0, 1.0)) + (bw - hw) * (t - t.clamp(0.0, 1.0));
+        let y = match pot.shape {
+            crate::pot::Shape::Rect => SOIL_Y + ry + depth * t,
+            crate::pot::Shape::Bowl => SOIL_Y + depth * t + ry * rad / hw * math::sin(a),
+            crate::pot::Shape::Oval => SOIL_Y + depth * t + ry * math::sin(a),
+        };
+        (CENTER_X + rad * math::cos(a), y)
     };
     let base = hash01(seed, 0x6b69) * 360.0;
     let mut veins = String::new();
@@ -1044,6 +1073,67 @@ pub fn kintsugi(archived: &[String], seed: u64, pot: &Pot) -> String {
             d.z();
             d
         };
+        if mend != Mend::Gold {
+            let mut line = PathData::coarse();
+            line.m((pts[0].0, pts[0].1));
+            for p in &pts[1..] {
+                line.l((p.0, p.1));
+            }
+            if mend == Mend::Silver {
+                let pewter = if dark { "#b9bab5" } else { "#a9aaa6" };
+                let _ = write!(
+                    veins,
+                    r##"<path d="{l}" fill="none" stroke="#1b1311" stroke-width="2" stroke-linejoin="round" opacity=".8"/><path d="{l}" fill="none" stroke="{pewter}" stroke-width=".9" stroke-linejoin="round"/>"##,
+                    l = line.as_str()
+                );
+                continue;
+            }
+            // A hairline in a deeper shade of the clay, then, on the clay pot
+            // on feet, copper staples across it about every 20 units, at
+            // least two: more on a longer crack.
+            let _ = write!(
+                veins,
+                r#"<path d="{}" fill="none" stroke="{}" stroke-width=".8" stroke-linejoin="round"/>"#,
+                line.as_str(),
+                glaze.mix(Rgb::hex(0x1a_0f0a), 0.6)
+            );
+            if mend == Mend::Crack {
+                continue;
+            }
+            let length: f64 = pts
+                .windows(2)
+                .map(|w| (math::sq(w[1].0 - w[0].0) + math::sq(w[1].1 - w[0].1)).sqrt())
+                .sum();
+            // The wall holds 1/1.29 of the crack, the rest runs past the
+            // foot; the first staple sits near the rim, where a mender
+            // starts, the last a little above the foot.
+            let (first, last) = (0.11 / 1.29, 0.89 / 1.29);
+            #[allow(
+                clippy::cast_possible_truncation,
+                clippy::cast_sign_loss,
+                reason = "a crack's length is positive and a few hundred at most"
+            )]
+            let count = (length / 1.29 / 20.0).round().max(2.0) as usize;
+            for j in 0..count {
+                let f = first + (last - first) * j as f64 / (count - 1) as f64;
+                #[allow(
+                    clippy::cast_possible_truncation,
+                    clippy::cast_sign_loss,
+                    reason = "a share of the crack's points"
+                )]
+                let k = (f * (n - 1) as f64).round() as usize;
+                let (pb, nb) = (pts[k.saturating_sub(1)], pts[(k + 1).min(n - 1)]);
+                let turn = math::deg(math::atan2(nb.1 - pb.1, nb.0 - pb.0)) + 90.0;
+                let _ = write!(
+                    veins,
+                    r##"<use href="#stp" transform="translate({} {})rotate({})"/>"##,
+                    Num::coarse(pts[k].0),
+                    Num::coarse(pts[k].1),
+                    Num::coarse(turn)
+                );
+            }
+            continue;
+        }
         let mut highlight = PathData::coarse();
         for i in 0..n {
             let (pb, nb) = (pts[i.saturating_sub(1)], pts[(i + 1).min(n - 1)]);
@@ -1070,15 +1160,25 @@ pub fn kintsugi(archived: &[String], seed: u64, pot: &Pot) -> String {
     if veins.is_empty() {
         return String::new();
     }
-    let mut wall = PathData::new();
-    wall.m((CENTER_X - hw, SOIL_Y))
-        .a(hw, ry, false, (CENTER_X + hw, SOIL_Y))
-        .l((CENTER_X + bw, SOIL_Y + depth))
-        .a(bw, ry, true, (CENTER_X - bw, SOIL_Y + depth))
-        .z();
-    format!(
-        r#"<clipPath id="pc"><path d="{}"/></clipPath><g clip-path="url(#pc)">{veins}</g>"#,
-        wall.as_str()
+    if mend == Mend::Staples {
+        // One staple, drawn once: two holes in the clay and a muted copper
+        // bridge across the crack.
+        let hole = glaze.mix(Rgb::hex(0x1a_0f0a), 0.7);
+        veins.insert_str(
+            0,
+            &format!(
+                r##"<defs><g id="stp"><circle cx="-3" r=".75" fill="{hole}"/><circle cx="3" r=".75" fill="{hole}"/><path d="M-3 0V-.4H3V0" fill="none" stroke="#8a5a3c" stroke-width="1.15" stroke-linejoin="round"/><path d="M-2.4-.75H2.4" stroke="#c4906a" stroke-width=".35" opacity=".8"/></g></defs>"##
+            ),
+        );
+    }
+    let wall = pot.wall();
+    // On the pot's wall, which stands as high as the pot does.
+    crate::pot::lift(
+        pot,
+        format!(
+            r#"<clipPath id="pc"><path d="{}"/></clipPath><g clip-path="url(#pc)">{veins}</g>"#,
+            wall.as_str()
+        ),
     )
 }
 
@@ -1132,6 +1232,62 @@ mod tests {
         assert_eq!(peek(&last), (None, Some((19.0, 319.0))));
     }
 
+    /// A crack in the clay pot on feet gets a copper staple about every 20
+    /// units, at least two: a mend, not a seam of stitches.
+    #[test]
+    fn staples_sit_about_twenty_apart() {
+        let pot = Pot {
+            hw: 120.0,
+            ry: 22.0,
+            depth: 80.0,
+            bw: 96.0,
+            glaze: Rgb::hex(0x6b_4e3d),
+            shape: crate::pot::Shape::Oval,
+            level: 2,
+        };
+        let names: Vec<String> = (0..12).map(|i| format!("repo{i}")).collect();
+        let svg = kintsugi(&names, 7, &pot, false);
+        let cracks = svg.matches(r#"stroke-width=".8""#).count();
+        let staples = svg.matches(r##"href="#stp""##).count();
+        assert!(cracks > 0, "{svg}");
+        // About 80 deep, so about four to a crack.
+        assert!(
+            staples >= 2 * cracks && staples <= 5 * cracks,
+            "{staples} staples on {cracks} cracks"
+        );
+    }
+
+    /// On a rectangle the soil eggs keep inside its opening: clear of its
+    /// sides and behind its front edge.
+    #[test]
+    fn soil_eggs_stay_inside_a_rectangles_opening() {
+        let pot = Pot {
+            hw: 100.0,
+            ry: 22.0,
+            depth: 40.0,
+            bw: 88.0,
+            glaze: Rgb::hex(0),
+            shape: crate::pot::Shape::Rect,
+            level: 8,
+        };
+        let ground = (&[][..], &[][..]);
+        let mut soil = Vec::new();
+        for (i, x) in [-90.0, -50.0, 0.0, 50.0, 90.0].into_iter().enumerate() {
+            let (r, d) = (6.0, 3.0);
+            let at = (
+                CENTER_X + x,
+                SOIL_Y + 15.0 - f64::from(u8::try_from(i).unwrap_or(0)),
+            );
+            if let Some((ex, ey)) = settle(&mut soil, at, (r, d, 2.0 * d), &pot, ground) {
+                assert!(
+                    (ex - CENTER_X).abs() + r <= pot.hw - 4.0,
+                    "{ex} reaches the side"
+                );
+                assert!(ey + d <= pot.rim_front_y(ex), "{ey} past the front edge");
+            }
+        }
+    }
+
     /// Soil eggs never touch: each settles clear of those before it, even
     /// crowded on a small pot.
     #[test]
@@ -1142,6 +1298,8 @@ mod tests {
             depth: 20.0,
             bw: 50.0,
             glaze: Rgb::hex(0),
+            shape: crate::pot::Shape::Oval,
+            level: 3,
         };
         let ground = (&[][..], &[][..]);
         let mut soil = Vec::new();
@@ -1196,6 +1354,8 @@ mod tests {
             depth: 30.0,
             bw: 90.0,
             glaze: Rgb::hex(0),
+            shape: crate::pot::Shape::Oval,
+            level: 3,
         };
         let trunk = [vec![
             (CENTER_X, SOIL_Y + 12.0, 10.0),

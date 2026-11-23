@@ -110,7 +110,8 @@ def make_handler(args):
                     if flag == "added" and not w:
                         entries.insert(0, {"login": login, "github_id": 1000 + len(entries), "style": "moyogi",
                                            "languages": ["Python"], "added": "2026-11-22T09:00:00Z",
-                                           "grown": "2026-11-22T09:00:00Z", "stars": 0, "age_weeks": 120})
+                                           "grown": "2026-11-22T09:00:00Z", "stars": 0, "age_weeks": 120,
+                                           "progress": None})
                     loc = f"{args.site}/?gallery={flag}&login={login}{'&legend=1' if legend == '1' else ''}#yours"
                 else:
                     flag = flag or "removed"
@@ -215,6 +216,9 @@ def selftest(args):
     code, h, _ = call(f"{B}/auth?login=tj&action=add&legend=0")
     assert code == 302 and "gallery=added&login=tj" in h["Location"], (code, dict(h))
     assert call(f"{B}/auth?login=a--b&action=add&legend=0")[0] == 400
+    # A tree added through the sign-in is listed like any other.
+    assert call(f"{B}/auth?login=new-here&action=add&legend=0")[0] == 302
+    assert any(e["login"] == "new-here" for e in json.loads(call(B)[2])["entries"])
     assert call(f"{B}/tj/dark.svg?v=x")[0] == 200 and call(f"{B}/tj/legend-light.svg")[0] == 200
     tree = json.loads(call(B.replace("/v1/gallery", "/v1/tree/seedling"))[2])
     assert isinstance(tree["style"], str), tree  # a waiting tree grows like any other

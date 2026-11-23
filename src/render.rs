@@ -318,7 +318,7 @@ pub fn svg_in(bonsai: &Bonsai, config: &Config, theme: Theme, camera: Option<Fra
 
 /// The most an SVG may weigh, so a README image stays light: a heavier
 /// crown, such as a formal upright's dense pads, keeps fewer leaves.
-pub const SVG_BUDGET: usize = 215 * 1024;
+pub const SVG_BUDGET: usize = 241 * 1024;
 
 /// The SVG within `budget` bytes: a crown too heavy for it keeps fewer,
 /// larger leaves. Its size is close to linear in the share of leaves kept,
