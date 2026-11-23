@@ -239,6 +239,11 @@ fn rim_ry(hw: f64) -> f64 {
 /// How far below its rim the bowl's soil lies, as a share of its depth.
 const BOWL_INSET: f64 = 0.09;
 
+/// How far a rectangle's top face is drawn in at its back edge, on each
+/// side, in detail units: a touch of depth, the back a little narrower than
+/// the front.
+const RECT_BACK_TAPER: f64 = 3.0;
+
 /// How far below its rim frame a rectangle's soil lies, as a share of its
 /// depth: enough for a thin line of inner wall.
 const RECT_INSET: f64 = 0.035;
@@ -607,14 +612,30 @@ fn top_bowl(pot: &Pot, soil: Rgb) -> String {
     )
 }
 
-/// Draws an oval pot's soft shadow on the table, offset away from the light
+/// Draws a pot's soft shadow on the table, offset away from the light
 /// (`lit` is 1 lit from the left, -1 from the right), so the pot sits down
 /// instead of floating.
 pub fn shadow(pot: &Pot, lit: f64, dark: bool) -> String {
     let shade = if dark { "#000" } else { "#3b3226" };
-    // The bowl and the rectangles stand without one.
+    // The bowl and a rectangle: a tight, soft contact shadow where the
+    // saucer or the feet meet the table, as wide as the foot.
     if pot.shape != Shape::Oval {
-        return String::new();
+        let k = detail(pot);
+        let (foot, width) = if pot.shape == Shape::Rect {
+            (feet_span(pot).1 - pot.inset(), pot.bw * 1.04)
+        } else {
+            let sy = pot.ry * pot.bw / pot.hw * 0.8;
+            (pot.rim_y() + pot.depth + 4.0 * k + sy * 0.6, pot.bw * 1.32)
+        };
+        return format!(
+            r#"<ellipse cx="{}" cy="{}" rx="{}" ry="3.4" fill="{shade}" opacity=".1"/><ellipse cx="{}" cy="{}" rx="{}" ry="1.8" fill="{shade}" opacity=".2"/>"#,
+            Num(CENTER_X + 3.0 * lit),
+            Num(foot + 0.6),
+            Num(width * 1.1),
+            Num(CENTER_X + 2.0 * lit),
+            Num(foot + 0.3),
+            Num(width * 0.98),
+        );
     }
     let foot = SOIL_Y + pot.depth;
     format!(
@@ -1490,14 +1511,18 @@ fn top_rect(pot: &Pot, soil: Rgb) -> String {
     let k = detail(pot);
     let (over, _) = lip_of(pot);
     let lipw = hw + over;
-    // Seen in parallel: the back edge as wide as the front.
-    let quad = |inset: f64, fill: Rgb| {
+    let tp = RECT_BACK_TAPER * k;
+    // A face from its front edge (`l`..`r` at `yf`) to its back edge at
+    // `yb`, drawn in by `tp` on each side: a touch of depth.
+    let trap = |l: f64, r: f64, yb: f64, yf: f64, fill: &str| {
         format!(
-            r#"<path d="M{l} {}H{r}V{}H{l}Z" fill="{fill}"/>"#,
-            Num(rim - ry + inset * 0.6),
-            Num(rim + ry - inset * 0.6),
-            l = Num(cx - lipw + inset),
-            r = Num(cx + lipw - inset)
+            r#"<path d="M{} {}H{}L{} {}H{}Z"{fill}/>"#,
+            Num(l + tp),
+            Num(yb),
+            Num(r - tp),
+            Num(r),
+            Num(yf),
+            Num(l)
         )
     };
     // The opening inside the rim frame, its back wall a shade darker than
@@ -1510,34 +1535,41 @@ fn top_rect(pot: &Pot, soil: Rgb) -> String {
     let lean = ((pot.hw - pot.bw) / pot.depth * drop).max(1.2 * k);
     let (l1, r1) = (l0 + lean, r0 - lean);
     let (b1, f1) = (b0 + drop + 0.6 * k, f0 + drop);
-    let strip = |x0: f64, x1: f64| {
+    let strip = |x0: f64, x1: f64, back: f64| {
         format!(
-            r#"<path d="M{} {}L{} {}V{}L{} {}Z" fill="{}"/>"#,
-            Num(x0),
+            r#"<path d="M{} {}L{} {}L{} {}L{} {}Z" fill="{}"/>"#,
+            Num(x0 + back),
             Num(b0),
-            Num(x1),
+            Num(x1 + back),
             Num(b1),
+            Num(x1),
             Num(f1),
             Num(x0),
             Num(f0),
             pot.glaze.shift(-0.18, 0.0)
         )
     };
-    let mut s = quad(0.0, pot.glaze.shift(0.12, 0.0));
+    let mut s = trap(
+        cx - lipw,
+        cx + lipw,
+        rim - ry,
+        rim + ry,
+        &format!(r#" fill="{}""#, pot.glaze.shift(0.12, 0.0)),
+    );
+    let opening = trap(l0, r0, b0, f0, "");
     let _ = write!(
         s,
-        r#"<clipPath id="po"><path d="M{l} {b}H{r}V{f}H{l}Z"/></clipPath><path d="M{l} {b}H{r}V{f}H{l}Z" fill="{}"/><g clip-path="url(#po)">{}{}<path d="M{sl} {}H{sr}V{}H{sl}Z" fill="{soil}"/></g>"#,
-        pot.glaze.shift(-0.12, 0.0),
-        strip(l0, l1),
-        strip(r0, r1),
-        Num(b1),
-        Num(f1),
-        l = Num(l0),
-        r = Num(r0),
-        b = Num(b0),
-        f = Num(f0),
-        sl = Num(l1),
-        sr = Num(r1),
+        r#"<clipPath id="po">{opening}</clipPath>{}<g clip-path="url(#po)">{}{}{}</g>"#,
+        trap(
+            l0,
+            r0,
+            b0,
+            f0,
+            &format!(r#" fill="{}""#, pot.glaze.shift(-0.12, 0.0))
+        ),
+        strip(l0, l1, tp),
+        strip(r0, r1, -tp),
+        trap(l1, r1, b1, f1, &format!(r#" fill="{soil}""#)),
     );
     s
 }
@@ -1692,10 +1724,11 @@ mod tests {
         assert!((pot.half_width(0.5) - 84.5).abs() < 1e-9);
     }
 
-    /// Only an oval casts a shadow on the table, where it always did; the
-    /// bowl and the rectangles stand without one.
+    /// Each pot casts its shadow at its own foot: an oval where it always
+    /// did; the bowl and a rectangle a tight, soft contact shadow where the
+    /// saucer or the feet meet the table, as wide as the foot.
     #[test]
-    fn only_the_ovals_cast_a_table_shadow() {
+    fn each_pot_casts_a_shadow_at_its_foot() {
         let attr = |s: &str, tag: &str, name: &str| -> f64 {
             let at = s.find(tag).expect(tag);
             let rest = &s[at..];
@@ -1714,10 +1747,26 @@ mod tests {
             shape: Shape::Rect,
             level: 8,
         };
-        assert_eq!(shadow(&pot, 1.0, false), "");
+        let s = shadow(&pot, 1.0, false);
+        let foot = feet_span(&pot).1 - pot.inset();
+        assert!(
+            (attr(&s, "<ellipse", "cy") - (foot + 0.6)).abs() < 0.01,
+            "{s}"
+        );
+        assert!(
+            (attr(&s, "<ellipse", "rx") - pot.bw * 1.04 * 1.1).abs() < 0.01,
+            "{s}"
+        );
         pot.shape = Shape::Bowl;
         pot.level = 7;
-        assert_eq!(shadow(&pot, 1.0, false), "");
+        let s = shadow(&pot, 1.0, false);
+        let saucer = pot.rim_y() + pot.depth + 4.0 * detail(&pot);
+        let cy = attr(&s, "<ellipse", "cy");
+        assert!(cy > saucer && cy < saucer + pot.ry, "{s}");
+        assert!(
+            (attr(&s, "<ellipse", "rx") - pot.bw * 1.32 * 1.1).abs() < 0.01,
+            "{s}"
+        );
         pot.shape = Shape::Oval;
         pot.level = 3;
         let s = shadow(&pot, 1.0, false);
@@ -1806,6 +1855,36 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// A rectangle's top face narrows a little toward the back, a touch of
+    /// depth: its rim frame's back edge is 3 detail units in on each side.
+    #[test]
+    fn a_rectangles_top_narrows_toward_the_back() {
+        let pot = Pot {
+            hw: 100.0,
+            ry: 17.0,
+            depth: 50.0,
+            bw: 88.0,
+            glaze: Rgb::hex(0x7a_3f2c),
+            shape: Shape::Rect,
+            level: 8,
+        };
+        let s = top(&pot, Rgb::hex(0x4a_3a2a));
+        let d = s
+            .split(r#"d=""#)
+            .nth(1)
+            .and_then(|r| r.split('"').next())
+            .unwrap();
+        let n: Vec<f64> = d
+            .split(|c: char| !(c.is_ascii_digit() || c == '.' || c == '-'))
+            .filter(|t| !t.is_empty())
+            .map(|t| t.parse().unwrap())
+            .collect();
+        // M back-left y H back-right L front-right y H front-left Z
+        let (back, front) = (n[2] - n[0], n[3] - n[5]);
+        let k = detail(&pot);
+        assert!((front - back - 6.0 * k).abs() < 0.05, "{d}");
     }
 
     /// A pot's feet tuck up behind its curved foot and peek out below it,
