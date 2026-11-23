@@ -1532,7 +1532,7 @@ mod tests {
         assert_eq!(model(10).name, "speckled green rectangle");
         assert_eq!(
             crate::extras::POT_TIERS,
-            [4, 13, 26, 39, 52, 78, 104, 136, 174, 216]
+            [4, 13, 26, 39, 52, 78, 104, 156, 207, 259]
         );
     }
 

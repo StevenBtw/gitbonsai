@@ -13,7 +13,7 @@ pub const LEVELS: [f64; 11] = [
 
 /// Longest-streak thresholds, in weeks, of pot levels 1 through 10
 /// ([`crate::pot::MODELS`]).
-pub const POT_TIERS: [u32; 10] = [4, 13, 26, 39, 52, 78, 104, 136, 174, 216];
+pub const POT_TIERS: [u32; 10] = [4, 13, 26, 39, 52, 78, 104, 156, 207, 259];
 
 /// Weeks over which moss recedes after a streak ends.
 pub const MOSS_RECEDE_WEEKS: f64 = 8.0;
