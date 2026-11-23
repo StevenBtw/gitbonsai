@@ -4,7 +4,7 @@ All notable changes to gitbonsai, a Japanese maple bonsai grown from GitHub acti
 
 ## [0.6.1] - Unreleased
 
-Pot finish release: pots stand without feet, every pot casts one stepped shadow, and the rectangles are seen flatter, with a higher rim and soil heaped in the middle, the finest two with a detailed rim. Every tree's picture changes around its pot, which would make this a minor version; it ships as 0.6.1 because it finishes the pots of 0.6.0. gitbonsai.dev gets an icon.
+Pot finish release: pots stand without feet and cast one stepped shadow, soil heaps up gently with a fine grain, moss grows as star moss, and the rectangles are seen flatter, with a higher rim, the finest two with a detailed rim. Every tree's picture changes around its pot, which would make this a minor version; it ships as 0.6.1 because it finishes the pots of 0.6.0. gitbonsai.dev gets an icon.
 
 ### Added
 
@@ -18,6 +18,9 @@ Pot finish release: pots stand without feet, every pot casts one stepped shadow,
 - **A rectangle's rim stands higher**: its soil lies 7% of its depth below the rim (it was 3.5%) and heaps up a little in the middle, most in the speckled green rectangle.
 - **The glossy cobalt and speckled green rectangles have a detailed rim**: a thicker frame with a bevel into the opening, light along its front edge, and a groove and a shaded underside on a deeper lip band.
 - **The bowl has one shape**: it is always 0.38 as deep as it is wide, whatever the trunk, and only its size follows the tree; a cascade gets the same bowl.
+- **Soil heaps up gently and has a grain**: in every pot the soil rises a little in the middle and shows a fine grain of lighter and darker granules; under the canopy's shadow it lies plain.
+- **Moss grows as star moss**: each cushion casts a soft shadow, rises in rounded bumps and is furred with fine sprigs.
+- **The legend draws the pot's own shape**: an oval pot, the bowl on its saucer or a rectangle under its lip, and its moss mark is a cushion.
 
 ### Fixed
 
