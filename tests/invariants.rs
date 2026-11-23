@@ -2404,3 +2404,21 @@ fn styles_move_towards_one_size_by_at_most_five_percent() {
         );
     }
 }
+
+/// The soil's gentle heap and its grain show only in the light: under the
+/// canopy's shadow the soil lies plain, laid over them before the shadow.
+#[test]
+fn the_soil_lies_plain_under_the_canopy_shadow() {
+    let b = grow("veteran");
+    let svg = render::svg(&b, &Config::default(), Theme::Light);
+    let soil = gitbonsai::paint::Paints::of(Theme::Light).soil;
+    let grain = svg.rfind(r#"fill="url(#sg)""#).expect("the grain");
+    let shade = soil.shift(-0.12, 0.0);
+    let shadow = svg
+        .find(&format!(r#"fill="{shade}" opacity=".35""#))
+        .expect("the canopy's shadow");
+    let plain = svg[..shadow]
+        .rfind(&format!(r#"fill="{soil}"/>"#))
+        .expect("plain soil under the shadow");
+    assert!(grain < plain && plain < shadow, "{grain} {plain} {shadow}");
+}

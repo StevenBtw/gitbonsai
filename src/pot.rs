@@ -423,6 +423,26 @@ pub fn top(pot: &Pot, soil: Rgb) -> String {
         Num(SOIL_Y + 0.6),
         Num(pot.hw - 4.0),
         Num((pot.ry - 2.0).max(1.0)),
+    ) + &crown(soil, SOIL_Y + 0.6, pot.hw - 4.0, (pot.ry - 2.0).max(1.0))
+        + &grain(
+            soil,
+            &soil_ellipse(SOIL_Y + 0.6, pot.hw - 4.0, (pot.ry - 2.0).max(1.0)),
+        )
+}
+
+/// Writes the gentle heap of round soil at `cy`, `rx` by `ry`: two lighter
+/// flat steps, a little behind its middle.
+fn crown(soil: Rgb, cy: f64, rx: f64, ry: f64) -> String {
+    format!(
+        r#"<ellipse cx="{CENTER_X}" cy="{}" rx="{}" ry="{}" fill="{}"/><ellipse cx="{CENTER_X}" cy="{}" rx="{}" ry="{}" fill="{}"/>"#,
+        Num(cy - ry * 0.1),
+        Num(rx * 0.66),
+        Num(ry * 0.5),
+        soil.shift(0.014, 0.0),
+        Num(cy - ry * 0.16),
+        Num(rx * 0.38),
+        Num(ry * 0.3),
+        soil.shift(0.026, 0.0)
     )
 }
 
@@ -433,7 +453,7 @@ fn top_bowl(pot: &Pot, soil: Rgb) -> String {
     let (hw, ry, rim) = (pot.hw, pot.ry, pot.rim_y());
     let (iw, iry) = (hw - 2.4, (ry - 0.9).max(1.0));
     format!(
-        r#"<ellipse cx="{CENTER_X}" cy="{}" rx="{}" ry="{}" fill="{}"/><clipPath id="po"><ellipse cx="{CENTER_X}" cy="{o}" rx="{}" ry="{}"/></clipPath><ellipse cx="{CENTER_X}" cy="{o}" rx="{}" ry="{}" fill="{}"/><g clip-path="url(#po)"><ellipse cx="{CENTER_X}" cy="{}" rx="{}" ry="{}" fill="{soil}"/></g>"#,
+        r#"<ellipse cx="{CENTER_X}" cy="{}" rx="{}" ry="{}" fill="{}"/><clipPath id="po"><ellipse cx="{CENTER_X}" cy="{o}" rx="{}" ry="{}"/></clipPath><ellipse cx="{CENTER_X}" cy="{o}" rx="{}" ry="{}" fill="{}"/><g clip-path="url(#po)"><ellipse cx="{CENTER_X}" cy="{}" rx="{}" ry="{}" fill="{soil}"/>{}</g>"#,
         Num(rim),
         Num(hw),
         Num(ry),
@@ -446,6 +466,15 @@ fn top_bowl(pot: &Pot, soil: Rgb) -> String {
         Num(SOIL_Y + 0.6),
         Num((hw - 4.0) * 0.95),
         Num((ry - 2.0).max(1.0) * 0.95),
+        crown(
+            soil,
+            SOIL_Y + 0.6,
+            (hw - 4.0) * 0.95,
+            (ry - 2.0).max(1.0) * 0.95
+        ) + &grain(
+            soil,
+            &soil_ellipse(SOIL_Y + 0.6, (hw - 4.0) * 0.95, (ry - 2.0).max(1.0) * 0.95)
+        ),
         o = Num(rim - 0.15),
     )
 }
@@ -670,18 +699,18 @@ pub fn glaze(level: u8, config: &Config, paints: &Paints) -> Rgb {
     }
 }
 
-/// Moss on the soil while a weekly streak runs.
+/// Moss on the soil while a weekly streak runs: star-moss cushions, each a
+/// soft shadow on the soil, two lobes, three mid-tone bumps furred with
+/// sprigs and a small light on top. Clumps on the near half of the soil
+/// grow over the roots; the rest stay behind the trunk.
 pub fn moss(b: &Bonsai, paints: &Paints, pot: &Pot) -> (String, String) {
     let clumps = (b.extras.moss * 34.0).round() as usize;
     if clumps == 0 {
         return (String::new(), String::new());
     }
-    // Clumps on the near half of the soil grow over the roots; the rest
-    // stay behind the trunk.
-    let (mut dark, mut light) = (
-        [String::new(), String::new()],
-        [String::new(), String::new()],
-    );
+    // Per half of the soil: the shadows, the lobes, the bumps, the sprigs
+    // (the lobes again) and the lights.
+    let mut layers: [[String; 5]; 2] = Default::default();
     for i in 0..clumps {
         let mut r = Rng::keyed(b.account_id, &format!("moss/{i}"));
         let a = r.range(0.0, math::TAU);
@@ -694,8 +723,7 @@ pub fn moss(b: &Bonsai, paints: &Paints, pot: &Pot) -> (String, String) {
         let near = usize::from(y > SOIL_Y);
         // A cushion: two overlapping lobes, the second a little to one side.
         let side = if r.unit() < 0.5 { -1.0 } else { 1.0 };
-        let _ = write!(
-            dark[near],
+        let lobes = format!(
             r#"<ellipse cx="{}" cy="{}" rx="{}" ry="{}"/><ellipse cx="{}" cy="{}" rx="{}" ry="{}"/>"#,
             Num(x),
             Num(y),
@@ -706,25 +734,61 @@ pub fn moss(b: &Bonsai, paints: &Paints, pot: &Pot) -> (String, String) {
             Num(rx * 0.7),
             Num(ry * 0.85)
         );
+        let [shadow, dark, mid, sprigs, light] = &mut layers[near];
+        // Its shadow stays within its own footprint: never past the rim.
         let _ = write!(
-            light[near],
+            shadow,
             r#"<ellipse cx="{}" cy="{}" rx="{}" ry="{}"/>"#,
-            Num(x - rx * 0.15),
-            Num(y - ry * 0.35),
-            Num(rx * 0.6),
-            Num(ry * 0.55)
+            Num(x + side * rx * 0.25),
+            Num(y + ry * 0.55),
+            Num(rx * 1.1),
+            Num(ry * 0.45)
+        );
+        dark.push_str(&lobes);
+        for (dx, dy, f) in [(-0.45, -0.25, 0.42), (0.05, -0.45, 0.5), (0.5, -0.15, 0.4)] {
+            let _ = write!(
+                mid,
+                r#"<ellipse cx="{}" cy="{}" rx="{}" ry="{}"/>"#,
+                Num(x + side * rx * dx),
+                Num(y + ry * dy),
+                Num(rx * f),
+                Num(ry * f * 1.1)
+            );
+        }
+        sprigs.push_str(&lobes);
+        let _ = write!(
+            light,
+            r#"<ellipse cx="{}" cy="{}" rx="{}" ry="{}"/>"#,
+            Num(x - rx * 0.29),
+            Num(y - ry * 0.6),
+            Num(rx * 0.36),
+            Num(ry * 0.33)
         );
     }
-    let group = |k: usize| {
-        if dark[k].is_empty() {
+    let midtone = paints.moss[0].mix(paints.moss[1], 0.5);
+    let group = |[shadow, dark, mid, sprigs, light]: &[String; 5]| {
+        if dark.is_empty() {
             return String::new();
         }
         format!(
-            r#"<g fill="{}">{}</g><g fill="{}">{}</g>"#,
-            paints.moss[0], dark[k], paints.moss[1], light[k]
+            r#"<g fill="{}" opacity=".35">{shadow}</g><g fill="{}">{dark}</g><g fill="{midtone}">{mid}</g><g fill="url(#mz)" opacity=".75">{sprigs}</g><g fill="{}">{light}</g>"#,
+            paints.soil.shift(-0.2, 0.0),
+            paints.moss[0],
+            paints.moss[1]
         )
     };
-    (group(0), group(1))
+    let (mut back, mut front) = (group(&layers[0]), group(&layers[1]));
+    // The sprigs' tile, once for the picture, with the first moss drawn.
+    let tile = format!(
+        r#"<defs><pattern id="mz" width="4" height="3" patternUnits="userSpaceOnUse"><path d="M1 .4V1.8M.3 1.1H1.7M3 1.6V2.8M2.4 2.2H3.6" stroke="{}" stroke-width=".35"/></pattern></defs>"#,
+        paints.moss[1].shift(0.06, 0.0)
+    );
+    if back.is_empty() {
+        front.insert_str(0, &tile);
+    } else {
+        back.insert_str(0, &tile);
+    }
+    (back, front)
 }
 
 /// The pot's front wall, lit from the left, with its tier's details: a left
@@ -1590,8 +1654,8 @@ fn mound(pot: &Pot, soil: Rgb, (l, r, back, front): (f64, f64, f64, f64), wall: 
     let mid = f64::midpoint(back, front);
     let (lower, upper) = if big { (0.022, 0.04) } else { (0.014, 0.026) };
     let (wide, tall) = if big { (1.08, 1.12) } else { (1.0, 1.0) };
-    format!(
-        r#"<path d="M{} {}Q{} {} {} {}L{} {}H{}Z" fill="{soil}"/><ellipse cx="{cx}" cy="{}" rx="{}" ry="{}" fill="{}"/><ellipse cx="{cx}" cy="{}" rx="{}" ry="{}" fill="{}"/>"#,
+    let shape = format!(
+        r#"<path d="M{} {}Q{} {} {} {}L{} {}H{}Z""#,
         Num(l + tp),
         Num(back),
         Num(cx),
@@ -1601,6 +1665,9 @@ fn mound(pot: &Pot, soil: Rgb, (l, r, back, front): (f64, f64, f64, f64), wall: 
         Num(r),
         Num(front),
         Num(l),
+    );
+    format!(
+        r#"{shape} fill="{soil}"/><ellipse cx="{cx}" cy="{}" rx="{}" ry="{}" fill="{}"/><ellipse cx="{cx}" cy="{}" rx="{}" ry="{}" fill="{}"/>{}"#,
         Num(mid - h * 0.1),
         Num(w * 0.66 * wide),
         Num(h * 0.5 * tall),
@@ -1609,6 +1676,29 @@ fn mound(pot: &Pot, soil: Rgb, (l, r, back, front): (f64, f64, f64, f64), wall: 
         Num(w * 0.38 * wide),
         Num(h * 0.3 * tall),
         soil.shift(upper, 0.0),
+        grain(soil, &shape),
+    )
+}
+
+/// Lays a fine grain over the soil `shape` (an element's opening without its
+/// fill): granules a little lighter and darker than the soil, squashed by
+/// the angle, from two tiles of different sizes so their repeat does not
+/// show. Under the canopy's shadow the soil is laid plain over it.
+fn grain(soil: Rgb, shape: &str) -> String {
+    let (light, dark) = (soil.shift(0.075, 0.0), soil.shift(-0.07, 0.0));
+    format!(
+        r#"<defs><pattern id="sg" width="7" height="4" patternUnits="userSpaceOnUse"><ellipse cx="1.2" cy="1" rx=".75" ry=".42" fill="{light}"/><ellipse cx="4.6" cy="2.6" rx=".6" ry=".36" fill="{dark}"/><ellipse cx="2.9" cy="3.3" rx=".5" ry=".3" fill="{light}"/><ellipse cx="6.1" cy=".7" rx=".45" ry=".28" fill="{dark}"/></pattern><pattern id="sh" width="13" height="7" patternUnits="userSpaceOnUse" x="3" y="2"><ellipse cx="2.5" cy="1.8" rx=".9" ry=".5" fill="{light}"/><ellipse cx="9.2" cy="4.9" rx=".8" ry=".45" fill="{dark}"/><ellipse cx="6.4" cy="6.1" rx=".55" ry=".32" fill="{light}"/></pattern></defs>{shape} fill="url(#sg)" opacity=".45"/>{shape} fill="url(#sh)" opacity=".5"/>"#
+    )
+}
+
+/// The opening of an elliptical soil's element at `cy`, `rx` by `ry`, for
+/// [`grain`].
+fn soil_ellipse(cy: f64, rx: f64, ry: f64) -> String {
+    format!(
+        r#"<ellipse cx="{CENTER_X}" cy="{}" rx="{}" ry="{}""#,
+        Num(cy),
+        Num(rx),
+        Num(ry)
     )
 }
 
@@ -2230,6 +2320,136 @@ mod tests {
                 "{level}: {strip}"
             );
         }
+    }
+
+    /// The round pots' and the bowl's soil heaps up gently in the middle: two
+    /// lighter flat steps crown it, a little behind its middle, as a
+    /// rectangle's does.
+    #[test]
+    fn round_soil_heaps_up_in_the_middle() {
+        let soil = Rgb::hex(0x4a_3a2a);
+        for (shape, level) in [(Shape::Oval, 3), (Shape::Bowl, 7)] {
+            let pot = Pot {
+                hw: 100.0,
+                ry: 17.0,
+                depth: 50.0,
+                bw: 80.0,
+                glaze: Rgb::hex(0x3e_5c76),
+                shape,
+                level,
+            };
+            let top = top(&pot, soil);
+            let crown: Vec<f64> = [soil.shift(0.014, 0.0), soil.shift(0.026, 0.0)]
+                .iter()
+                .map(|c| {
+                    let at = top.find(&format!(r#"fill="{c}""#)).expect("a crown step");
+                    let e = &top[top[..at].rfind("<ellipse").unwrap()..at];
+                    let cy = e.split(" cy=\"").nth(1).unwrap();
+                    cy[..cy.find('"').unwrap()].parse().unwrap()
+                })
+                .collect();
+            assert!(
+                crown.iter().all(|&cy| cy < SOIL_Y + 0.6),
+                "{shape:?}: {crown:?}"
+            );
+        }
+    }
+
+    /// Every pot's soil has a fine grain over it, granules lighter and
+    /// darker than the soil, from tiles defined once; on a rectangle and the
+    /// bowl inside the opening.
+    #[test]
+    fn every_soil_has_a_grain() {
+        let soil = Rgb::hex(0x4a_3a2a);
+        for (shape, level) in [
+            (Shape::Oval, 3),
+            (Shape::Bowl, 7),
+            (Shape::Rect, 8),
+            (Shape::Rect, 10),
+        ] {
+            let pot = Pot {
+                hw: 100.0,
+                ry: 17.0,
+                depth: 50.0,
+                bw: 80.0,
+                glaze: Rgb::hex(0x3e_5c76),
+                shape,
+                level,
+            };
+            let top = top(&pot, soil);
+            assert_eq!(top.matches("<pattern").count(), 2, "{shape:?}: two tiles");
+            assert!(
+                top.contains(&format!(r#"fill="{}""#, soil.shift(0.075, 0.0))),
+                "{shape:?}"
+            );
+            assert!(
+                top.contains(&format!(r#"fill="{}""#, soil.shift(-0.07, 0.0))),
+                "{shape:?}"
+            );
+            let over = top
+                .find(r#"fill="url(#sg)""#)
+                .expect("the grain over the soil");
+            assert!(top.find(r#"fill="url(#sh)""#).is_some(), "{shape:?}");
+            if shape != Shape::Oval {
+                assert!(
+                    over > top.find(r#"clip-path="url(#po)""#).unwrap(),
+                    "{shape:?}: inside the opening"
+                );
+            }
+        }
+    }
+
+    /// Moss grows as star-moss cushions: each clump casts a soft shadow on
+    /// the soil, rises in three mid-tone bumps and is furred with sprigs,
+    /// one tile of them for the whole picture.
+    #[test]
+    fn moss_grows_as_star_moss_cushions() {
+        let mut b = crate::Bonsai::grow(
+            &crate::fixtures::by_name("steady").unwrap().snapshot,
+            &Config::default(),
+            None,
+        );
+        b.extras.moss = 1.0;
+        let paints = Paints::of(crate::Theme::Light);
+        let pot = Pot {
+            hw: 100.0,
+            ry: 17.0,
+            depth: 50.0,
+            bw: 80.0,
+            glaze: Rgb::hex(0x3e_5c76),
+            shape: Shape::Oval,
+            level: 3,
+        };
+        let (back, front) = moss(&b, &paints, &pot);
+        let all = format!("{back}{front}");
+        let clumps = 34;
+        assert_eq!(
+            all.matches(r#"<pattern id="mz""#).count(),
+            1,
+            "one sprig tile"
+        );
+        assert_eq!(
+            all.matches(r#"fill="url(#mz)""#).count(),
+            2,
+            "the sprigs, back and front"
+        );
+        let midtone = paints.moss[0].mix(paints.moss[1], 0.5);
+        let group = |fill: &str| -> usize {
+            all.split(&format!(r#"<g fill="{fill}""#))
+                .skip(1)
+                .map(|g| g[..g.find("</g>").unwrap()].matches("<ellipse").count())
+                .sum()
+        };
+        assert_eq!(
+            group(&midtone.to_string()),
+            3 * clumps,
+            "three bumps a clump"
+        );
+        assert_eq!(
+            group(&paints.soil.shift(-0.2, 0.0).to_string()),
+            clumps,
+            "a shadow a clump"
+        );
     }
 
     /// Moss on a rectangle grows inside its opening, behind the rim frame.

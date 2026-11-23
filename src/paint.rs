@@ -1773,14 +1773,17 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
     let rx = ((hw - 8.0) * 0.75)
         .min(hw - 6.0 - (cx - CENTER_X).abs())
         .max(4.0);
+    // The soil's gentle heap shows only in the light: under the canopy the
+    // soil lies plain, then the shadow on it.
     let _ = write!(
         body,
-        r#"<ellipse cx="{}" cy="{}" rx="{}" ry="{}" fill="{}" opacity=".35"/>"#,
-        Num(cx),
-        Num(SOIL_Y + 0.6),
-        Num(rx),
-        Num((pot.ry - 3.0).max(1.0) * 0.7),
-        paints.soil.shift(-0.12, 0.0)
+        r#"<ellipse cx="{x}" cy="{y}" rx="{rx}" ry="{ry}" fill="{}"/><ellipse cx="{x}" cy="{y}" rx="{rx}" ry="{ry}" fill="{}" opacity=".35"/>"#,
+        paints.soil,
+        paints.soil.shift(-0.12, 0.0),
+        x = Num(cx),
+        y = Num(SOIL_Y + 0.6),
+        rx = Num(rx),
+        ry = Num((pot.ry - 3.0).max(1.0) * 0.7),
     );
     let (moss_back, moss_front) = crate::pot::moss(b, &paints, &pot);
     body.push_str(&moss_back);
@@ -1857,7 +1860,7 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
         fresh: (sprout.is_none() || crate::sprout::handover(crate::sprout::count(b)) > 0.5)
             && scene.tufts.iter().any(|t| t.fresh),
         falling: !fallen.is_empty(),
-        glaze: Some(pot.glaze),
+        pot: Some((pot.glaze, pot.shape)),
     };
     let legend = crate::legend::legend(b, &paints, signs, config.render.legend, &mut out.frame);
     out.body.push_str(&legend);
