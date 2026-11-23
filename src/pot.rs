@@ -238,6 +238,8 @@ fn rim_ry(hw: f64) -> f64 {
 
 /// How far below its rim the bowl's soil lies, as a share of its depth.
 const BOWL_INSET: f64 = 0.09;
+/// How deep the bowl is for its width: one shape at every size.
+const BOWL_DEPTH: f64 = 0.38;
 
 /// How far a rectangle's top face is drawn in at its back edge, on each
 /// side, in detail units: a touch of depth, the back a little narrower than
@@ -357,13 +359,22 @@ fn spill_of(b: &Bonsai, scene: &Scene, base_r: f64) -> Option<f64> {
 ///
 /// The width is the tree's size step. The depth is the trunk's width at its
 /// foot, at least 20 and at most the larger of 56 and a quarter of the width,
-/// then the model's depth factor, at most half the width, 0.38 of it for the
-/// bowl and 0.27 for a rectangle (just deeper than their mockups). A cascade keeps
-/// that pot's soil and trades width for depth, up to 0.7 as deep as wide at
-/// a full cascade; its rim stays inside the point where the trunk spills
-/// over, and if that narrows it, it deepens to keep its soil, never deeper
-/// than it is wide.
+/// then the model's depth factor, at most half the width, or 0.27 of it for a
+/// rectangle (just deeper than its mockup). A cascade keeps that pot's soil
+/// and trades width for depth, up to 0.7 as deep as wide at a full cascade;
+/// its rim stays inside the point where the trunk spills over, and if that
+/// narrows it, it deepens to keep its soil, never deeper than it is wide.
+///
+/// The bowl is one shape at every size, [`BOWL_DEPTH`] as deep as it is wide:
+/// a cascade gets the same bowl, and a spill close in makes it smaller.
 pub fn dims(need: &Need, m: &Model) -> Dims {
+    if m.shape == Shape::Bowl {
+        let mut hw = need.width / 2.0;
+        if let Some(spill) = need.spill {
+            hw = hw.min(spill.max(2.0 * need.base_r));
+        }
+        return m.dims_at(hw, BOWL_DEPTH * 2.0 * hw, 0.0);
+    }
     let k = {
         let w = need.cascade.abs().min(1.0);
         w * w * (3.0 - 2.0 * w)
@@ -371,7 +382,7 @@ pub fn dims(need: &Need, m: &Model) -> Dims {
     let cap = (need.width / 4.0).max(56.0);
     let deepest = match m.shape {
         Shape::Oval => 0.5,
-        Shape::Bowl => 0.38,
+        Shape::Bowl => BOWL_DEPTH,
         Shape::Rect => 0.27,
     };
     let depth = (need.trunk_depth.clamp(20.0, cap) * m.depth_factor).min(need.width * deepest);
@@ -1626,10 +1637,11 @@ mod tests {
     }
 
     /// A cascade's pot holds the soil of the pot it would get standing
-    /// upright: narrower and deeper, 0.7 as deep as it is wide.
+    /// upright: narrower and deeper, 0.7 as deep as it is wide. The bowl
+    /// keeps its one shape instead ([`the_bowl_keeps_its_shape`]).
     #[test]
     fn a_cascade_keeps_the_upright_pots_soil() {
-        for level in 0..11u8 {
+        for level in (0..11u8).filter(|l| model(*l).shape != Shape::Bowl) {
             let m = model(level);
             let up = dims(&need(195.0, 36.0, 0.0, None, 14.0), m);
             let down = dims(&need(195.0, 36.0, 1.0, None, 14.0), m);
@@ -1694,6 +1706,34 @@ mod tests {
         }
         let down = dims(&need(200.0, 133.0, 1.0, None, 40.0), model(8));
         assert!((down.depth / (2.0 * down.hw) - 0.7).abs() < 0.02);
+    }
+
+    /// The bowl is one shape at every size: 0.38 as deep as it is wide,
+    /// whatever its trunk, a cascade the same bowl as an upright tree, and a
+    /// spill close in makes it smaller, not deeper.
+    #[test]
+    fn the_bowl_keeps_its_shape() {
+        let m = model(7);
+        for width in [125.0, 195.0, 305.0] {
+            for trunk in [20.0, 46.0, 133.0] {
+                for cascade in [0.0, 0.5, 1.0] {
+                    for spill in [None, Some(40.0)] {
+                        let d = dims(&need(width, trunk, cascade, spill, 10.0), m);
+                        assert!(
+                            (d.depth / (2.0 * d.hw) - BOWL_DEPTH).abs() < 1e-9,
+                            "{width} wide, trunk {trunk}, cascade {cascade}, spill {spill:?}: {} deep, {} half-wide",
+                            d.depth,
+                            d.hw
+                        );
+                    }
+                }
+                let free = dims(&need(width, trunk, 1.0, None, 10.0), m);
+                assert!(
+                    (free.hw - width / 2.0).abs() < 1e-9,
+                    "a cascade's bowl is full width"
+                );
+            }
+        }
     }
 
     /// The wall's half-width down the pot: straight on an oval and a
