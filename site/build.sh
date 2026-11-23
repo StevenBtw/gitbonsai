@@ -17,6 +17,7 @@ rm -rf "$out"
 mkdir -p "$out/hero"
 cp -r "$site/fonts" "$out/fonts"
 cp "$site/og.png" "$out/og.png"   # link-preview card; bump ?v= in index.html when it changes
+cp "$site/favicon.svg" "$site/apple-touch-icon.png" "$out/"
 "$site/node_modules/.bin/tsc" -p "$site" --outDir "$work/js"
 # The exhibition's API: api.gitbonsai.dev, or a local stub (site/dev/stub-api.py) with GITBONSAI_API.
 api=${GITBONSAI_API:-https://api.gitbonsai.dev}
@@ -55,7 +56,8 @@ plate sprout Sprout fixture:newbie --as-of 2026-08-01
 plate newcomer Newcomer fixture:newbie
 # The Showcase with every setting at its default (site/showcase.toml).
 plate showcase Showcase fixture:showcase --config "$site/showcase.toml"
-for who in stevenbtw:@StevenBtw jacobwilliams:@jacobwilliams tj:@tj torvalds:@torvalds steipete:@steipete; do
+# The real profiles in the README's order: smallest tree first.
+for who in jacobwilliams:@jacobwilliams stevenbtw:@StevenBtw steipete:@steipete tj:@tj torvalds:@torvalds; do
   plate "${who%%:*}" "${who#*:}" "$site/snapshots/${who%%:*}.snapshot.json"
 done
 # The seedling still waiting for its first contribution: the picture "See your own
