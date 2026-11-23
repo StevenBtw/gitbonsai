@@ -40,6 +40,7 @@ use crate::growth::GOLDEN;
 use crate::math;
 use crate::noise::{fbm, hash01, noise1};
 use crate::paint::{Frame, Paints, Pot, norm};
+use crate::pot::SHADE;
 use crate::render::{Num, PathData};
 use crate::rng::{Rng, siphash13};
 use crate::scene::{Scene, TILT, WORLD, project};
@@ -982,6 +983,12 @@ pub fn eggs(
     e
 }
 
+/// How much more a mend darkens in the wall's shade than the glaze does:
+/// metal shows the turn from the light more than a glaze.
+const MEND_SHADE: f64 = 2.5;
+/// The staple's id suffix per shade step.
+const STEP_ID: [&str; 3] = ["", "1", "2"];
+
 /// How a pot's breaks are mended.
 #[derive(Clone, Copy, PartialEq)]
 enum Mend {
@@ -1004,8 +1011,9 @@ enum Mend {
 /// with a width that swells and thins like poured lacquer. Breaks sit at
 /// golden-angle steps around the pot in archive order, so archiving another
 /// repository never moves an old one; only those on the front half are
-/// visible. `dark` lifts the silver on a dark page.
-pub fn kintsugi(archived: &[String], seed: u64, pot: &Pot, dark: bool) -> String {
+/// visible. A mend takes the wall's shade steps on the side away from `lit`,
+/// darker and duller than the glaze. `dark` lifts the silver on a dark page.
+pub fn kintsugi(archived: &[String], seed: u64, pot: &Pot, dark: bool, lit: f64) -> String {
     let mend = match pot.level {
         0 => return String::new(),
         1 => Mend::Crack,
@@ -1033,6 +1041,14 @@ pub fn kintsugi(archived: &[String], seed: u64, pot: &Pot, dark: bool) -> String
         (CENTER_X + rad * math::cos(a), y)
     };
     let base = hash01(seed, 0x6b69) * 360.0;
+    // The wall's shade steps, lit from the left, mirrored for a left tree.
+    let lit_sign = if lit < 0.0 { -1.0 } else { 1.0 };
+    let zone = |x: f64| {
+        let s = (x - CENTER_X) * lit_sign / hw;
+        SHADE.iter().filter(|(f, _)| s >= *f).count()
+    };
+    let tone_of = |z: usize| if z == 0 { 0.0 } else { SHADE[z - 1].1 };
+    let (mut stapled, mut clipped) = ([false; 3], false);
     let mut veins = String::new();
     for (i, name) in archived.iter().take(MAX_SEAMS).enumerate() {
         let theta = math::rad(base + i as f64 * GOLDEN);
@@ -1073,40 +1089,35 @@ pub fn kintsugi(archived: &[String], seed: u64, pot: &Pot, dark: bool) -> String
             d.z();
             d
         };
-        if mend != Mend::Gold {
-            let mut line = PathData::coarse();
-            line.m((pts[0].0, pts[0].1));
-            for p in &pts[1..] {
-                line.l((p.0, p.1));
-            }
-            if mend == Mend::Silver {
-                let pewter = if dark { "#b9bab5" } else { "#a9aaa6" };
-                let _ = write!(
-                    veins,
-                    r##"<path d="{l}" fill="none" stroke="#1b1311" stroke-width="2" stroke-linejoin="round" opacity=".8"/><path d="{l}" fill="none" stroke="{pewter}" stroke-width=".9" stroke-linejoin="round"/>"##,
-                    l = line.as_str()
-                );
-                continue;
-            }
-            // A hairline in a deeper shade of the clay, then, on the clay pot
-            // on feet, copper staples across it about every 20 units, at
-            // least two: more on a longer crack.
-            let _ = write!(
-                veins,
-                r#"<path d="{}" fill="none" stroke="{}" stroke-width=".8" stroke-linejoin="round"/>"#,
-                line.as_str(),
-                glaze.mix(Rgb::hex(0x1a_0f0a), 0.6)
+        let mut line = PathData::coarse();
+        line.m((pts[0].0, pts[0].1));
+        for p in &pts[1..] {
+            line.l((p.0, p.1));
+        }
+        let mut highlight = PathData::coarse();
+        for i in 0..n {
+            let (pb, nb) = (pts[i.saturating_sub(1)], pts[(i + 1).min(n - 1)]);
+            let t = norm((nb.0 - pb.0, nb.1 - pb.1));
+            let q = (
+                pts[i].0 + t.1 * pts[i].2 * 0.2,
+                pts[i].1 - t.0 * pts[i].2 * 0.2,
             );
-            if mend == Mend::Crack {
-                continue;
-            }
+            if i == 0 {
+                highlight.m(q)
+            } else {
+                highlight.l(q)
+            };
+        }
+        // Copper staples across the crack about every 20 units, at least
+        // two: more on a longer crack. The wall holds 1/1.29 of the crack,
+        // the rest runs past the foot; the first staple sits near the rim,
+        // where a mender starts, the last a little above the foot.
+        let mut staples = Vec::new();
+        if mend == Mend::Staples {
             let length: f64 = pts
                 .windows(2)
                 .map(|w| (math::sq(w[1].0 - w[0].0) + math::sq(w[1].1 - w[0].1)).sqrt())
                 .sum();
-            // The wall holds 1/1.29 of the crack, the rest runs past the
-            // foot; the first staple sits near the rim, where a mender
-            // starts, the last a little above the foot.
             let (first, last) = (0.11 / 1.29, 0.89 / 1.29);
             #[allow(
                 clippy::cast_possible_truncation,
@@ -1124,52 +1135,110 @@ pub fn kintsugi(archived: &[String], seed: u64, pot: &Pot, dark: bool) -> String
                 let k = (f * (n - 1) as f64).round() as usize;
                 let (pb, nb) = (pts[k.saturating_sub(1)], pts[(k + 1).min(n - 1)]);
                 let turn = math::deg(math::atan2(nb.1 - pb.1, nb.0 - pb.0)) + 90.0;
-                let _ = write!(
-                    veins,
-                    r##"<use href="#stp" transform="translate({} {})rotate({})"/>"##,
-                    Num::coarse(pts[k].0),
-                    Num::coarse(pts[k].1),
-                    Num::coarse(turn)
-                );
+                staples.push((pts[k].0, pts[k].1, turn));
             }
-            continue;
         }
-        let mut highlight = PathData::coarse();
-        for i in 0..n {
-            let (pb, nb) = (pts[i.saturating_sub(1)], pts[(i + 1).min(n - 1)]);
-            let t = norm((nb.0 - pb.0, nb.1 - pb.1));
-            let q = (
-                pts[i].0 + t.1 * pts[i].2 * 0.2,
-                pts[i].1 - t.0 * pts[i].2 * 0.2,
-            );
-            if i == 0 {
-                highlight.m(q)
+        // The seam takes the wall's shade: on each step into shade it is
+        // darker and duller, cut where the glaze steps.
+        let mut zones = [false; 3];
+        for p in &pts {
+            zones[zone(p.0)] = true;
+        }
+        let split = zones.iter().filter(|z| **z).count() > 1;
+        for z in (0..3).filter(|z| zones[*z]) {
+            let tone = tone_of(z);
+            let metal = |c: u32| Rgb::hex(c).shift(tone * MEND_SHADE, tone * MEND_SHADE * 0.2);
+            let mut s = String::new();
+            match mend {
+                Mend::Gold => {
+                    let _ = write!(
+                        s,
+                        r#"<path d="{}" fill="{}" opacity=".5"/><path d="{}" fill="{}"/><path d="{}" fill="none" stroke="{}" stroke-width=".35" opacity=".85"/>"#,
+                        outline(0.55).as_str(),
+                        glaze.shift(-0.16 + tone, 0.0),
+                        outline(0.0).as_str(),
+                        metal(0xc9_972f),
+                        highlight.as_str(),
+                        metal(0xf6_dc8a)
+                    );
+                }
+                Mend::Silver => {
+                    let pewter = metal(if dark { 0xb9_bab5 } else { 0xa9_aaa6 });
+                    let _ = write!(
+                        s,
+                        r##"<path d="{l}" fill="none" stroke="#1b1311" stroke-width="2" stroke-linejoin="round" opacity=".8"/><path d="{l}" fill="none" stroke="{pewter}" stroke-width=".9" stroke-linejoin="round"/>"##,
+                        l = line.as_str()
+                    );
+                }
+                Mend::Crack | Mend::Staples => {
+                    // A hairline in a deeper shade of the clay.
+                    let _ = write!(
+                        s,
+                        r#"<path d="{}" fill="none" stroke="{}" stroke-width=".8" stroke-linejoin="round"/>"#,
+                        line.as_str(),
+                        glaze.mix(Rgb::hex(0x1a_0f0a), 0.6).shift(tone, 0.0)
+                    );
+                }
+            }
+            if split {
+                clipped = true;
+                let _ = write!(veins, r#"<g clip-path="url(#kz{z})">{s}</g>"#);
             } else {
-                highlight.l(q)
-            };
+                veins.push_str(&s);
+            }
         }
-        let _ = write!(
-            veins,
-            r##"<path d="{}" fill="{}" opacity=".5"/><path d="{}" fill="#c9972f"/><path d="{}" fill="none" stroke="#f6dc8a" stroke-width=".35" opacity=".85"/>"##,
-            outline(0.55).as_str(),
-            glaze.shift(-0.16, 0.0),
-            outline(0.0).as_str(),
-            highlight.as_str()
-        );
+        // A staple whole, over the crack, in the shade where it sits.
+        for (x, y, turn) in staples {
+            let z = zone(x);
+            stapled[z] = true;
+            let _ = write!(
+                veins,
+                r##"<use href="#stp{}" transform="translate({} {})rotate({})"/>"##,
+                STEP_ID[z],
+                Num::coarse(x),
+                Num::coarse(y),
+                Num::coarse(turn)
+            );
+        }
     }
     if veins.is_empty() {
         return String::new();
     }
-    if mend == Mend::Staples {
-        // One staple, drawn once: two holes in the clay and a muted copper
-        // bridge across the crack.
-        let hole = glaze.mix(Rgb::hex(0x1a_0f0a), 0.7);
-        veins.insert_str(
-            0,
-            &format!(
-                r##"<defs><g id="stp"><circle cx="-3" r=".75" fill="{hole}"/><circle cx="3" r=".75" fill="{hole}"/><path d="M-3 0V-.4H3V0" fill="none" stroke="#8a5a3c" stroke-width="1.15" stroke-linejoin="round"/><path d="M-2.4-.75H2.4" stroke="#c4906a" stroke-width=".35" opacity=".8"/></g></defs>"##
-            ),
+    let mut defs = String::new();
+    // One staple per shade step, drawn once: two holes in the clay and a
+    // muted copper bridge across the crack.
+    let hole = glaze.mix(Rgb::hex(0x1a_0f0a), 0.7);
+    for z in (0..3).filter(|z| stapled[*z]) {
+        let tone = tone_of(z);
+        let metal = |c: u32| Rgb::hex(c).shift(tone * MEND_SHADE, tone * MEND_SHADE * 0.2);
+        let h = hole.shift(tone, 0.0);
+        let _ = write!(
+            defs,
+            r#"<g id="stp{}"><circle cx="-3" r=".75" fill="{h}"/><circle cx="3" r=".75" fill="{h}"/><path d="M-3 0V-.4H3V0" fill="none" stroke="{}" stroke-width="1.15" stroke-linejoin="round"/><path d="M-2.4-.75H2.4" stroke="{}" stroke-width=".35" opacity=".8"/></g>"#,
+            STEP_ID[z],
+            metal(0x8a_5a3c),
+            metal(0xc4_906a)
         );
+    }
+    if clipped {
+        let bounds = [-3.0, SHADE[0].0, SHADE[1].0, 3.0];
+        for z in 0..3 {
+            let (a, b) = (
+                CENTER_X + lit_sign * bounds[z] * hw,
+                CENTER_X + lit_sign * bounds[z + 1] * hw,
+            );
+            let _ = write!(
+                defs,
+                r#"<clipPath id="kz{z}"><rect x="{}" y="{}" width="{}" height="{}"/></clipPath>"#,
+                Num(a.min(b)),
+                Num(SOIL_Y - ry - 40.0),
+                Num((b - a).abs()),
+                Num(depth + 2.0 * ry + 120.0)
+            );
+        }
+    }
+    if !defs.is_empty() {
+        veins.insert_str(0, &format!("<defs>{defs}</defs>"));
     }
     let wall = pot.wall();
     // On the pot's wall, which stands as high as the pot does.
@@ -1246,15 +1315,91 @@ mod tests {
             level: 2,
         };
         let names: Vec<String> = (0..12).map(|i| format!("repo{i}")).collect();
-        let svg = kintsugi(&names, 7, &pot, false);
-        let cracks = svg.matches(r#"stroke-width=".8""#).count();
-        let staples = svg.matches(r##"href="#stp""##).count();
+        let svg = kintsugi(&names, 7, &pot, false, 1.0);
+        // A crack split by the wall's shade is one crack: count its path once.
+        let mut paths: Vec<&str> = svg
+            .split(r#"<path d=""#)
+            .skip(1)
+            .filter(|p| p.contains(r#"stroke-width=".8""#))
+            .map(|p| p.split('"').next().unwrap())
+            .collect();
+        paths.sort_unstable();
+        paths.dedup();
+        let cracks = paths.len();
+        let staples = svg.matches(r##"href="#stp"##).count();
         assert!(cracks > 0, "{svg}");
         // About 80 deep, so about four to a crack.
         assert!(
             staples >= 2 * cracks && staples <= 5 * cracks,
             "{staples} staples on {cracks} cracks"
         );
+    }
+
+    /// A mend takes the wall's shade: gold on the shaded side is darker and
+    /// duller than on the lit side, and the shade follows the light.
+    #[test]
+    fn gold_dims_on_the_shaded_side() {
+        let pot = Pot {
+            hw: 120.0,
+            ry: 22.0,
+            depth: 80.0,
+            bw: 96.0,
+            glaze: Rgb::hex(0x2e_5a8c),
+            shape: crate::pot::Shape::Oval,
+            level: 3,
+        };
+        let names: Vec<String> = (0..12).map(|i| format!("repo{i}")).collect();
+        let gold = Rgb::hex(0xc9_972f).to_oklch();
+        let golds = |lit: f64| {
+            let svg = kintsugi(&names, 7, &pot, false, lit);
+            let mut fills: Vec<String> = Vec::new();
+            for part in svg.split(r##"fill="#"##).skip(1) {
+                let hex = &part[..6];
+                if !fills.iter().any(|f| f == hex) {
+                    fills.push(hex.to_string());
+                }
+            }
+            (svg, fills)
+        };
+        let (right, fills) = golds(1.0);
+        let shaded: Vec<_> = fills
+            .iter()
+            .map(|f| Rgb::hex(u32::from_str_radix(f, 16).unwrap()).to_oklch())
+            .filter(|c| (c.h - gold.h).abs() < 15.0 && c.l < gold.l - 0.05)
+            .collect();
+        assert!(!shaded.is_empty(), "no dimmed gold in {fills:?}");
+        assert!(shaded.iter().all(|c| c.c < gold.c), "dimmed gold is duller");
+        let (left, _) = golds(-1.0);
+        assert_ne!(right, left, "the shade follows the light");
+    }
+
+    /// A staple is drawn once, whole, on whichever step of shade its crack
+    /// crosses there: the light's side never adds or drops one.
+    #[test]
+    fn each_staple_is_drawn_once() {
+        let pot = Pot {
+            hw: 120.0,
+            ry: 22.0,
+            depth: 80.0,
+            bw: 96.0,
+            glaze: Rgb::hex(0x6b_4e3d),
+            shape: crate::pot::Shape::Oval,
+            level: 2,
+        };
+        let names: Vec<String> = (0..12).map(|i| format!("repo{i}")).collect();
+        for lit in [1.0, -1.0] {
+            let svg = kintsugi(&names, 7, &pot, false, lit);
+            let mut at: Vec<&str> = svg
+                .split("<use")
+                .skip(1)
+                .map(|u| u.split("transform=").nth(1).unwrap())
+                .collect();
+            let all = at.len();
+            at.sort_unstable();
+            at.dedup();
+            assert!(all > 0);
+            assert_eq!(at.len(), all, "a staple drawn twice, lit {lit}");
+        }
     }
 
     /// On a rectangle the soil eggs keep inside its opening: clear of its

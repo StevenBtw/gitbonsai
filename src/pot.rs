@@ -974,7 +974,7 @@ pub fn front(b: &Bonsai, pot: &Pot, dark: bool) -> String {
 
 /// Where the pot turns from the light, as shares of its half-width right of
 /// center, and how much darker it is from there: two steps, no gradient.
-const SHADE: [(f64, f64); 2] = [(0.2, -0.035), (0.38, -0.07)];
+pub const SHADE: [(f64, f64); 2] = [(0.2, -0.035), (0.38, -0.07)];
 
 /// Draws the rim's lip: a band astride the rim's front edge, 2.4 deep at
 /// the front and tapering to nothing at the sides, stepped into shade where

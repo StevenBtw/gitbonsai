@@ -1846,7 +1846,7 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
     // The pot is lit as the tree is.
     let front = crate::pot::front(b, &pot, paints.dark);
     body.push_str(&if lit < 0.0 { mirror(&front) } else { front });
-    body.push_str(&eggs::kintsugi(&b.archived, seed, &pot, paints.dark));
+    body.push_str(&eggs::kintsugi(&b.archived, seed, &pot, paints.dark, lit));
     // The maker's seal sits on the pot's shaded half: mirrored with it.
     let marks = crate::pot::marks(b, &pot);
     body.push_str(&if lit < 0.0 { mirror(&marks) } else { marks });
