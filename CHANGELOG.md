@@ -2,6 +2,38 @@
 
 All notable changes to gitbonsai, a Japanese maple bonsai grown from GitHub activity. A change to how a tree grows or looks is at least a minor version, because people notice their tree changing; a patch only fixes drawing bugs, wood or leaves drawn where they were never meant to be.
 
+## [0.6.1] - 2026-11-24
+
+Pot meta rebalance and shadow update: pots stand without feet and cast one stepped shadow, soil heaps up gently with a fine grain, moss grows as star moss, and the rectangles are seen flatter, with a higher rim, the finest two with a detailed rim. Every tree's picture changes around its pot, which would make this a minor version; it ships as 0.6.1 because it finishes the pots of 0.6.0. gitbonsai.dev gets an icon.
+
+### Added
+
+- **gitbonsai.dev has an icon**: a bonsai in its pot, cut from a disc, in the browser tab (following the browser's light or dark mode) and on a phone's home screen.
+
+### Changed
+
+- **Pots stand without feet**: the clay pot on feet is now the brown clay oval and the celadon on cloud feet the celadon oval, in `gitbonsai explain` too.
+- **Every pot casts one kind of shadow**: a hairline where it meets the table, then three softer steps falling away from the light, shaped like the pot's base, the bowl's saucer or a rectangle's base.
+- **Rectangles are seen a little flatter**: a rectangle's top face is 0.85 as deep as an oval's of the same width (it was as deep), narrowing a touch toward the back.
+- **A rectangle's rim stands higher**: its soil lies 7% of its depth below the rim (it was 3.5%) and heaps up a little in the middle, most in the speckled green rectangle.
+- **The glossy cobalt and speckled green rectangles have a detailed rim**: a thicker frame with a bevel into the opening, light along its front edge, and a groove and a shaded underside on a deeper lip band.
+- **The bowl has one shape**: it is always 0.38 as deep as it is wide, whatever the trunk, and only its size follows the tree; a cascade gets the same bowl.
+- **Soil heaps up gently and has a grain**: in every pot the soil rises a little in the middle and shows a fine grain of lighter and darker granules; under the canopy's shadow it lies plain.
+- **Moss grows as star moss**: each cushion casts a soft shadow, rises in rounded bumps and is furred with fine sprigs.
+- **The legend draws the pot's own shape**: an oval pot, the bowl on its saucer or a rectangle under its lip, and its moss mark is a cushion.
+
+### Fixed
+
+- **Low strands and second trunks run into the soil**: living wood that leaves the trunk low runs on down into the soil, its shadow too, instead of ending in a round cap on the trunk's face.
+- **Moss keeps off a rectangle's rim**: moss grows inside the opening, clear of the frame.
+- **Picking another tree on the site no longer jumps**: the new tree, its place on the plate and its caption change together once it has loaded; a tree that fails to load leaves the plate as it was.
+
+### Dependencies
+
+- **Rust 1.100.0** for builds and CI (was 1.99.0); the minimum supported Rust stays 1.88.
+- **anyhow 1.0.105**, with compatible updates of clap_lex, crc32fast, flate2, hashbrown, itoa, smallvec and winnow.
+- **typos 1.52.2** and **cargo-deny-action 2.1.3** in CI.
+
 ## [0.6.0] - 2026-11-23
 
 Pots and roots release: the pot ladder grows from seven pots to eleven, with a hobnail bowl and three rectangles, each pot sized by the soil it holds, and windswept and cascade trees grow roots that hold on. Every tree with a streak stands in a redrawn pot, most in a different one, and every tree changes size by up to 3.5% as the styles move closer together. `gitbonsai explain` names the pot and measures the tree.

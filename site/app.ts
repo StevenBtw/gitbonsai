@@ -98,18 +98,42 @@ function place(p: Plate, all: Plate[]): void {
   heroImg.style.top = `${((p.box[1] - y0) / h) * 100}%`;
   heroImg.style.width = `${(p.box[2] / w) * 100}%`;
 }
+// The latest pick: a tree that finishes loading after a newer pick is dropped.
+let picked = 0;
 function showPlate(i: number): void {
   const p = plates[i];
   if (!p) return;
+  const was = shown;
   shown = i;
-  heroImg.dataset.tree = variant(p);
-  heroImg.src = `${variant(p)}-${theme()}.svg`;
-  heroImg.alt = p.alt;
-  place(p, plates);
-  $("herono").textContent = plateNo(i);
-  $("herofor").textContent = p.name;
-  $("herostyle").textContent = p.style;
   check(i);
+  const ticket = ++picked;
+  const tree = variant(p);
+  const next = new Image();
+  const loaded = new Promise<boolean>((done) => {
+    next.onload = () => done(true);
+    next.onerror = () => done(false);
+  });
+  next.src = `${tree}-${theme()}.svg`;
+  // The tree, its place and its caption change in one frame, once it has
+  // loaded and decoded: never the old tree drawn at the new one's place and
+  // size. A tree that fails to load leaves the plate as it was. (Some
+  // browsers refuse to decode an SVG that loaded fine; it still shows.)
+  void loaded.then(async (ok) => {
+    if (ok) await next.decode().catch(() => {});
+    if (ticket !== picked) return;
+    if (!ok) {
+      shown = was;
+      check(was);
+      return;
+    }
+    heroImg.dataset.tree = tree;
+    heroImg.src = `${tree}-${theme()}.svg`;
+    heroImg.alt = p.alt;
+    place(p, plates);
+    $("herono").textContent = plateNo(i);
+    $("herofor").textContent = p.name;
+    $("herostyle").textContent = p.style;
+  });
 }
 /** Marks thumbnail `i` as the chosen radio, with the roving tab stop on it. */
 function check(i: number): void {
@@ -313,13 +337,13 @@ interface Timelapse {
 }
 type Example = [id: string, name: string, kind: "simulated" | "real", blurb: string];
 // The Showcase on top, opened on load (see the frames fetch); the real
-// profiles under it by total contributions.
+// profiles under it in the README's order, smallest tree first.
 const EX: Example[] = [
   ["showcase", "Showcase", "simulated", "Fourteen years; C# swapped for Java, early private work, then Python, Rust and TypeScript."],
   ["stevenbtw", "@StevenBtw", "real", "Around 9 years; Python and Rust on two trunks. Quiet summers without commits swept it to one side: windswept."],
+  ["steipete", "@steipete", "real", "Around 17 years; TypeScript is the trunk, with Swift on its own strand. Quiet spells between bursts of work once bent its crown downwind; it stands up strong again, a windswept tree turning back upright."],
   ["tj", "@tj", "real", "Around 19 years; JavaScript, later Go. Long pauses slant it; resting since 2021, so bare for the winter."],
   ["torvalds", "@torvalds", "real", "Around 16 years of C, every single week: a thick, symmetric formal upright."],
-  ["steipete", "@steipete", "real", "Around 17 years; TypeScript is the trunk, with Swift on its own strand. Quiet spells between bursts of work once bent its crown downwind; it stands up strong again, a windswept tree turning back upright."],
 ];
 const PLAY = "M8 5.5v13l10.5-6.5z";
 const PAUSE = "M7 5h3.5v14H7zM13.5 5H17v14h-3.5z";

@@ -68,7 +68,7 @@ impl Paints {
                 jin: Rgb::hex(0xcdc7ba),
                 jin_ink: Rgb::hex(0x9a9182),
                 soil: Rgb::hex(0x5a4632),
-                moss: [Rgb::hex(0x5f7f35), Rgb::hex(0x84a34a)],
+                moss: [Rgb::hex(0x51_7025), Rgb::hex(0x75_933a)],
                 tubing: Rgb::hex(0x22272b),
                 water: Rgb::hex(0x3d97d6),
                 stone: Rgb::hex(0x8f918a),
@@ -82,7 +82,7 @@ impl Paints {
                 jin: Rgb::hex(0xc4beb0),
                 jin_ink: Rgb::hex(0x4e4941),
                 soil: Rgb::hex(0x4d3c2c),
-                moss: [Rgb::hex(0x6d8f3c), Rgb::hex(0x93b356)],
+                moss: [Rgb::hex(0x5f_802c), Rgb::hex(0x84_a346)],
                 tubing: Rgb::hex(0xb9c0c7),
                 water: Rgb::hex(0x79bdf0),
                 stone: Rgb::hex(0xa4a69d),
@@ -400,6 +400,53 @@ fn overlaps(a: Bounds, b: Bounds) -> bool {
 /// On the strand's first piece (`from_start`) the groove widens from the
 /// strand's own width, so its start stays hidden in the trunk the strand
 /// leaves instead of poking out beside it.
+/// A soft band inside the wood `seg`, from `from` to `to` of its radius
+/// out on the side facing away from the light `ls` (negative toward it):
+/// a point every dozen units or so carries it on a smooth curve.
+fn band(seg: &[(f64, f64, f64)], ls: (f64, f64), from: f64, to: f64) -> PathData {
+    let m = seg.len();
+    let away = |i: usize| {
+        let (nb, pb) = (seg[(i + 1).min(m - 1)], seg[i.saturating_sub(1)]);
+        let t = norm((nb.0 - pb.0, nb.1 - pb.1));
+        let n = (-t.1, t.0);
+        if n.0 * ls.0 + n.1 * ls.1 > 0.0 {
+            (-n.0, -n.1)
+        } else {
+            n
+        }
+    };
+    let offset = |i: usize, k: f64| {
+        let n = away(i);
+        (seg[i].0 + n.0 * seg[i].2 * k, seg[i].1 + n.1 * seg[i].2 * k)
+    };
+    // How far the line from point `a` to point `b` passes from point `i`.
+    let off = |a: usize, b: usize, i: usize| {
+        let (p, q, s) = (seg[a], seg[b], seg[i]);
+        let t = norm((q.0 - p.0, q.1 - p.1));
+        ((s.0 - p.0) * t.1 - (s.1 - p.1) * t.0).abs()
+    };
+    let mut idx = vec![0];
+    let mut run = 0.0;
+    for i in 1..m {
+        run += (math::sq(seg[i].0 - seg[i - 1].0) + math::sq(seg[i].1 - seg[i - 1].1)).sqrt();
+        // A bend the band would cut across, out of thin wood, keeps its point.
+        let bend = i + 1 < m && off(idx[idx.len() - 1], i + 1, i) > 0.5 * seg[i].2;
+        if run >= 14.0 || i == m - 1 || bend {
+            idx.push(i);
+            run = 0.0;
+        }
+    }
+    let there: Vec<(f64, f64)> = idx.iter().map(|&i| offset(i, from)).collect();
+    let back: Vec<(f64, f64)> = idx.iter().rev().map(|&i| offset(i, to)).collect();
+    let mut d = PathData::coarse();
+    d.m(there[0]);
+    smooth_through(&mut d, &there);
+    d.l(back[0]);
+    smooth_through(&mut d, &back);
+    d.z();
+    d
+}
+
 fn groove(seg: &[(f64, f64, f64)], from_start: bool) -> Vec<(f64, f64, f64)> {
     let n = seg.len().max(2) as f64;
     seg.iter()
@@ -811,12 +858,6 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
     // Trunk pieces as drawn: (item, outline points, dead). A dead main trunk,
     // or one with a shari, always shows: a strand crossing it passes behind.
     let mut trunk_pieces: Vec<(usize, Vec<(f64, f64, f64)>, bool)> = Vec::new();
-    // A low strand's run into the soil, (item, where in its paint, path):
-    // added only if the strand ends up in front of the trunk's foot, where
-    // it shows, so a tree that never shows it keeps every byte for leaves.
-    let mut soil_runs: Vec<(usize, usize, String)> = Vec::new();
-    // The main trunk's lowest piece, by item.
-    let mut trunk_foot: Option<usize> = None;
     // Each shari as measured on the trunk: (item, where in its paint, strip
     // points, how high it reaches, fill and ink).
     let mut sharis: Vec<(
@@ -1050,15 +1091,18 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                 let (x, y, r) = seg[0];
                 seg.splice(0..0, [(x, y + 2.0 * r, r), (x, y + r, r)]);
             }
-            // So does a living second trunk leaving it low, as a piece of
-            // its own under the strand, which keeps its shape (dead wood
+            // So does living wood leaving the trunk low, a strand or a second
+            // trunk: it runs on down square into the soil, its bark bands
+            // with it, instead of a round end on the trunk's face (dead wood
             // starts where it was cut).
-            let soil = (start == 0 && strand && !*jin && scene.joins.contains_key(&ci))
-                .then(|| {
-                    let mut run = vec![seg[0]];
-                    into_soil(&mut run, foot_y).then(|| tube(&run, false, false))
-                })
-                .flatten();
+            let low_trunk = start == 0
+                && !*jin
+                && scene.joins.contains_key(&ci)
+                && into_soil(&mut vec![seg[0]], foot_y);
+            if low_trunk {
+                let (x, y, r) = seg[0];
+                seg.splice(0..0, [(x, y + 2.0 * r, r), (x, y + r, r)]);
+            }
             let depth = join.map_or(
                 fine[start..=end].iter().map(|p| p.3).sum::<f64>() / (end - start + 1) as f64,
                 |j| j.1,
@@ -1085,7 +1129,7 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
             let splinter = snapped && last && bleach < 0.8;
             let d = tube_from(
                 &seg,
-                start == 0 && scene.joins.contains_key(&ci) && tongue.is_none(),
+                start == 0 && scene.joins.contains_key(&ci) && tongue.is_none() && !low_trunk,
                 last && !splinter,
                 true,
             );
@@ -1105,26 +1149,13 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                     r#"<path d="{}" fill="{}"/>"#,
                     tube_from(
                         &wide,
-                        start == 0 && scene.joins.contains_key(&ci),
+                        start == 0 && scene.joins.contains_key(&ci) && !low_trunk,
                         last,
                         true
                     )
                     .as_str(),
                     base.shift(-0.1, 0.0),
                 );
-                // The run into the soil goes between the groove and the
-                // strand, in the strand's color.
-                if let Some(run) = &soil {
-                    soil_runs.push((
-                        items.len(),
-                        shadow.len(),
-                        format!(
-                            r#"<path d="{}" fill="{}"/>"#,
-                            run.as_str(),
-                            base.shift(0.03, 0.0)
-                        ),
-                    ));
-                }
                 format!(
                     r#"{shadow}<path d="{}" fill="{}"/>"#,
                     d.as_str(),
@@ -1183,44 +1214,7 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                         n
                     }
                 };
-                let strip = |from: f64, to: f64| {
-                    let offset = |i: usize, k: f64| {
-                        let n = away(&seg, i);
-                        (seg[i].0 + n.0 * seg[i].2 * k, seg[i].1 + n.1 * seg[i].2 * k)
-                    };
-                    // How far the line from point `a` to point `b` passes
-                    // from point `i`.
-                    let off = |a: usize, b: usize, i: usize| {
-                        let (p, q, s) = (seg[a], seg[b], seg[i]);
-                        let t = norm((q.0 - p.0, q.1 - p.1));
-                        ((s.0 - p.0) * t.1 - (s.1 - p.1) * t.0).abs()
-                    };
-                    // Strips are soft bands inside the wood: a point every
-                    // dozen units or so carries them on a smooth curve.
-                    let mut idx = vec![0];
-                    let mut run = 0.0;
-                    for i in 1..m {
-                        run += (math::sq(seg[i].0 - seg[i - 1].0)
-                            + math::sq(seg[i].1 - seg[i - 1].1))
-                        .sqrt();
-                        // A bend the band would cut across, out of thin wood,
-                        // keeps its point.
-                        let bend = i + 1 < m && off(idx[idx.len() - 1], i + 1, i) > 0.5 * seg[i].2;
-                        if run >= 14.0 || i == m - 1 || bend {
-                            idx.push(i);
-                            run = 0.0;
-                        }
-                    }
-                    let there: Vec<(f64, f64)> = idx.iter().map(|&i| offset(i, from)).collect();
-                    let back: Vec<(f64, f64)> = idx.iter().rev().map(|&i| offset(i, to)).collect();
-                    let mut d = PathData::coarse();
-                    d.m(there[0]);
-                    smooth_through(&mut d, &there);
-                    d.l(back[0]);
-                    smooth_through(&mut d, &back);
-                    d.z();
-                    d
-                };
+                let strip = |from: f64, to: f64| band(&seg, ls, from, to);
                 // Jin is bleached: push its shadow and light further apart.
                 let (shade, lit) = if *jin {
                     (base.shift(-0.14, -0.01), base.shift(0.10, 0.0))
@@ -1367,9 +1361,6 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                 living.push((items.len(), outline.clone()));
             }
             wood_pieces.push(outline);
-            if ci == 0 && start == 0 {
-                trunk_foot = Some(items.len());
-            }
             items.push((depth, s));
             start = end;
         }
@@ -1388,11 +1379,6 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
             .map(|t| items[t.0].0 - 1.0)
             .fold(items[*live].0, f64::min);
         items[*live].0 = behind;
-    }
-    for (item, at_byte, run) in soil_runs {
-        if trunk_foot.is_none_or(|t| items[item].0 > items[t].0) {
-            items[item].1.insert_str(at_byte, &run);
-        }
     }
     // Beside living wood in front of the trunk the pale strip would read as
     // part of that wood: the shari narrows to its point below it.
@@ -1787,14 +1773,17 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
     let rx = ((hw - 8.0) * 0.75)
         .min(hw - 6.0 - (cx - CENTER_X).abs())
         .max(4.0);
+    // The soil's gentle heap shows only in the light: under the canopy the
+    // soil lies plain, then the shadow on it.
     let _ = write!(
         body,
-        r#"<ellipse cx="{}" cy="{}" rx="{}" ry="{}" fill="{}" opacity=".35"/>"#,
-        Num(cx),
-        Num(SOIL_Y + 0.6),
-        Num(rx),
-        Num((pot.ry - 3.0).max(1.0) * 0.7),
-        paints.soil.shift(-0.12, 0.0)
+        r#"<ellipse cx="{x}" cy="{y}" rx="{rx}" ry="{ry}" fill="{}"/><ellipse cx="{x}" cy="{y}" rx="{rx}" ry="{ry}" fill="{}" opacity=".35"/>"#,
+        paints.soil,
+        paints.soil.shift(-0.12, 0.0),
+        x = Num(cx),
+        y = Num(SOIL_Y + 0.6),
+        rx = Num(rx),
+        ry = Num((pot.ry - 3.0).max(1.0) * 0.7),
     );
     let (moss_back, moss_front) = crate::pot::moss(b, &paints, &pot);
     body.push_str(&moss_back);
@@ -1860,7 +1849,7 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
     // The pot is lit as the tree is.
     let front = crate::pot::front(b, &pot, paints.dark);
     body.push_str(&if lit < 0.0 { mirror(&front) } else { front });
-    body.push_str(&eggs::kintsugi(&b.archived, seed, &pot, paints.dark));
+    body.push_str(&eggs::kintsugi(&b.archived, seed, &pot, paints.dark, lit));
     // The maker's seal sits on the pot's shaded half: mirrored with it.
     let marks = crate::pot::marks(b, &pot);
     body.push_str(&if lit < 0.0 { mirror(&marks) } else { marks });
@@ -1871,7 +1860,7 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
         fresh: (sprout.is_none() || crate::sprout::handover(crate::sprout::count(b)) > 0.5)
             && scene.tufts.iter().any(|t| t.fresh),
         falling: !fallen.is_empty(),
-        glaze: Some(pot.glaze),
+        pot: Some((pot.glaze, pot.shape)),
     };
     let legend = crate::legend::legend(b, &paints, signs, config.render.legend, &mut out.frame);
     out.body.push_str(&legend);

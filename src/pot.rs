@@ -35,24 +35,7 @@ pub enum Shape {
     Rect,
 }
 
-/// The feet a pot stands on.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Feet {
-    /// No feet: the pot stands on its base.
-    None,
-    /// Two small plain feet.
-    Plain,
-    /// Two carved cloud feet.
-    Cloud,
-    /// Two bracket feet with a notch.
-    Bracket,
-    /// Small blocks under the corners.
-    Corner,
-    /// Small rounded feet.
-    Round,
-}
-
-/// One pot of the ladder, as data: its shape, glaze and feet.
+/// One pot of the ladder, as data: its shape and glaze.
 #[derive(Debug, Clone, Copy)]
 pub struct Model {
     /// Its name, as `explain` gives it.
@@ -65,10 +48,6 @@ pub struct Model {
     pub glazed: bool,
     /// How much deeper than the trunk rule it is drawn.
     pub depth_factor: f64,
-    /// What it stands on.
-    pub feet: Feet,
-    /// Its feet's colour, or `None` for a darker shade of the pot.
-    pub feet_color: Option<u32>,
 }
 
 const fn pot(
@@ -77,8 +56,6 @@ const fn pot(
     glaze: u32,
     glazed: bool,
     depth_factor: f64,
-    feet: Feet,
-    feet_color: Option<u32>,
 ) -> Model {
     Model {
         name,
@@ -86,8 +63,6 @@ const fn pot(
         glaze,
         glazed,
         depth_factor,
-        feet,
-        feet_color,
     }
 }
 
@@ -95,105 +70,23 @@ const fn pot(
 /// ([`crate::extras::POT_TIERS`]). Round pots first, then the bowl, then
 /// the rectangles.
 pub const MODELS: [Model; 11] = [
-    pot(
-        "training pot",
-        Shape::Oval,
-        0x2e2e2e,
-        false,
-        1.0,
-        Feet::None,
-        None,
-    ),
-    pot(
-        "terracotta",
-        Shape::Oval,
-        0xb5653f,
-        false,
-        1.0,
-        Feet::None,
-        None,
-    ),
-    pot(
-        "clay pot on feet",
-        Shape::Oval,
-        0x6b4e3d,
-        false,
-        1.0,
-        Feet::Plain,
-        None,
-    ),
-    pot(
-        "blue glazed oval",
-        Shape::Oval,
-        0x3e5c76,
-        true,
-        1.0,
-        Feet::Plain,
-        Some(0x8b8e91),
-    ),
-    pot(
-        "celadon on cloud feet",
-        Shape::Oval,
-        0x8fb5a0,
-        true,
-        1.0,
-        Feet::Cloud,
-        Some(0xc4a568),
-    ),
+    pot("training pot", Shape::Oval, 0x2e2e2e, false, 1.0),
+    pot("terracotta", Shape::Oval, 0xb5653f, false, 1.0),
+    pot("brown clay oval", Shape::Oval, 0x6b4e3d, false, 1.0),
+    pot("blue glazed oval", Shape::Oval, 0x3e5c76, true, 1.0),
+    pot("celadon oval", Shape::Oval, 0x8fb5a0, true, 1.0),
     pot(
         "crackle with a carved band",
         Shape::Oval,
         0x5f7d86,
         true,
         1.0,
-        Feet::Cloud,
-        Some(0xddd8cc),
     ),
-    pot(
-        "antique",
-        Shape::Oval,
-        0x5a4636,
-        true,
-        1.0,
-        Feet::Cloud,
-        Some(0xc9a23a),
-    ),
-    pot(
-        "hobnail bowl",
-        Shape::Bowl,
-        0x36_2612,
-        true,
-        1.6,
-        Feet::None,
-        None,
-    ),
-    pot(
-        "vintage clay rectangle",
-        Shape::Rect,
-        0x7a3f2c,
-        false,
-        1.5,
-        Feet::Cloud,
-        None,
-    ),
-    pot(
-        "glossy cobalt rectangle",
-        Shape::Rect,
-        0x23468f,
-        true,
-        1.0,
-        Feet::Round,
-        Some(0x8a4a2e),
-    ),
-    pot(
-        "speckled green rectangle",
-        Shape::Rect,
-        0x3e8a70,
-        true,
-        1.0,
-        Feet::Bracket,
-        None,
-    ),
+    pot("antique", Shape::Oval, 0x5a4636, true, 1.0),
+    pot("hobnail bowl", Shape::Bowl, 0x36_2612, true, 1.6),
+    pot("vintage clay rectangle", Shape::Rect, 0x7a3f2c, false, 1.5),
+    pot("glossy cobalt rectangle", Shape::Rect, 0x23468f, true, 1.0),
+    pot("speckled green rectangle", Shape::Rect, 0x3e8a70, true, 1.0),
 ];
 
 /// Gives the pot of `level`; past the top you get the top pot.
@@ -238,10 +131,21 @@ fn rim_ry(hw: f64) -> f64 {
 
 /// How far below its rim the bowl's soil lies, as a share of its depth.
 const BOWL_INSET: f64 = 0.09;
+/// How deep the bowl is for its width: one shape at every size.
+const BOWL_DEPTH: f64 = 0.38;
+
+/// How far a rectangle's top face is drawn in at its back edge, on each
+/// side, in detail units: a touch of depth, the back a little narrower than
+/// the front.
+const RECT_BACK_TAPER: f64 = 3.0;
 
 /// How far below its rim frame a rectangle's soil lies, as a share of its
-/// depth: enough for a thin line of inner wall.
-const RECT_INSET: f64 = 0.035;
+/// depth: the rim stands up around it, its inner wall showing all round.
+const RECT_INSET: f64 = 0.07;
+
+/// How deep a rectangle's top face is against an oval's of the same width:
+/// seen a little flatter, so it sits low and wide.
+const RECT_ANGLE: f64 = 0.85;
 
 /// The bowl's wall is one curve from the rim to the foot: it leaves the rim
 /// toward this share of the rim's half-width, this share of the depth down
@@ -319,9 +223,14 @@ impl Model {
     }
 
     fn dims_at(&self, hw: f64, depth: f64, k: f64) -> Dims {
+        let angle = if self.shape == Shape::Rect {
+            RECT_ANGLE
+        } else {
+            1.0
+        };
         Dims {
             hw,
-            ry: rim_ry(hw),
+            ry: rim_ry(hw) * angle,
             depth,
             bw: self.bw(hw, k),
         }
@@ -352,13 +261,22 @@ fn spill_of(b: &Bonsai, scene: &Scene, base_r: f64) -> Option<f64> {
 ///
 /// The width is the tree's size step. The depth is the trunk's width at its
 /// foot, at least 20 and at most the larger of 56 and a quarter of the width,
-/// then the model's depth factor, at most half the width, 0.38 of it for the
-/// bowl and 0.27 for a rectangle (just deeper than their mockups). A cascade keeps
-/// that pot's soil and trades width for depth, up to 0.7 as deep as wide at
-/// a full cascade; its rim stays inside the point where the trunk spills
-/// over, and if that narrows it, it deepens to keep its soil, never deeper
-/// than it is wide.
+/// then the model's depth factor, at most half the width, or 0.27 of it for a
+/// rectangle (just deeper than its mockup). A cascade keeps that pot's soil
+/// and trades width for depth, up to 0.7 as deep as wide at a full cascade;
+/// its rim stays inside the point where the trunk spills over, and if that
+/// narrows it, it deepens to keep its soil, never deeper than it is wide.
+///
+/// The bowl is one shape at every size, 0.38 as deep as it is wide:
+/// a cascade gets the same bowl, and a spill close in makes it smaller.
 pub fn dims(need: &Need, m: &Model) -> Dims {
+    if m.shape == Shape::Bowl {
+        let mut hw = need.width / 2.0;
+        if let Some(spill) = need.spill {
+            hw = hw.min(spill.max(2.0 * need.base_r));
+        }
+        return m.dims_at(hw, BOWL_DEPTH * 2.0 * hw, 0.0);
+    }
     let k = {
         let w = need.cascade.abs().min(1.0);
         w * w * (3.0 - 2.0 * w)
@@ -366,7 +284,7 @@ pub fn dims(need: &Need, m: &Model) -> Dims {
     let cap = (need.width / 4.0).max(56.0);
     let deepest = match m.shape {
         Shape::Oval => 0.5,
-        Shape::Bowl => 0.38,
+        Shape::Bowl => BOWL_DEPTH,
         Shape::Rect => 0.27,
     };
     let depth = (need.trunk_depth.clamp(20.0, cap) * m.depth_factor).min(need.width * deepest);
@@ -485,81 +403,6 @@ pub fn size(b: &Bonsai, scene: &Scene, base_r: f64, glaze: Rgb) -> Pot {
     }
 }
 
-/// Gives where a pot's feet start and end, top to bottom: tucked up behind
-/// the curve of its foot, peeking out below it.
-fn feet_span(pot: &Pot) -> (f64, f64) {
-    let top = if pot.shape == Shape::Rect {
-        SOIL_Y + pot.depth + pot.ry - 2.0
-    } else {
-        SOIL_Y + pot.depth + pot.ry * 0.62
-    };
-    (top, top + 6.0 + pot.ry * 0.2)
-}
-
-/// Draws a pot's two feet as its model has them: in their own colour, or a
-/// darker shade of the pot, with a darker outline and the right half in
-/// shade, lit from the left. Nothing for a pot without feet.
-fn feet(level: u8, pot: &Pot) -> String {
-    let m = model(level);
-    if m.feet == Feet::None {
-        return String::new();
-    }
-    let color = m.feet_color.map_or(pot.glaze.shift(-0.08, 0.0), Rgb::hex);
-    let (y, end) = feet_span(pot);
-    let h = end - y;
-    let fw = (pot.hw * 0.14).max(6.0);
-    let mut s = String::new();
-    for (i, side) in [-1.0, 1.0].into_iter().enumerate() {
-        let x = CENTER_X + side * pot.bw * 0.68 - fw / 2.0;
-        let mut d = PathData::new();
-        match m.feet {
-            Feet::Cloud => {
-                d.m((x, y))
-                    .l((x + fw, y))
-                    .q((x + fw, y + h), (x + fw * 0.6, y + h * 0.95))
-                    .q((x + fw * 0.5, y + h * 0.6), (x + fw * 0.38, y + h * 0.95))
-                    .q((x, y + h), (x, y));
-            }
-            Feet::Bracket => {
-                d.m((x, y))
-                    .l((x + fw, y))
-                    .l((x + fw, y + h * 0.65))
-                    .q((x + fw * 0.82, y + h * 0.65), (x + fw * 0.76, y + h))
-                    .l((x + fw * 0.24, y + h))
-                    .q((x + fw * 0.18, y + h * 0.65), (x, y + h * 0.65));
-            }
-            Feet::Corner => {
-                d.m((x, y)).l((x + fw, y)).l((x + fw, y + h)).l((x, y + h));
-            }
-            Feet::Round => {
-                d.m((x, y))
-                    .l((x + fw, y))
-                    .q((x + fw, y + h), (x + fw / 2.0, y + h))
-                    .q((x, y + h), (x, y));
-            }
-            Feet::Plain | Feet::None => {
-                d.m((x, y))
-                    .l((x + fw, y))
-                    .l((x + fw * 0.9, y + h))
-                    .l((x + fw * 0.1, y + h));
-            }
-        }
-        d.z();
-        let _ = write!(
-            s,
-            r#"<clipPath id="pf{i}"><path d="{d}"/></clipPath><path d="{d}" fill="{color}"/><rect x="{}" y="{}" width="{}" height="{}" fill="{}" clip-path="url(#pf{i})"/><path d="{d}" fill="none" stroke="{}" stroke-width=".7" stroke-linejoin="round"/>"#,
-            Num(x + fw * 0.55),
-            Num(y - 1.0),
-            Num(fw),
-            Num(h + 2.0),
-            color.shift(-0.07, 0.0),
-            color.shift(-0.2, 0.0),
-            d = d.as_str(),
-        );
-    }
-    s
-}
-
 /// Draws the pot's top as seen from a little above: a lighter rim ring, the
 /// dark inside of the wall at the back, and the soil set a little lower.
 pub fn top(pot: &Pot, soil: Rgb) -> String {
@@ -580,6 +423,26 @@ pub fn top(pot: &Pot, soil: Rgb) -> String {
         Num(SOIL_Y + 0.6),
         Num(pot.hw - 4.0),
         Num((pot.ry - 2.0).max(1.0)),
+    ) + &crown(soil, SOIL_Y + 0.6, pot.hw - 4.0, (pot.ry - 2.0).max(1.0))
+        + &grain(
+            soil,
+            &soil_ellipse(SOIL_Y + 0.6, pot.hw - 4.0, (pot.ry - 2.0).max(1.0)),
+        )
+}
+
+/// Writes the gentle heap of round soil at `cy`, `rx` by `ry`: two lighter
+/// flat steps, a little behind its middle.
+fn crown(soil: Rgb, cy: f64, rx: f64, ry: f64) -> String {
+    format!(
+        r#"<ellipse cx="{CENTER_X}" cy="{}" rx="{}" ry="{}" fill="{}"/><ellipse cx="{CENTER_X}" cy="{}" rx="{}" ry="{}" fill="{}"/>"#,
+        Num(cy - ry * 0.1),
+        Num(rx * 0.66),
+        Num(ry * 0.5),
+        soil.shift(0.014, 0.0),
+        Num(cy - ry * 0.16),
+        Num(rx * 0.38),
+        Num(ry * 0.3),
+        soil.shift(0.026, 0.0)
     )
 }
 
@@ -590,7 +453,7 @@ fn top_bowl(pot: &Pot, soil: Rgb) -> String {
     let (hw, ry, rim) = (pot.hw, pot.ry, pot.rim_y());
     let (iw, iry) = (hw - 2.4, (ry - 0.9).max(1.0));
     format!(
-        r#"<ellipse cx="{CENTER_X}" cy="{}" rx="{}" ry="{}" fill="{}"/><clipPath id="po"><ellipse cx="{CENTER_X}" cy="{o}" rx="{}" ry="{}"/></clipPath><ellipse cx="{CENTER_X}" cy="{o}" rx="{}" ry="{}" fill="{}"/><g clip-path="url(#po)"><ellipse cx="{CENTER_X}" cy="{}" rx="{}" ry="{}" fill="{soil}"/></g>"#,
+        r#"<ellipse cx="{CENTER_X}" cy="{}" rx="{}" ry="{}" fill="{}"/><clipPath id="po"><ellipse cx="{CENTER_X}" cy="{o}" rx="{}" ry="{}"/></clipPath><ellipse cx="{CENTER_X}" cy="{o}" rx="{}" ry="{}" fill="{}"/><g clip-path="url(#po)"><ellipse cx="{CENTER_X}" cy="{}" rx="{}" ry="{}" fill="{soil}"/>{}</g>"#,
         Num(rim),
         Num(hw),
         Num(ry),
@@ -603,29 +466,82 @@ fn top_bowl(pot: &Pot, soil: Rgb) -> String {
         Num(SOIL_Y + 0.6),
         Num((hw - 4.0) * 0.95),
         Num((ry - 2.0).max(1.0) * 0.95),
+        crown(
+            soil,
+            SOIL_Y + 0.6,
+            (hw - 4.0) * 0.95,
+            (ry - 2.0).max(1.0) * 0.95
+        ) + &grain(
+            soil,
+            &soil_ellipse(SOIL_Y + 0.6, (hw - 4.0) * 0.95, (ry - 2.0).max(1.0) * 0.95)
+        ),
         o = Num(rim - 0.15),
     )
 }
 
-/// Draws an oval pot's soft shadow on the table, offset away from the light
-/// (`lit` is 1 lit from the left, -1 from the right), so the pot sits down
-/// instead of floating.
+/// A pot's shadow on the table, in flat steps, each its footprint grown by
+/// the first share of the foot's half-width, moved away from the light by the
+/// second, at the third opacity: a contact hairline where the pot meets the
+/// table, then softer, wider steps falling away from the light.
+const SHADOW_STEPS: [(f64, f64, f64); 4] = [
+    (0.008, 0.0, 0.34),
+    (0.03, 0.02, 0.14),
+    (0.08, 0.05, 0.07),
+    (0.14, 0.09, 0.04),
+];
+
+/// Draws a pot's shadow on the table in flat steps, away from the light
+/// (`lit` is 1 lit from the left, -1 from the right), in the shape of what
+/// it stands on: an oval's base, the bowl's saucer, a rectangle's base
+/// flattened onto the table as the round pots' is. Stepped as the pot
+/// itself is shaded: no gradient.
 pub fn shadow(pot: &Pot, lit: f64, dark: bool) -> String {
     let shade = if dark { "#000" } else { "#3b3226" };
-    // The bowl and the rectangles stand without one.
-    if pot.shape != Shape::Oval {
-        return String::new();
+    let (k, bw) = (detail(pot), pot.bw);
+    let mut s = String::new();
+    for (grow, away, op) in SHADOW_STEPS {
+        let (e, x) = (grow * bw, CENTER_X + away * bw * lit);
+        if pot.shape == Shape::Rect {
+            // From a little behind the base's front edge to just past it,
+            // its back edge drawn in as the top's is; a stroke as wide as
+            // its corners rounds it, under the element's own opacity.
+            let front = SOIL_Y + pot.ry + pot.depth - pot.inset();
+            let (back, ahead) = (2.2 + 1.6 * k + e * 0.22, e * 0.1);
+            let r = 1.0 + e * 0.4;
+            let (xf, xb) = (bw + e - r / 2.0, bw - RECT_BACK_TAPER * k + e - r / 2.0);
+            let _ = write!(
+                s,
+                r#"<path d="M{} {}H{}L{} {}H{}Z" fill="{shade}" stroke="{shade}" stroke-width="{}" stroke-linejoin="round" opacity="{}"/>"#,
+                Num(x - xb),
+                Num(front - back),
+                Num(x + xb),
+                Num(x + xf),
+                Num(front + ahead + 0.5 - r / 2.0),
+                Num(x - xf),
+                Num(r),
+                Num(op)
+            );
+        } else {
+            // An oval stands on its base, an ellipse the size of its rim's;
+            // the bowl on its saucer.
+            let (cy, rx, ry) = if pot.shape == Shape::Bowl {
+                let (sx, sy) = (bw * 1.32, pot.ry * bw / pot.hw * 0.8);
+                (pot.rim_y() + pot.depth + 4.0 * k, sx, sy)
+            } else {
+                (SOIL_Y + pot.depth, bw, pot.ry)
+            };
+            let _ = write!(
+                s,
+                r#"<ellipse cx="{}" cy="{}" rx="{}" ry="{}" fill="{shade}" opacity="{}"/>"#,
+                Num(x),
+                Num(cy),
+                Num(rx + e),
+                Num(ry + 0.5 + e * ry / rx),
+                Num(op)
+            );
+        }
     }
-    let foot = SOIL_Y + pot.depth;
-    format!(
-        r#"<ellipse cx="{}" cy="{}" rx="{}" ry="4" fill="{shade}" opacity=".16"/><ellipse cx="{}" cy="{}" rx="{}" ry="2.4" fill="{shade}" opacity=".26"/>"#,
-        Num(CENTER_X + 5.0 * lit),
-        Num(foot + 1.2),
-        Num(pot.bw * 1.18),
-        Num(CENTER_X + 3.5 * lit),
-        Num(foot + 0.8),
-        Num(pot.bw * 1.02),
-    )
+    s
 }
 
 impl Pot {
@@ -660,14 +576,26 @@ impl Pot {
 
     /// Gives where the rim's front edge is at `x`: on an oval or a bowl the
     /// ellipse just inside the lip, highest at the sides; on a rectangle the
-    /// straight front edge of its opening. Past the sides you get the rim's
-    /// height there.
+    /// straight front edge of its opening, inside the rim frame. Past the
+    /// sides you get the rim's height there.
     pub fn rim_front_y(&self, x: f64) -> f64 {
         if self.shape == Shape::Rect {
-            return self.rim_y() + self.ry;
+            return opening(self).f0;
         }
         let across = ((x - CENTER_X) / self.hw).clamp(-1.0, 1.0);
         self.rim_y() + (self.ry - 1.2) * (1.0 - across * across).sqrt()
+    }
+
+    /// Gives how far the soil reaches from the pot's middle, across and to
+    /// the front, for what lies on it (moss, the soil's eggs): an oval's and
+    /// the bowl's to their rim; a rectangle's to its opening inside the rim
+    /// frame, a little short of its front edge.
+    pub fn soil_reach(&self) -> (f64, f64) {
+        if self.shape == Shape::Rect {
+            let o = opening(self);
+            return ((o.r0 - o.l0) / 2.0, o.f0 - SOIL_Y - 1.5);
+        }
+        (self.hw, self.ry)
     }
 
     /// Gives the pot's wall as drawn, the outline the details on it and the
@@ -771,31 +699,31 @@ pub fn glaze(level: u8, config: &Config, paints: &Paints) -> Rgb {
     }
 }
 
-/// Moss on the soil while a weekly streak runs.
+/// Moss on the soil while a weekly streak runs: star-moss cushions, each a
+/// soft shadow on the soil, two lobes, three mid-tone bumps furred with
+/// sprigs and a small light on top. Clumps on the near half of the soil
+/// grow over the roots; the rest stay behind the trunk.
 pub fn moss(b: &Bonsai, paints: &Paints, pot: &Pot) -> (String, String) {
     let clumps = (b.extras.moss * 34.0).round() as usize;
     if clumps == 0 {
         return (String::new(), String::new());
     }
-    // Clumps on the near half of the soil grow over the roots; the rest
-    // stay behind the trunk.
-    let (mut dark, mut light) = (
-        [String::new(), String::new()],
-        [String::new(), String::new()],
-    );
+    // Per half of the soil: the shadows, the lobes, the bumps, the sprigs
+    // (the lobes again) and the lights.
+    let mut layers: [[String; 5]; 2] = Default::default();
     for i in 0..clumps {
         let mut r = Rng::keyed(b.account_id, &format!("moss/{i}"));
         let a = r.range(0.0, math::TAU);
         let d = r.range(0.25, 0.95).sqrt();
-        let x = CENTER_X + math::cos(a) * d * (pot.hw - 10.0);
-        let y = SOIL_Y + math::sin(a) * d * (pot.ry - 2.5).max(1.0);
+        let (sx, sy) = pot.soil_reach();
+        let x = CENTER_X + math::cos(a) * d * (sx - 10.0);
+        let y = SOIL_Y + math::sin(a) * d * (sy - 2.5).max(1.0);
         let rx = r.range(3.0, 7.0);
         let ry = rx * r.range(0.25, 0.4);
         let near = usize::from(y > SOIL_Y);
         // A cushion: two overlapping lobes, the second a little to one side.
         let side = if r.unit() < 0.5 { -1.0 } else { 1.0 };
-        let _ = write!(
-            dark[near],
+        let lobes = format!(
             r#"<ellipse cx="{}" cy="{}" rx="{}" ry="{}"/><ellipse cx="{}" cy="{}" rx="{}" ry="{}"/>"#,
             Num(x),
             Num(y),
@@ -806,25 +734,61 @@ pub fn moss(b: &Bonsai, paints: &Paints, pot: &Pot) -> (String, String) {
             Num(rx * 0.7),
             Num(ry * 0.85)
         );
+        let [shadow, dark, mid, sprigs, light] = &mut layers[near];
+        // Its shadow stays within its own footprint: never past the rim.
         let _ = write!(
-            light[near],
+            shadow,
             r#"<ellipse cx="{}" cy="{}" rx="{}" ry="{}"/>"#,
-            Num(x - rx * 0.15),
-            Num(y - ry * 0.35),
-            Num(rx * 0.6),
-            Num(ry * 0.55)
+            Num(x + side * rx * 0.25),
+            Num(y + ry * 0.55),
+            Num(rx * 1.1),
+            Num(ry * 0.45)
+        );
+        dark.push_str(&lobes);
+        for (dx, dy, f) in [(-0.45, -0.25, 0.42), (0.05, -0.45, 0.5), (0.5, -0.15, 0.4)] {
+            let _ = write!(
+                mid,
+                r#"<ellipse cx="{}" cy="{}" rx="{}" ry="{}"/>"#,
+                Num(x + side * rx * dx),
+                Num(y + ry * dy),
+                Num(rx * f),
+                Num(ry * f * 1.1)
+            );
+        }
+        sprigs.push_str(&lobes);
+        let _ = write!(
+            light,
+            r#"<ellipse cx="{}" cy="{}" rx="{}" ry="{}"/>"#,
+            Num(x - rx * 0.29),
+            Num(y - ry * 0.6),
+            Num(rx * 0.36),
+            Num(ry * 0.33)
         );
     }
-    let group = |k: usize| {
-        if dark[k].is_empty() {
+    let midtone = paints.moss[0].mix(paints.moss[1], 0.5);
+    let group = |[shadow, dark, mid, sprigs, light]: &[String; 5]| {
+        if dark.is_empty() {
             return String::new();
         }
         format!(
-            r#"<g fill="{}">{}</g><g fill="{}">{}</g>"#,
-            paints.moss[0], dark[k], paints.moss[1], light[k]
+            r#"<g fill="{}" opacity=".35">{shadow}</g><g fill="{}">{dark}</g><g fill="{midtone}">{mid}</g><g fill="url(#mz)" opacity=".75">{sprigs}</g><g fill="{}">{light}</g>"#,
+            paints.soil.shift(-0.2, 0.0),
+            paints.moss[0],
+            paints.moss[1]
         )
     };
-    (group(0), group(1))
+    let (mut back, mut front) = (group(&layers[0]), group(&layers[1]));
+    // The sprigs' tile, once for the picture, with the first moss drawn.
+    let tile = format!(
+        r#"<defs><pattern id="mz" width="4" height="3" patternUnits="userSpaceOnUse"><path d="M1 .4V1.8M.3 1.1H1.7M3 1.6V2.8M2.4 2.2H3.6" stroke="{}" stroke-width=".35"/></pattern></defs>"#,
+        paints.moss[1].shift(0.06, 0.0)
+    );
+    if back.is_empty() {
+        front.insert_str(0, &tile);
+    } else {
+        back.insert_str(0, &tile);
+    }
+    (back, front)
 }
 
 /// The pot's front wall, lit from the left, with its tier's details: a left
@@ -848,8 +812,6 @@ pub fn front(b: &Bonsai, pot: &Pot, dark: bool) -> String {
     let bottom = SOIL_Y + depth;
     let dark = glaze.shift(-0.08, 0.0);
     let mut s = String::new();
-    // Feet first, so the wall overlaps their tops.
-    s.push_str(&feet(b.extras.pot_tier, pot));
     let wall = pot.wall();
     let _ = write!(s, r#"<path d="{}" fill="{glaze}"/>"#, wall.as_str());
     for (f, tone) in SHADE {
@@ -953,7 +915,7 @@ pub fn front(b: &Bonsai, pot: &Pot, dark: bool) -> String {
 
 /// Where the pot turns from the light, as shares of its half-width right of
 /// center, and how much darker it is from there: two steps, no gradient.
-const SHADE: [(f64, f64); 2] = [(0.2, -0.035), (0.38, -0.07)];
+pub const SHADE: [(f64, f64); 2] = [(0.2, -0.035), (0.38, -0.07)];
 
 /// Draws the rim's lip: a band astride the rim's front edge, 2.4 deep at
 /// the front and tapering to nothing at the sides, stepped into shade where
@@ -1261,9 +1223,57 @@ fn front_bowl(b: &Bonsai, pot: &Pot, dark: bool) -> String {
 fn lip_of(pot: &Pot) -> (f64, f64) {
     let k = detail(pot);
     match pot.level {
-        10 => (12.0 * k, 8.0 * k),
-        9 => (5.0 * k, 7.0 * k),
+        10 => (12.0 * k, 10.0 * k),
+        9 => (5.0 * k, 8.75 * k),
         _ => (4.0 * k, 7.0 * k),
+    }
+}
+
+/// Whether a rectangle has the thick, detailed rim: the glossy cobalt and
+/// the speckled green do, the vintage clay a plain one.
+fn detailed_rim(pot: &Pot) -> bool {
+    pot.shape == Shape::Rect && pot.level >= 9
+}
+
+/// A rectangle's opening inside its rim frame, as drawn: the frame's inner
+/// edges, `l0`..`r0` from its back at `b0` to its front at `f0`; and the
+/// soil [`Pot::inset`] lower and, as the walls lean in toward the foot, a
+/// little narrower, `l1`..`r1` from `b1` to `f1`.
+struct Opening {
+    l0: f64,
+    r0: f64,
+    b0: f64,
+    f0: f64,
+    l1: f64,
+    r1: f64,
+    b1: f64,
+    f1: f64,
+}
+
+/// Gives a rectangle's opening: inside a frame 4 wide at the sides and 2.4
+/// front and back, the detailed rim's 5.5 and 3.4, in detail units.
+fn opening(pot: &Pot) -> Opening {
+    let k = detail(pot);
+    let lipw = pot.hw + lip_of(pot).0;
+    let (side, edge) = if detailed_rim(pot) {
+        (5.5 * k, 3.4 * k)
+    } else {
+        (4.0 * k, 2.4 * k)
+    };
+    let (rim, cx) = (pot.rim_y(), CENTER_X);
+    let (l0, r0) = (cx - lipw + side, cx + lipw - side);
+    let (b0, f0) = (rim - pot.ry + edge, rim + pot.ry - edge);
+    let drop = pot.inset();
+    let lean = ((pot.hw - pot.bw) / pot.depth * drop).max(1.2 * k);
+    Opening {
+        l0,
+        r0,
+        b0,
+        f0,
+        l1: l0 + lean,
+        r1: r0 - lean,
+        b1: b0 + drop + 0.6 * k,
+        f1: f0 + drop,
     }
 }
 
@@ -1294,8 +1304,8 @@ fn speckle(
     s.push_str("</g>");
 }
 
-/// Draws a rectangle's front: its feet, then its face under the lip,
-/// tapering to the foot, with each model's finish.
+/// Draws a rectangle's front: its face under the lip, tapering to the foot,
+/// with each model's finish.
 fn front_rect(b: &Bonsai, pot: &Pot) -> String {
     let (hw, ry, d, bw) = (pot.hw, pot.ry, pot.depth, pot.bw);
     let cx = CENTER_X;
@@ -1303,7 +1313,7 @@ fn front_rect(b: &Bonsai, pot: &Pot) -> String {
     let (_, lip_h) = lip_of(pot);
     let y0 = SOIL_Y + ry + lip_h;
     let by = SOIL_Y + ry + d;
-    let mut s = feet(pot.level, pot);
+    let mut s = String::new();
     let face = pot.wall();
     let _ = write!(
         s,
@@ -1448,6 +1458,39 @@ fn rim_rect(pot: &Pot) -> String {
     let (over, lip_h) = lip_of(pot);
     let lipw = hw + over;
     let (y, y1) = (SOIL_Y + ry, SOIL_Y + ry + lip_h);
+    // The frame's front strip, from the opening's front edge to the lip, at
+    // the soil's level (the rim is lifted with the pot): drawn over the front
+    // of the soil, so what lies there sits partly behind it.
+    let o = opening(pot);
+    let f0 = o.f0 + pot.inset();
+    let tp = RECT_BACK_TAPER * k * (y - f0) / (2.0 * ry);
+    let mut front = format!(
+        r#"<path d="M{} {f}H{}L{} {}H{}Z" fill="{}"/>"#,
+        Num(cx - lipw + tp),
+        Num(cx + lipw - tp),
+        Num(cx + lipw),
+        Num(y),
+        Num(cx - lipw),
+        pot.glaze.shift(0.09, 0.0),
+        f = Num(f0),
+    );
+    if detailed_rim(pot) {
+        // The bevel's front and the light along the frame's front edge, lit
+        // from the left.
+        let _ = write!(
+            front,
+            r##"<path d="M{} {f}H{}" stroke="{}" stroke-width="{}" opacity=".7"/><path d="M{} {}H{}" stroke="#fff" stroke-opacity=".45" stroke-width="{}" stroke-linecap="round"/>"##,
+            Num(o.l0),
+            Num(o.r0),
+            pot.glaze.shift(-0.22, 0.0),
+            Num(0.9 * k),
+            Num(cx - lipw + 2.5 * k),
+            Num(y - 0.8 * k),
+            Num(cx + lipw * 0.35),
+            Num(0.8 * k),
+            f = Num(f0),
+        );
+    }
     let band = |from: f64, fill: Rgb| {
         let mut p = PathData::new();
         p.m((from, y)).l((cx + lipw, y));
@@ -1468,7 +1511,8 @@ fn rim_rect(pot: &Pot) -> String {
         p.z();
         format!(r#"<path d="{}" fill="{fill}"/>"#, p.as_str())
     };
-    let mut s = band(cx - lipw, pot.glaze.shift(0.08, 0.0));
+    let mut s = front;
+    s.push_str(&band(cx - lipw, pot.glaze.shift(0.08, 0.0)));
     s.push_str(&band(cx + hw * 0.2, pot.glaze));
     let edge = if pot.level == 8 { "#c99476" } else { "#fff" };
     let _ = write!(
@@ -1479,6 +1523,29 @@ fn rim_rect(pot: &Pot) -> String {
         Num(cx - lipw * 0.2),
         Num(k)
     );
+    if detailed_rim(pot) {
+        // The speckled green's lip curls back under toward its ends: the
+        // lines stop where the curled band does.
+        let (groove, under) = if pot.level == 10 {
+            (hw + over * 0.75 - 2.0 * k, hw - k)
+        } else {
+            (lipw - 2.0 * k, lipw - 2.0 * k)
+        };
+        let _ = write!(
+            s,
+            r#"<path d="M{} {}H{}" stroke="{}" stroke-width="{}" opacity=".8"/><path d="M{} {}H{}" stroke="{}" stroke-width="{}" opacity=".9"/>"#,
+            Num(cx - groove),
+            Num(y + (y1 - y) * 0.58),
+            Num(cx + groove),
+            pot.glaze.shift(-0.1, 0.0),
+            Num(0.8 * k),
+            Num(cx - under),
+            Num(y1 - 0.7 * k),
+            Num(cx + under),
+            pot.glaze.shift(-0.16, 0.0),
+            Num(1.4 * k),
+        );
+    }
     s
 }
 
@@ -1490,56 +1557,149 @@ fn top_rect(pot: &Pot, soil: Rgb) -> String {
     let k = detail(pot);
     let (over, _) = lip_of(pot);
     let lipw = hw + over;
-    // Seen in parallel: the back edge as wide as the front.
-    let quad = |inset: f64, fill: Rgb| {
+    let tp = RECT_BACK_TAPER * k;
+    // A face from its front edge (`l`..`r` at `yf`) to its back edge at
+    // `yb`, drawn in by `tp` on each side: a touch of depth.
+    let trap = |l: f64, r: f64, yb: f64, yf: f64, fill: &str| {
         format!(
-            r#"<path d="M{l} {}H{r}V{}H{l}Z" fill="{fill}"/>"#,
-            Num(rim - ry + inset * 0.6),
-            Num(rim + ry - inset * 0.6),
-            l = Num(cx - lipw + inset),
-            r = Num(cx + lipw - inset)
+            r#"<path d="M{} {}H{}L{} {}H{}Z"{fill}/>"#,
+            Num(l + tp),
+            Num(yb),
+            Num(r - tp),
+            Num(r),
+            Num(yf),
+            Num(l)
         )
     };
     // The opening inside the rim frame, its back wall a shade darker than
-    // the outside; the soil lies [`Pot::inset`] lower and, as the walls
-    // lean in toward the foot, a little narrower, so the short side walls
-    // show as slanted strips.
-    let (l0, r0) = (cx - lipw + 4.0 * k, cx + lipw - 4.0 * k);
-    let (b0, f0) = (rim - ry + 2.4 * k, rim + ry - 2.4 * k);
-    let drop = pot.inset();
-    let lean = ((pot.hw - pot.bw) / pot.depth * drop).max(1.2 * k);
-    let (l1, r1) = (l0 + lean, r0 - lean);
-    let (b1, f1) = (b0 + drop + 0.6 * k, f0 + drop);
-    let strip = |x0: f64, x1: f64| {
+    // the outside; the soil lower and narrower, so the short side walls show
+    // as slanted strips.
+    let Opening {
+        l0,
+        r0,
+        b0,
+        f0,
+        l1,
+        r1,
+        b1,
+        f1,
+    } = opening(pot);
+    let strip = |x0: f64, x1: f64, back: f64| {
         format!(
-            r#"<path d="M{} {}L{} {}V{}L{} {}Z" fill="{}"/>"#,
-            Num(x0),
+            r#"<path d="M{} {}L{} {}L{} {}L{} {}Z" fill="{}"/>"#,
+            Num(x0 + back),
             Num(b0),
-            Num(x1),
+            Num(x1 + back),
             Num(b1),
+            Num(x1),
             Num(f1),
             Num(x0),
             Num(f0),
             pot.glaze.shift(-0.18, 0.0)
         )
     };
-    let mut s = quad(0.0, pot.glaze.shift(0.12, 0.0));
+    let mut s = trap(
+        cx - lipw,
+        cx + lipw,
+        rim - ry,
+        rim + ry,
+        &format!(r#" fill="{}""#, pot.glaze.shift(0.09, 0.0)),
+    );
+    let opening = trap(l0, r0, b0, f0, "");
     let _ = write!(
         s,
-        r#"<clipPath id="po"><path d="M{l} {b}H{r}V{f}H{l}Z"/></clipPath><path d="M{l} {b}H{r}V{f}H{l}Z" fill="{}"/><g clip-path="url(#po)">{}{}<path d="M{sl} {}H{sr}V{}H{sl}Z" fill="{soil}"/></g>"#,
-        pot.glaze.shift(-0.12, 0.0),
-        strip(l0, l1),
-        strip(r0, r1),
-        Num(b1),
-        Num(f1),
-        l = Num(l0),
-        r = Num(r0),
-        b = Num(b0),
-        f = Num(f0),
-        sl = Num(l1),
-        sr = Num(r1),
+        r#"<clipPath id="po">{opening}</clipPath>{}<g clip-path="url(#po)">{}{}{}</g>"#,
+        trap(
+            l0,
+            r0,
+            b0,
+            f0,
+            &format!(r#" fill="{}""#, pot.glaze.shift(-0.12, 0.0))
+        ),
+        strip(l0, l1, tp),
+        strip(r0, r1, -tp),
+        mound(pot, soil, (l1, r1, b1, f1), b1 - b0),
     );
+    if detailed_rim(pot) {
+        // A dark bevel where the frame drops into the opening, round its back
+        // and sides; the rim draws its front, over what lies there.
+        let _ = write!(
+            s,
+            r#"<path d="M{} {}L{} {}H{}L{} {}" fill="none" stroke="{}" stroke-width="{}" stroke-linejoin="round" opacity=".7"/>"#,
+            Num(l0),
+            Num(f0),
+            Num(l0 + tp),
+            Num(b0),
+            Num(r0 - tp),
+            Num(r0),
+            Num(f0),
+            pot.glaze.shift(-0.22, 0.0),
+            Num(0.9 * k)
+        );
+    }
     s
+}
+
+/// Draws a rectangle's soil heaped up a little in the middle: its back edge
+/// rises over the dark back wall by a share of the wall it can cover
+/// (`wall`), all of it on the speckled green, three quarters on the others,
+/// so the wall shows toward the corners; two faint, lighter flat steps crown
+/// it. The soil spans `l`..`r` from `back` to `front`.
+fn mound(pot: &Pot, soil: Rgb, (l, r, back, front): (f64, f64, f64, f64), wall: f64) -> String {
+    let cx = CENTER_X;
+    let tp = RECT_BACK_TAPER * detail(pot);
+    let big = pot.level == 10;
+    let rise = wall * if big { 1.0 } else { 0.75 };
+    let (w, h) = ((r - l) / 2.0, (front - back) / 2.0);
+    let mid = f64::midpoint(back, front);
+    let (lower, upper) = if big { (0.022, 0.04) } else { (0.014, 0.026) };
+    let (wide, tall) = if big { (1.08, 1.12) } else { (1.0, 1.0) };
+    let shape = format!(
+        r#"<path d="M{} {}Q{} {} {} {}L{} {}H{}Z""#,
+        Num(l + tp),
+        Num(back),
+        Num(cx),
+        Num(back - 2.0 * rise),
+        Num(r - tp),
+        Num(back),
+        Num(r),
+        Num(front),
+        Num(l),
+    );
+    format!(
+        r#"{shape} fill="{soil}"/><ellipse cx="{cx}" cy="{}" rx="{}" ry="{}" fill="{}"/><ellipse cx="{cx}" cy="{}" rx="{}" ry="{}" fill="{}"/>{}"#,
+        Num(mid - h * 0.1),
+        Num(w * 0.66 * wide),
+        Num(h * 0.5 * tall),
+        soil.shift(lower, 0.0),
+        Num(mid - h * 0.16),
+        Num(w * 0.38 * wide),
+        Num(h * 0.3 * tall),
+        soil.shift(upper, 0.0),
+        grain(soil, &shape),
+    )
+}
+
+/// Lays a fine grain over the soil `shape` (an element's opening without its
+/// fill): granules a little lighter and darker than the soil, squashed by
+/// the angle, from two tiles of different sizes so their repeat does not
+/// show. Under the canopy's shadow the soil is laid plain over it.
+fn grain(soil: Rgb, shape: &str) -> String {
+    let (light, dark) = (soil.shift(0.075, 0.0), soil.shift(-0.07, 0.0));
+    format!(
+        r#"<defs><pattern id="sg" width="7" height="4" patternUnits="userSpaceOnUse"><ellipse cx="1.2" cy="1" rx=".75" ry=".42" fill="{light}"/><ellipse cx="4.6" cy="2.6" rx=".6" ry=".36" fill="{dark}"/><ellipse cx="2.9" cy="3.3" rx=".5" ry=".3" fill="{light}"/><ellipse cx="6.1" cy=".7" rx=".45" ry=".28" fill="{dark}"/></pattern><pattern id="sh" width="13" height="7" patternUnits="userSpaceOnUse" x="3" y="2"><ellipse cx="2.5" cy="1.8" rx=".9" ry=".5" fill="{light}"/><ellipse cx="9.2" cy="4.9" rx=".8" ry=".45" fill="{dark}"/><ellipse cx="6.4" cy="6.1" rx=".55" ry=".32" fill="{light}"/></pattern></defs>{shape} fill="url(#sg)" opacity=".45"/>{shape} fill="url(#sh)" opacity=".5"/>"#
+    )
+}
+
+/// The opening of an elliptical soil's element at `cy`, `rx` by `ry`, for
+/// [`grain`].
+fn soil_ellipse(cy: f64, rx: f64, ry: f64) -> String {
+    format!(
+        r#"<ellipse cx="{CENTER_X}" cy="{}" rx="{}" ry="{}""#,
+        Num(cy),
+        Num(rx),
+        Num(ry)
+    )
 }
 
 #[cfg(test)]
@@ -1594,10 +1754,11 @@ mod tests {
     }
 
     /// A cascade's pot holds the soil of the pot it would get standing
-    /// upright: narrower and deeper, 0.7 as deep as it is wide.
+    /// upright: narrower and deeper, 0.7 as deep as it is wide. The bowl
+    /// keeps its one shape instead ([`the_bowl_keeps_its_shape`]).
     #[test]
     fn a_cascade_keeps_the_upright_pots_soil() {
-        for level in 0..11u8 {
+        for level in (0..11u8).filter(|l| model(*l).shape != Shape::Bowl) {
             let m = model(level);
             let up = dims(&need(195.0, 36.0, 0.0, None, 14.0), m);
             let down = dims(&need(195.0, 36.0, 1.0, None, 14.0), m);
@@ -1664,6 +1825,34 @@ mod tests {
         assert!((down.depth / (2.0 * down.hw) - 0.7).abs() < 0.02);
     }
 
+    /// The bowl is one shape at every size: 0.38 as deep as it is wide,
+    /// whatever its trunk, a cascade the same bowl as an upright tree, and a
+    /// spill close in makes it smaller, not deeper.
+    #[test]
+    fn the_bowl_keeps_its_shape() {
+        let m = model(7);
+        for width in [125.0, 195.0, 305.0] {
+            for trunk in [20.0, 46.0, 133.0] {
+                for cascade in [0.0, 0.5, 1.0] {
+                    for spill in [None, Some(40.0)] {
+                        let d = dims(&need(width, trunk, cascade, spill, 10.0), m);
+                        assert!(
+                            (d.depth / (2.0 * d.hw) - BOWL_DEPTH).abs() < 1e-9,
+                            "{width} wide, trunk {trunk}, cascade {cascade}, spill {spill:?}: {} deep, {} half-wide",
+                            d.depth,
+                            d.hw
+                        );
+                    }
+                }
+                let free = dims(&need(width, trunk, 1.0, None, 10.0), m);
+                assert!(
+                    (free.hw - width / 2.0).abs() < 1e-9,
+                    "a cascade's bowl is full width"
+                );
+            }
+        }
+    }
+
     /// The wall's half-width down the pot: straight on an oval and a
     /// rectangle, and on a bowl the curve its wall is drawn with, widest a
     /// sixth of the way down.
@@ -1692,43 +1881,111 @@ mod tests {
         assert!((pot.half_width(0.5) - 84.5).abs() < 1e-9);
     }
 
-    /// Only an oval casts a shadow on the table, where it always did; the
-    /// bowl and the rectangles stand without one.
-    #[test]
-    fn only_the_ovals_cast_a_table_shadow() {
-        let attr = |s: &str, tag: &str, name: &str| -> f64 {
-            let at = s.find(tag).expect(tag);
-            let rest = &s[at..];
+    /// The layers of a shadow, front to back as drawn: each one's middle,
+    /// front edge, half-width at the front and opacity. An ellipse or a
+    /// rounded path, its stroke as wide as its corners.
+    fn shadow_layers(s: &str) -> Vec<(f64, f64, f64, f64)> {
+        let attr = |part: &str, name: &str| -> f64 {
             let key = format!(" {name}=\"");
-            let from = rest.find(&key).expect(name) + key.len();
-            rest[from..from + rest[from..].find('"').unwrap_or(0)]
+            let from = part.find(&key).expect(name) + key.len();
+            part[from..from + part[from..].find('"').unwrap()]
                 .parse()
-                .unwrap_or(f64::NAN)
+                .unwrap()
         };
-        let mut pot = Pot {
-            hw: 100.0,
-            ry: 14.0,
-            depth: 50.0,
-            bw: 88.0,
-            glaze: Rgb::hex(0),
-            shape: Shape::Rect,
-            level: 8,
-        };
-        assert_eq!(shadow(&pot, 1.0, false), "");
-        pot.shape = Shape::Bowl;
-        pot.level = 7;
-        assert_eq!(shadow(&pot, 1.0, false), "");
-        pot.shape = Shape::Oval;
-        pot.level = 3;
-        let s = shadow(&pot, 1.0, false);
-        assert!(
-            (attr(&s, "<ellipse", "cy") - (SOIL_Y + 51.2)).abs() < 1e-9,
-            "{s}"
-        );
+        s.split('<')
+            .filter(|p| p.starts_with("ellipse") || p.starts_with("path"))
+            .map(|p| {
+                if p.starts_with("ellipse") {
+                    let (cx, cy, rx, ry) =
+                        (attr(p, "cx"), attr(p, "cy"), attr(p, "rx"), attr(p, "ry"));
+                    (cx, cy + ry, rx, attr(p, "opacity"))
+                } else {
+                    let d = &p[p.find(" d=\"").unwrap() + 4..];
+                    let d = &d[..d.find('"').unwrap()];
+                    let n: Vec<f64> = d
+                        .split(|c: char| c.is_ascii_alphabetic() || c == ' ')
+                        .filter(|v| !v.is_empty())
+                        .map(|v| v.parse().unwrap())
+                        .collect();
+                    let half_stroke = attr(p, "stroke-width") / 2.0;
+                    (
+                        f64::midpoint(n[3], n[5]),
+                        n[4] + half_stroke,
+                        (n[3] - n[5]) / 2.0 + half_stroke,
+                        attr(p, "opacity"),
+                    )
+                }
+            })
+            .collect()
+    }
+
+    /// Every pot casts one kind of shadow, in steps: a contact hairline
+    /// hugging its base, then softer, wider steps falling away from the
+    /// light, each fainter than the last, mirrored when the light is.
+    #[test]
+    fn every_pot_casts_a_stepped_shadow_from_its_base() {
+        for (shape, level) in [
+            (Shape::Oval, 3),
+            (Shape::Bowl, 7),
+            (Shape::Rect, 8),
+            (Shape::Rect, 9),
+        ] {
+            let pot = Pot {
+                hw: 100.0,
+                ry: 14.0,
+                depth: 50.0,
+                bw: 88.0,
+                glaze: Rgb::hex(0),
+                shape,
+                level,
+            };
+            let base = match shape {
+                Shape::Oval => SOIL_Y + pot.depth + pot.ry,
+                Shape::Bowl => {
+                    let sy = pot.ry * pot.bw / pot.hw * 0.8;
+                    pot.rim_y() + pot.depth + 4.0 * detail(&pot) + sy
+                }
+                Shape::Rect => SOIL_Y + pot.ry + pot.depth - pot.inset(),
+            };
+            let right = shadow_layers(&shadow(&pot, 1.0, false));
+            let left = shadow_layers(&shadow(&pot, -1.0, false));
+            assert_eq!(right.len(), 4, "{shape:?}: {right:?}");
+            let contact = right[0];
+            assert!(
+                contact.1 > base && contact.1 <= base + 1.5,
+                "{shape:?}: contact edge {} against the base at {base}",
+                contact.1
+            );
+            assert!((contact.0 - CENTER_X).abs() < 1e-9, "{shape:?}");
+            for w in right.windows(2) {
+                let (a, b) = (w[0], w[1]);
+                assert!(b.3 < a.3, "{shape:?}: each step fainter: {right:?}");
+                assert!(
+                    b.0 > a.0,
+                    "{shape:?}: each step further from the light: {right:?}"
+                );
+                assert!(
+                    b.2 > a.2 && b.1 >= a.1,
+                    "{shape:?}: each step wider: {right:?}"
+                );
+            }
+            for (r, l) in right.iter().zip(&left) {
+                assert!(
+                    (r.0 - CENTER_X + (l.0 - CENTER_X)).abs() < 1e-9,
+                    "{shape:?}: mirrored"
+                );
+            }
+        }
+    }
+
+    /// No pot stands on feet any more, and none is named for them.
+    #[test]
+    fn no_pot_is_named_for_feet() {
+        assert!(MODELS.iter().all(|m| !m.name.contains("feet")));
     }
 
     /// The bowl and the rectangles hold their soil below the rim, the bowl
-    /// 9% of its depth and a rectangle 3.5%: the pot stands that much
+    /// 9% of its depth and a rectangle 7%: the pot stands that much
     /// higher, its inner wall shows above the soil, and the soil stays inside
     /// the opening. An oval is filled to the brim.
     #[test]
@@ -1748,7 +2005,7 @@ mod tests {
                 shape,
                 level,
             };
-            let inset = if shape == Shape::Bowl { 5.4 } else { 2.1 };
+            let inset = if shape == Shape::Bowl { 5.4 } else { 4.2 };
             assert!((pot.inset() - inset).abs() < 1e-9, "{level}");
             assert!((pot.rim_y() - (SOIL_Y - inset)).abs() < 1e-9, "{level}");
             let top = top(&pot, Rgb::hex(0x4a_3a2a));
@@ -1808,32 +2065,34 @@ mod tests {
         }
     }
 
-    /// A pot's feet tuck up behind its curved foot and peek out below it,
-    /// at the smallest pot and the largest.
+    /// A rectangle's top face narrows a little toward the back, a touch of
+    /// depth: its rim frame's back edge is 3 detail units in on each side.
     #[test]
-    fn feet_tuck_under_the_pot_and_peek_out() {
-        for hw in [40.0, 200.0] {
-            let pot = Pot {
-                hw,
-                ry: hw * 0.17,
-                depth: 30.0,
-                bw: hw * 0.88,
-                glaze: Rgb::hex(0x3e5c76),
-                shape: Shape::Oval,
-                level: 3,
-            };
-            let (top, bottom) = feet_span(&pot);
-            // Where the foot's front edge is, at the feet: 0.6 of the way out.
-            let edge = SOIL_Y + pot.depth + pot.ry * 0.8;
-            assert!(
-                top < edge,
-                "{hw}: the feet start at {top}, below the pot's edge {edge}"
-            );
-            assert!(
-                bottom > edge + 2.0,
-                "{hw}: the feet end at {bottom}, hidden behind {edge}"
-            );
-        }
+    fn a_rectangles_top_narrows_toward_the_back() {
+        let pot = Pot {
+            hw: 100.0,
+            ry: 17.0,
+            depth: 50.0,
+            bw: 88.0,
+            glaze: Rgb::hex(0x7a_3f2c),
+            shape: Shape::Rect,
+            level: 8,
+        };
+        let s = top(&pot, Rgb::hex(0x4a_3a2a));
+        let d = s
+            .split(r#"d=""#)
+            .nth(1)
+            .and_then(|r| r.split('"').next())
+            .unwrap();
+        let n: Vec<f64> = d
+            .split(|c: char| !(c.is_ascii_digit() || c == '.' || c == '-'))
+            .filter(|t| !t.is_empty())
+            .map(|t| t.parse().unwrap())
+            .collect();
+        // M back-left y H back-right L front-right y H front-left Z
+        let (back, front) = (n[2] - n[0], n[3] - n[5]);
+        let k = detail(&pot);
+        assert!((front - back - 6.0 * k).abs() < 0.05, "{d}");
     }
 
     /// Every level draws at the smallest pot without a broken number.
@@ -1903,7 +2162,8 @@ mod tests {
     }
 
     /// The rim's front edge: on an oval it follows the ellipse, highest at
-    /// the sides; on a rectangle it runs straight across, at its rim.
+    /// the sides; on a rectangle it runs straight across, at the front of
+    /// its opening, inside the rim frame, where its soil is seen to end.
     #[test]
     fn the_rims_front_edge_follows_the_shape() {
         let oval = Pot {
@@ -1922,8 +2182,318 @@ mod tests {
             level: 8,
             ..oval
         };
-        // Its rim stands above the soil by its inset.
-        assert!((rect.rim_front_y(CENTER_X + 80.0) - (SOIL_Y - rect.inset() + 20.0)).abs() < 1e-9);
+        for level in 8..11u8 {
+            let rect = Pot { level, ..rect };
+            let opening = opening_of(&top(&rect, Rgb::hex(0x4a_3a2a)));
+            assert!(
+                (rect.rim_front_y(CENTER_X + 80.0) - opening[4]).abs() < 1e-9,
+                "{level}"
+            );
+            assert!(
+                rect.rim_front_y(CENTER_X) < rect.rim_y() + rect.ry - 1.0,
+                "{level}"
+            );
+        }
+    }
+
+    /// The numbers of a rectangle's opening, the clip its soil is drawn in:
+    /// back left x, back y, back right x, front right x, front y, front left x.
+    fn opening_of(top: &str) -> Vec<f64> {
+        let clip = top
+            .split(r#"<clipPath id="po"><path d=""#)
+            .nth(1)
+            .expect("an opening");
+        clip[..clip.find('"').unwrap()]
+            .split(|c: char| c.is_ascii_alphabetic() || c == ' ')
+            .filter_map(|v| v.parse().ok())
+            .collect()
+    }
+
+    /// A rectangle is seen a little flatter than an oval of the same width:
+    /// its top face 0.85 as deep.
+    #[test]
+    fn a_rectangle_is_seen_a_little_flatter_than_an_oval() {
+        let need = need(195.0, 36.0, 0.0, None, 14.0);
+        let (oval, rect) = (dims(&need, model(3)), dims(&need, model(8)));
+        assert!(
+            (rect.ry - 0.85 * oval.ry).abs() < 1e-9,
+            "{} vs {}",
+            rect.ry,
+            oval.ry
+        );
+    }
+
+    /// A rectangle's soil heaps up a little in the middle: its back edge rises
+    /// over the dark back wall, never past the opening; the speckled green's
+    /// rises most.
+    #[test]
+    fn a_rectangles_soil_heaps_up_in_the_middle() {
+        let soil = Rgb::hex(0x4a_3a2a);
+        let rise = |level: u8| {
+            let pot = Pot {
+                hw: 100.0,
+                ry: 17.0,
+                depth: 60.0,
+                bw: 80.0,
+                glaze: Rgb::hex(0x3e_8a70),
+                shape: Shape::Rect,
+                level,
+            };
+            let top = top(&pot, soil);
+            let back = opening_of(&top)[1];
+            let path = top
+                .split("<path d=\"")
+                .find(|p| p.contains(&format!(r#"fill="{soil}""#)))
+                .expect("the soil");
+            let n: Vec<f64> = path[..path.find('"').unwrap()]
+                .split(|c: char| c.is_ascii_alphabetic() || c == ' ')
+                .filter_map(|v| v.parse().ok())
+                .collect();
+            // M left edge, Q control, right edge: the curve peaks halfway to the control.
+            let (edge, peak) = (n[1], f64::midpoint(n[1], n[3]));
+            assert!(peak < edge, "{level}: the soil does not rise: {path}");
+            assert!(
+                peak >= back - 1e-9,
+                "{level}: the soil rises past the opening"
+            );
+            edge - peak
+        };
+        assert!(rise(10) > rise(8) * 1.2, "{} vs {}", rise(10), rise(8));
+    }
+
+    /// The finest rectangles, the glossy cobalt and the speckled green, have
+    /// a thick, detailed rim: a bevel into the opening, light along the
+    /// frame's front edge, a groove across the lip band and its shaded
+    /// underside. The vintage clay keeps a plain one.
+    #[test]
+    fn the_finest_rectangles_have_a_detailed_rim() {
+        for level in 8..11u8 {
+            let pot = Pot {
+                hw: 100.0,
+                ry: 17.0,
+                depth: 60.0,
+                bw: 80.0,
+                glaze: Rgb::hex(0x23_468f),
+                shape: Shape::Rect,
+                level,
+            };
+            let bevel = top(&pot, Rgb::hex(0x4a_3a2a)).contains(r#"fill="none" stroke="#);
+            let lines = rim(&pot).matches(r#"<path d="M"#).count();
+            let detailed = level >= 9;
+            assert_eq!(bevel, detailed, "{level}");
+            // The front strip, the lip band's two halves and its edge light;
+            // the detailed rim adds the bevel's front, the frame's light, the
+            // groove and the underside.
+            assert_eq!(
+                lines,
+                if detailed { 8 } else { 4 },
+                "{level}: {}",
+                rim(&pot)
+            );
+        }
+    }
+
+    /// A rectangle's rim is drawn over what lies at the front of its soil:
+    /// the frame's front strip, from the opening's front edge to the lip, in
+    /// the frame's tint, so an egg there sits partly behind it.
+    #[test]
+    fn a_rectangles_rim_covers_the_front_of_its_soil() {
+        for level in 8..11u8 {
+            let pot = Pot {
+                hw: 100.0,
+                ry: 17.0,
+                depth: 60.0,
+                bw: 80.0,
+                glaze: Rgb::hex(0x23_468f),
+                shape: Shape::Rect,
+                level,
+            };
+            let frame = format!(r#"fill="{}""#, pot.glaze.shift(0.09, 0.0));
+            let rim = rim(&pot);
+            let strip = rim
+                .split("<path")
+                .find(|p| p.contains(&frame))
+                .expect("the front strip");
+            let front = pot.rim_front_y(CENTER_X) + pot.inset();
+            assert!(
+                strip.contains(&format!(" {}H", Num(front))),
+                "{level}: {strip}"
+            );
+        }
+    }
+
+    /// The round pots' and the bowl's soil heaps up gently in the middle: two
+    /// lighter flat steps crown it, a little behind its middle, as a
+    /// rectangle's does.
+    #[test]
+    fn round_soil_heaps_up_in_the_middle() {
+        let soil = Rgb::hex(0x4a_3a2a);
+        for (shape, level) in [(Shape::Oval, 3), (Shape::Bowl, 7)] {
+            let pot = Pot {
+                hw: 100.0,
+                ry: 17.0,
+                depth: 50.0,
+                bw: 80.0,
+                glaze: Rgb::hex(0x3e_5c76),
+                shape,
+                level,
+            };
+            let top = top(&pot, soil);
+            let crown: Vec<f64> = [soil.shift(0.014, 0.0), soil.shift(0.026, 0.0)]
+                .iter()
+                .map(|c| {
+                    let at = top.find(&format!(r#"fill="{c}""#)).expect("a crown step");
+                    let e = &top[top[..at].rfind("<ellipse").unwrap()..at];
+                    let cy = e.split(" cy=\"").nth(1).unwrap();
+                    cy[..cy.find('"').unwrap()].parse().unwrap()
+                })
+                .collect();
+            assert!(
+                crown.iter().all(|&cy| cy < SOIL_Y + 0.6),
+                "{shape:?}: {crown:?}"
+            );
+        }
+    }
+
+    /// Every pot's soil has a fine grain over it, granules lighter and
+    /// darker than the soil, from tiles defined once; on a rectangle and the
+    /// bowl inside the opening.
+    #[test]
+    fn every_soil_has_a_grain() {
+        let soil = Rgb::hex(0x4a_3a2a);
+        for (shape, level) in [
+            (Shape::Oval, 3),
+            (Shape::Bowl, 7),
+            (Shape::Rect, 8),
+            (Shape::Rect, 10),
+        ] {
+            let pot = Pot {
+                hw: 100.0,
+                ry: 17.0,
+                depth: 50.0,
+                bw: 80.0,
+                glaze: Rgb::hex(0x3e_5c76),
+                shape,
+                level,
+            };
+            let top = top(&pot, soil);
+            assert_eq!(top.matches("<pattern").count(), 2, "{shape:?}: two tiles");
+            assert!(
+                top.contains(&format!(r#"fill="{}""#, soil.shift(0.075, 0.0))),
+                "{shape:?}"
+            );
+            assert!(
+                top.contains(&format!(r#"fill="{}""#, soil.shift(-0.07, 0.0))),
+                "{shape:?}"
+            );
+            let over = top
+                .find(r#"fill="url(#sg)""#)
+                .expect("the grain over the soil");
+            assert!(top.find(r#"fill="url(#sh)""#).is_some(), "{shape:?}");
+            if shape != Shape::Oval {
+                assert!(
+                    over > top.find(r#"clip-path="url(#po)""#).unwrap(),
+                    "{shape:?}: inside the opening"
+                );
+            }
+        }
+    }
+
+    /// Moss grows as star-moss cushions: each clump casts a soft shadow on
+    /// the soil, rises in three mid-tone bumps and is furred with sprigs,
+    /// one tile of them for the whole picture.
+    #[test]
+    fn moss_grows_as_star_moss_cushions() {
+        let mut b = crate::Bonsai::grow(
+            &crate::fixtures::by_name("steady").unwrap().snapshot,
+            &Config::default(),
+            None,
+        );
+        b.extras.moss = 1.0;
+        let paints = Paints::of(crate::Theme::Light);
+        let pot = Pot {
+            hw: 100.0,
+            ry: 17.0,
+            depth: 50.0,
+            bw: 80.0,
+            glaze: Rgb::hex(0x3e_5c76),
+            shape: Shape::Oval,
+            level: 3,
+        };
+        let (back, front) = moss(&b, &paints, &pot);
+        let all = format!("{back}{front}");
+        let clumps = 34;
+        assert_eq!(
+            all.matches(r#"<pattern id="mz""#).count(),
+            1,
+            "one sprig tile"
+        );
+        assert_eq!(
+            all.matches(r#"fill="url(#mz)""#).count(),
+            2,
+            "the sprigs, back and front"
+        );
+        let midtone = paints.moss[0].mix(paints.moss[1], 0.5);
+        let group = |fill: &str| -> usize {
+            all.split(&format!(r#"<g fill="{fill}""#))
+                .skip(1)
+                .map(|g| g[..g.find("</g>").unwrap()].matches("<ellipse").count())
+                .sum()
+        };
+        assert_eq!(
+            group(&midtone.to_string()),
+            3 * clumps,
+            "three bumps a clump"
+        );
+        assert_eq!(
+            group(&paints.soil.shift(-0.2, 0.0).to_string()),
+            clumps,
+            "a shadow a clump"
+        );
+    }
+
+    /// Moss on a rectangle grows inside its opening, behind the rim frame.
+    #[test]
+    fn moss_stays_inside_a_rectangles_opening() {
+        let mut b = crate::Bonsai::grow(
+            &crate::fixtures::by_name("steady").unwrap().snapshot,
+            &Config::default(),
+            None,
+        );
+        b.extras.moss = 1.0;
+        let paints = Paints::of(crate::Theme::Light);
+        for level in 8..11u8 {
+            let pot = Pot {
+                hw: 100.0,
+                ry: 17.0,
+                depth: 60.0,
+                bw: 80.0,
+                glaze: Rgb::hex(0x3e_8a70),
+                shape: Shape::Rect,
+                level,
+            };
+            let o = opening_of(&top(&pot, Rgb::hex(0x4a_3a2a)));
+            let (back, front) = moss(&b, &paints, &pot);
+            for e in format!("{back}{front}").split("<ellipse").skip(1) {
+                let attr = |name: &str| -> f64 {
+                    let key = format!(" {name}=\"");
+                    let from = e.find(&key).unwrap() + key.len();
+                    e[from..from + e[from..].find('"').unwrap()]
+                        .parse()
+                        .unwrap()
+                };
+                let (cx, cy, rx, ry) = (attr("cx"), attr("cy"), attr("rx"), attr("ry"));
+                assert!(
+                    cy + ry <= o[4] + 1e-9,
+                    "{level}: moss at {cy} over the front frame at {}",
+                    o[4]
+                );
+                assert!(
+                    cx - rx >= o[5] && cx + rx <= o[3],
+                    "{level}: moss at {cx} over the side frame"
+                );
+            }
+        }
     }
 
     /// Only glazed pots take a configured glaze.

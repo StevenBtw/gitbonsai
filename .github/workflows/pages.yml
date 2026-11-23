@@ -31,7 +31,7 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@92e73e19cbfb3981e63ef478a16f95f415e634d3 # 1.99.0
+        uses: dtolnay/rust-toolchain@d5e4d57b030548f435d0befec15ff413a2c60eff # 1.100.0
 
       - name: Install the video tools
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg python3-cairosvg python3-pil

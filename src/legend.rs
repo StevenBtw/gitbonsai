@@ -72,8 +72,8 @@ pub struct Signs {
     pub fresh: bool,
     /// Leaves falling: a level crossed this week.
     pub falling: bool,
-    /// The pot's glaze.
-    pub glaze: Option<Rgb>,
+    /// The pot's glaze and shape.
+    pub pot: Option<(Rgb, crate::pot::Shape)>,
 }
 
 /// A row's marker, drawn left of its words.
@@ -84,7 +84,7 @@ enum Mark {
     Seeds,
     Falling,
     Moss,
-    Pot(Rgb),
+    Pot(Rgb, crate::pot::Shape),
 }
 
 /// One row: a heading, a marked line, or a plain line under the marks.
@@ -280,9 +280,9 @@ fn rows(b: &Bonsai, paints: &Paints, signs: Signs) -> Vec<Row> {
             format!("{}-week streak", b.extras.current_streak),
         ));
     }
-    if let Some(glaze) = signs.glaze {
+    if let Some((glaze, shape)) = signs.pot {
         rows.push(Row::sign(
-            Mark::Pot(glaze),
+            Mark::Pot(glaze, shape),
             format!("longest streak {} weeks", b.extras.longest_streak),
         ));
     }
@@ -440,34 +440,125 @@ fn marker(mark: &Mark, x: f64, y: f64, size: f64, paints: &Paints) -> String {
             Num(size / 5.6),
             paints.crimson
         ),
+        // A star-moss cushion: its shadow, the cushion, a mid-tone bump and
+        // a light on top.
         Mark::Moss => format!(
-            r#"<ellipse cx="{}" cy="{}" rx="{}" ry="{}" fill="{}"/><ellipse cx="{}" cy="{}" rx="{}" ry="{}" fill="{}"/>"#,
-            Num(x - h * 0.3),
-            Num(y + h * 0.3),
-            Num(h * 0.6),
-            Num(h * 0.3),
+            r#"<ellipse cx="{x}" cy="{}" rx="{}" ry="{}" fill="{}" opacity=".35"/><ellipse cx="{x}" cy="{}" rx="{}" ry="{}" fill="{}"/><ellipse cx="{}" cy="{y}" rx="{}" ry="{}" fill="{}"/><ellipse cx="{}" cy="{}" rx="{}" ry="{}" fill="{}"/>"#,
+            Num(y + h * 0.45),
+            Num(h * 0.95),
+            Num(h * 0.22),
+            paints.soil.shift(-0.2, 0.0),
+            Num(y + h * 0.2),
+            Num(h * 0.85),
+            Num(h * 0.42),
             paints.moss[0],
-            Num(x + h * 0.35),
-            Num(y + h * 0.15),
+            Num(x - h * 0.15),
             Num(h * 0.45),
-            Num(h * 0.25),
-            paints.moss[1]
+            Num(h * 0.28),
+            paints.moss[0].mix(paints.moss[1], 0.5),
+            Num(x - h * 0.3),
+            Num(y - h * 0.1),
+            Num(h * 0.22),
+            Num(h * 0.12),
+            paints.moss[1],
+            x = Num(x),
+            y = Num(y),
         ),
-        Mark::Pot(glaze) => format!(
-            r#"<path d="M{} {}H{}L{} {}H{}Z" fill="{glaze}"/>"#,
-            Num(x - h),
-            Num(y - h * 0.35),
-            Num(x + h),
-            Num(x + h * 0.7),
-            Num(y + h * 0.55),
-            Num(x - h * 0.7)
-        ),
+        // The pot in its own shape: an oval under its rim, the bowl on its
+        // saucer, a rectangle under its lip band.
+        Mark::Pot(glaze, shape) => {
+            let rim = glaze.shift(0.08, 0.0);
+            match shape {
+                crate::pot::Shape::Oval => format!(
+                    r#"<path d="M{} {}H{}L{} {}H{}Z" fill="{glaze}"/><ellipse cx="{}" cy="{}" rx="{}" ry="{}" fill="{rim}"/>"#,
+                    Num(x - h),
+                    Num(y - h * 0.35),
+                    Num(x + h),
+                    Num(x + h * 0.7),
+                    Num(y + h * 0.55),
+                    Num(x - h * 0.7),
+                    Num(x),
+                    Num(y - h * 0.35),
+                    Num(h),
+                    Num(h * 0.2)
+                ),
+                crate::pot::Shape::Bowl => format!(
+                    r##"<ellipse cx="{}" cy="{}" rx="{}" ry="{}" fill="#b5843f"/><path d="M{} {}A{} {} 0 0 0 {} {}Z" fill="{glaze}"/><ellipse cx="{}" cy="{}" rx="{}" ry="{}" fill="{rim}"/>"##,
+                    Num(x),
+                    Num(y + h * 0.62),
+                    Num(h * 1.05),
+                    Num(h * 0.18),
+                    Num(x - h),
+                    Num(y - h * 0.35),
+                    Num(h),
+                    Num(h * 0.95),
+                    Num(x + h),
+                    Num(y - h * 0.35),
+                    Num(x),
+                    Num(y - h * 0.35),
+                    Num(h),
+                    Num(h * 0.2)
+                ),
+                crate::pot::Shape::Rect => format!(
+                    r#"<path d="M{} {}H{}L{} {}H{}Z" fill="{glaze}"/><path d="M{} {}H{}V{}H{}Z" fill="{rim}"/>"#,
+                    Num(x - h * 0.85),
+                    Num(y - h * 0.15),
+                    Num(x + h * 0.85),
+                    Num(x + h * 0.68),
+                    Num(y + h * 0.6),
+                    Num(x - h * 0.68),
+                    Num(x - h),
+                    Num(y - h * 0.42),
+                    Num(x + h),
+                    Num(y - h * 0.15),
+                    Num(x - h)
+                ),
+            }
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The pot's mark takes the pot's shape: an oval with its rim, the bowl
+    /// on its saucer, a rectangle under its lip band; all in the glaze.
+    #[test]
+    fn the_pot_mark_takes_the_pots_shape() {
+        let paints = Paints::of(crate::Theme::Light);
+        let glaze = Rgb::hex(0x23_468f);
+        let mark = |shape| marker(&Mark::Pot(glaze, shape), 20.0, 20.0, 12.0, &paints);
+        let (oval, bowl, rect) = (
+            mark(crate::pot::Shape::Oval),
+            mark(crate::pot::Shape::Bowl),
+            mark(crate::pot::Shape::Rect),
+        );
+        for m in [&oval, &bowl, &rect] {
+            assert!(m.contains(&format!(r#"fill="{glaze}""#)), "{m}");
+        }
+        assert!(oval.contains("<ellipse") && !oval.contains('A'), "{oval}");
+        assert!(bowl.contains("<ellipse") && bowl.contains('A'), "{bowl}");
+        assert_eq!(rect.matches("<path").count(), 2, "{rect}");
+        assert!(!rect.contains("<ellipse"), "{rect}");
+    }
+
+    /// The moss mark is a small star-moss cushion: a shadow under it, the
+    /// cushion, a mid-tone bump and a light on top.
+    #[test]
+    fn the_moss_mark_is_a_cushion() {
+        let paints = Paints::of(crate::Theme::Light);
+        let m = marker(&Mark::Moss, 20.0, 20.0, 12.0, &paints);
+        let midtone = paints.moss[0].mix(paints.moss[1], 0.5);
+        for fill in [
+            paints.soil.shift(-0.2, 0.0),
+            paints.moss[0],
+            midtone,
+            paints.moss[1],
+        ] {
+            assert!(m.contains(&format!(r#"fill="{fill}""#)), "{fill} in {m}");
+        }
+    }
 
     #[test]
     fn numbers_and_ages_read_naturally() {
