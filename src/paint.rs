@@ -1149,7 +1149,7 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                     r#"<path d="{}" fill="{}"/>"#,
                     tube_from(
                         &wide,
-                        start == 0 && scene.joins.contains_key(&ci),
+                        start == 0 && scene.joins.contains_key(&ci) && !low_trunk,
                         last,
                         true
                     )

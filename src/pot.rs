@@ -365,7 +365,7 @@ fn spill_of(b: &Bonsai, scene: &Scene, base_r: f64) -> Option<f64> {
 /// its rim stays inside the point where the trunk spills over, and if that
 /// narrows it, it deepens to keep its soil, never deeper than it is wide.
 ///
-/// The bowl is one shape at every size, [`BOWL_DEPTH`] as deep as it is wide:
+/// The bowl is one shape at every size, 0.38 as deep as it is wide:
 /// a cascade gets the same bowl, and a spill close in makes it smaller.
 pub fn dims(need: &Need, m: &Model) -> Dims {
     if m.shape == Shape::Bowl {

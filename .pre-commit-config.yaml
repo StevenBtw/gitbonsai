@@ -21,7 +21,7 @@ repos:
         args: ['--maxkb=500']
 
   - repo: https://github.com/crate-ci/typos
-    rev: v1.50.3
+    rev: v1.52.2
     hooks:
       - id: typos
 

@@ -103,27 +103,37 @@ let picked = 0;
 function showPlate(i: number): void {
   const p = plates[i];
   if (!p) return;
+  const was = shown;
   shown = i;
   check(i);
   const ticket = ++picked;
   const tree = variant(p);
   const next = new Image();
+  const loaded = new Promise<boolean>((done) => {
+    next.onload = () => done(true);
+    next.onerror = () => done(false);
+  });
   next.src = `${tree}-${theme()}.svg`;
-  // The tree, its place and its caption change in one frame, once it is
-  // decoded: never the old tree drawn at the new one's place and size.
-  next
-    .decode()
-    .catch(() => {})
-    .then(() => {
-      if (ticket !== picked) return;
-      heroImg.dataset.tree = tree;
-      heroImg.src = `${tree}-${theme()}.svg`;
-      heroImg.alt = p.alt;
-      place(p, plates);
-      $("herono").textContent = plateNo(i);
-      $("herofor").textContent = p.name;
-      $("herostyle").textContent = p.style;
-    });
+  // The tree, its place and its caption change in one frame, once it has
+  // loaded and decoded: never the old tree drawn at the new one's place and
+  // size. A tree that fails to load leaves the plate as it was. (Some
+  // browsers refuse to decode an SVG that loaded fine; it still shows.)
+  void loaded.then(async (ok) => {
+    if (ok) await next.decode().catch(() => {});
+    if (ticket !== picked) return;
+    if (!ok) {
+      shown = was;
+      check(was);
+      return;
+    }
+    heroImg.dataset.tree = tree;
+    heroImg.src = `${tree}-${theme()}.svg`;
+    heroImg.alt = p.alt;
+    place(p, plates);
+    $("herono").textContent = plateNo(i);
+    $("herofor").textContent = p.name;
+    $("herostyle").textContent = p.style;
+  });
 }
 /** Marks thumbnail `i` as the chosen radio, with the roving tab stop on it. */
 function check(i: number): void {
