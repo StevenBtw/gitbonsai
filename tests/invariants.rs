@@ -408,6 +408,7 @@ fn every_output_stays_within_budget() {
                     "class=\"gl\"",
                     "class=\"fs\"",
                     "class=\"fw\"",
+                    "class=\"fm\"",
                     "class=\"ff\"",
                 ]
                 .iter()

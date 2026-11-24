@@ -2067,7 +2067,6 @@ fn root_plans(b: &Bonsai, base_r: f64, pot: &Pot, off: f64) -> Vec<RootPlan> {
                 over: false,
             };
             hold_on(b, &mut plan, i, (base_r, u), pot, off);
-            plan.reach = plan.reach.min(to_soil(pot, plan.az, off));
             plan
         })
         .collect();
@@ -2080,8 +2079,7 @@ fn root_plans(b: &Bonsai, base_r: f64, pot: &Pot, off: f64) -> Vec<RootPlan> {
             let az = math::TAU / 4.0 + turn * b.leader.side;
             plans.push(RootPlan {
                 az,
-                reach: root_reach(base_r, b.extras.nebari, pot.hw, az, r.unit(), 0.0, off)
-                    .min(to_soil(pot, az, off)),
+                reach: root_reach(base_r, b.extras.nebari, pot.hw, az, r.unit(), 0.0, off),
                 bend: -turn * b.leader.side * 0.4,
                 jitter: (1.0, 1.0),
                 brace: 0.0,
@@ -2090,6 +2088,13 @@ fn root_plans(b: &Bonsai, base_r: f64, pot: &Pot, off: f64) -> Vec<RootPlan> {
                 over: true,
             });
         }
+    }
+    // No root runs past the soil, where it starts out or where it bends to.
+    for p in &mut plans {
+        p.reach = p
+            .reach
+            .min(to_soil(pot, p.az, off))
+            .min(to_soil(pot, p.az + p.bend, off));
     }
     plans
 }
@@ -2886,19 +2891,51 @@ mod tests {
             shape: crate::pot::Shape::Oval,
             level: 0,
         };
-        let (a, b) = (pot.hw - 7.0, (pot.ry - 2.0) * pot.hw / pot.ry - 3.0);
-        for style in [
+        let legacy = Bonsai::grow(
+            &crate::fixtures::by_name("legacy").unwrap().snapshot,
+            &Config::default(),
+            None,
+        );
+        let trees = [
             crate::config::Style::Fukinagashi,
             crate::config::Style::Kengai,
-        ] {
-            let b_ = styled(style);
+            crate::config::Style::Chokkan,
+            crate::config::Style::Moyogi,
+            crate::config::Style::Shakan,
+        ]
+        .map(styled)
+        .into_iter()
+        .chain([legacy]);
+        let shapes = [
+            (crate::pot::Shape::Oval, 0),
+            (crate::pot::Shape::Bowl, 7),
+            (crate::pot::Shape::Rect, 8),
+        ];
+        for (tree, (shape, level)) in trees.flat_map(|t| shapes.map(|s| (t.clone(), s))) {
+            let pot = Pot {
+                shape,
+                level,
+                ..pot
+            };
+            // The soil on the ground, 3 inside its edge, as `to_soil` takes it.
+            let (sx, sy) = match shape {
+                crate::pot::Shape::Oval => (pot.hw - 4.0, pot.ry - 2.0),
+                crate::pot::Shape::Bowl => ((pot.hw - 4.0) * 0.95, (pot.ry - 2.0) * 0.95),
+                crate::pot::Shape::Rect => pot.soil_reach(),
+            };
+            let (a, b) = (sx - 3.0, sy * pot.hw / pot.ry - 3.0);
             for off in [0.0, -8.0, 8.0] {
-                for r in root_plans(&b_, 9.0, &pot, off) {
-                    let (x, z) = (off + r.reach * math::cos(r.az), r.reach * math::sin(r.az));
-                    assert!(
-                        math::sq(x / a) + math::sq(z / b) < 1.0,
-                        "{style:?} {off}: {r:?}"
-                    );
+                for base_r in [6.0, 9.0, 12.0] {
+                    for r in root_plans(&tree, base_r, &pot, off) {
+                        // Its tip as drawn: the root bends as it runs.
+                        let end = r.az + r.bend;
+                        let (x, z) = (off + r.reach * math::cos(end), r.reach * math::sin(end));
+                        assert!(
+                            math::sq(x / a) + math::sq(z / b) <= 1.0 + 1e-9,
+                            "{} {off} {base_r}: {r:?}",
+                            tree.leader.side
+                        );
+                    }
                 }
             }
         }

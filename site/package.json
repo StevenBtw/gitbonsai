@@ -1,6 +1,9 @@
 {
   "private": true,
   "description": "Build tools for gitbonsai.dev: the TypeScript compiler for the site and its tests.",
+  "engines": {
+    "node": ">=22.18"
+  },
   "scripts": {
     "check": "tsc --noEmit -p . && tsc -p test",
     "test": "tsc -p test && node --test test/gallery-core.test.ts"
