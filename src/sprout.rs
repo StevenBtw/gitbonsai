@@ -162,7 +162,8 @@ fn stem(scene: &Scene, n: f64) -> Option<(Vec<(f64, f64, f64)>, f64)> {
 
 /// Draws the sprout of `b` along the seedling stem of `scene`: the
 /// seedling's painted pieces (`seedling`) fade in as the juvenile leaves
-/// drop. You also get how many leaves flutter (none unless `animate`), and
+/// drop. You also get what lies on the soil, a dropped seed leaf, drawn
+/// over the roots; how many leaves flutter (none unless `animate`); and
 /// `None` unless `b` is a sprout.
 pub fn draw(
     b: &Bonsai,
@@ -170,7 +171,7 @@ pub fn draw(
     paints: &Paints,
     seedling: &[(f64, String)],
     animate: bool,
-) -> Option<(String, usize)> {
+) -> Option<(String, String, usize)> {
     if !is_sprout(b) {
         return None;
     }
@@ -233,7 +234,7 @@ pub fn draw(
             r#"<path d="M0 0C0-3.5 2.5-5 2.8-2.8" fill="none" stroke="{green}" stroke-width=".9" stroke-linecap="round"/><ellipse cx="3" cy="-2.2" rx="1.5" ry="1.05" fill="{}"/></g>"#,
             Rgb::hex(0x7a5a3a).shift(shift, 0.0)
         );
-        return Some((out, 0));
+        return Some((out, String::new(), 0));
     }
     out.push_str("</g>");
     // The stem, green until it turns woody.
@@ -261,10 +262,19 @@ pub fn draw(
             cot(&mut out, (cx, cy), ang, cs, c, sway());
         }
     }
-    if (33.0..45.0).contains(&n) {
-        cot(&mut out, (9.0, 1.0), 96.0, 0.9, old, "");
-    }
     out.push_str("</g>");
+    let mut on_soil = String::new();
+    if (33.0..45.0).contains(&n) {
+        let _ = write!(
+            on_soil,
+            r#"<g transform="translate({} {})scale({})">"#,
+            Num(fx),
+            Num(fy),
+            Num(u)
+        );
+        cot(&mut on_soil, (9.0, 1.0), 96.0, 0.9, old, "");
+        on_soil.push_str("</g>");
+    }
     // The seedling's own drawing, scaled to the sprout's height: whole by
     // 46, so it never shows faint behind the juvenile leaves.
     if w > 0.0 {
@@ -401,7 +411,7 @@ pub fn draw(
         }
     }
     out.push_str("</g>");
-    Some((out, moving))
+    Some((out, on_soil, moving))
 }
 
 /// Draws a seed leaf at `p`, turned `ang` degrees, `s` long: narrow and
@@ -494,6 +504,16 @@ mod tests {
             .skip(1)
             .filter_map(|p| p.split(r#"fill=""#).nth(1)?.get(..7))
             .collect()
+    }
+
+    /// A seed leaf that dropped lies on the soil over the roots, never cut
+    /// through by one.
+    #[test]
+    fn a_dropped_seed_leaf_lies_over_the_roots() {
+        let s = svg(&grown(38));
+        let leaf = s.find(r"translate(9 1)").expect("the dropped seed leaf");
+        let root = s.rfind(r#"clip-path="url(#rh"#).expect("roots");
+        assert!(leaf > root, "drawn under a root");
     }
 
     #[test]

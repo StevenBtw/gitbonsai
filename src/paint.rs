@@ -576,19 +576,40 @@ fn whips(
     (0..n).map(|i| dead(i) && !forked[root[i]]).collect()
 }
 
-/// Runs wood that leaves the trunk low, within its own width of the foot at
-/// `foot_y`, on straight down into the soil as the trunk does: the soil cut
-/// then squares its start, which otherwise shows as a round end on the
-/// trunk's face whenever the wood sorts in front there. Whether it did.
-fn into_soil(seg: &mut Vec<(f64, f64, f64)>, foot_y: f64) -> bool {
+/// Runs wood that leaves the trunk low, within its own width or the trunk's
+/// (`trunk_w` at its foot, at most 12) of the foot at `foot_y`, on down into the soil as
+/// the trunk does: the soil cut then squares its start, which otherwise
+/// shows as a round end on the trunk's face whenever the wood sorts in front
+/// there. It carries on back along its own line, no bend where it left the
+/// trunk, steepened where it lies flatter than 0.6 across for each down,
+/// and never past the trunk's foot at `fx`, so the two meet in a V instead
+/// of crossing. Whether it did.
+fn into_soil(seg: &mut Vec<(f64, f64, f64)>, (fx, foot_y): (f64, f64), trunk_w: f64) -> bool {
     let Some(&(x, y, r)) = seg.first() else {
         return false;
     };
     // Too high to reach the soil, or in it already.
-    if y + 2.0 * r < foot_y || y >= foot_y {
+    if y + (2.0 * r).max(trunk_w.min(12.0)) < foot_y || y >= foot_y {
         return false;
     }
-    seg.splice(0..0, [(x, y + 2.0 * r, r), (x, y + r, r)]);
+    // Across for each step down, going back along its line.
+    let slope = seg.get(1).map_or(0.0, |&(x1, y1, _)| {
+        let (dx, dy) = (x - x1, y - y1);
+        if dy > 1e-9 {
+            (dx / dy).clamp(-0.6, 0.6)
+        } else {
+            0.6 * dx.signum()
+        }
+    });
+    let bottom = (y + 2.0 * r).max(foot_y + r);
+    let bx = (x + slope * (bottom - y)).clamp(x.min(fx), x.max(fx));
+    seg.splice(
+        0..0,
+        [
+            (bx, bottom, r),
+            (f64::midpoint(x, bx), f64::midpoint(y, bottom), r),
+        ],
+    );
     true
 }
 
@@ -835,6 +856,12 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
                 let (x, y, _) = project(p.0);
                 (x, y)
             });
+    // The trunk's width at its foot, as drawn.
+    let trunk_w = scene
+        .chains
+        .first()
+        .and_then(|c| c.0.first())
+        .map_or(0.0, |p| 2.0 * WORLD * p.1);
     let mut extent = (f64::MAX, f64::MIN, SOIL_Y);
     // The lowest point drawn: a cascade hangs below the pot.
     let mut low = SOIL_Y;
@@ -1098,11 +1125,7 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
             let low_trunk = start == 0
                 && !*jin
                 && scene.joins.contains_key(&ci)
-                && into_soil(&mut vec![seg[0]], foot_y);
-            if low_trunk {
-                let (x, y, r) = seg[0];
-                seg.splice(0..0, [(x, y + 2.0 * r, r), (x, y + r, r)]);
-            }
+                && into_soil(&mut seg, (fx, foot_y), trunk_w);
             let depth = join.map_or(
                 fine[start..=end].iter().map(|p| p.3).sum::<f64>() / (end - start + 1) as f64,
                 |j| j.1,
@@ -1652,8 +1675,10 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
     // sizes the pot and frame, so the hand-over doesn't move them, and fades
     // in over the sprout's last contributions.
     let sprout = crate::sprout::draw(b, &scene, &paints, &items, animate);
-    if let Some((s, moving)) = &sprout {
+    let mut on_soil = String::new();
+    if let Some((s, soil, moving)) = &sprout {
         items = vec![(0.0, s.clone())];
+        on_soil.clone_from(soil);
         fallen.clear();
         out.animated += moving;
     }
@@ -1815,6 +1840,8 @@ pub fn paint(b: &Bonsai, config: &Config, theme: Theme) -> Painted {
     }
     body.push_str("</g>");
     body.push_str(&roots_front);
+    // What a sprout dropped lies on the soil, over the roots.
+    body.push_str(&on_soil);
     body.push_str(&moss_front);
     // Momiji: in a milestone week a few leaves turn crimson and drift down.
     for (k, (x, y, h)) in fallen.iter().enumerate() {
@@ -1885,6 +1912,25 @@ fn root_reach(base_r: f64, nebari: f64, hw: f64, az: f64, u: f64, brace: f64, of
 fn to_rim(rim: f64, az: f64, off: f64) -> f64 {
     let (c, s) = (math::cos(az), math::sin(az));
     (-off * c + (math::sq(rim) - math::sq(off * s)).max(0.0).sqrt()).max(0.0)
+}
+
+/// How far a root at azimuth `az` can run over the soil from a foot `off`
+/// sideways of the pot's center: to 3 inside the soil's edge, so its blunt
+/// tip stays on the soil, an ellipse on the ground inside the rim.
+fn to_soil(pot: &Pot, az: f64, off: f64) -> f64 {
+    use crate::pot::Shape;
+    let (sx, sy) = match pot.shape {
+        Shape::Oval => (pot.hw - 4.0, pot.ry - 2.0),
+        Shape::Bowl => ((pot.hw - 4.0) * 0.95, (pot.ry - 2.0) * 0.95),
+        Shape::Rect => pot.soil_reach(),
+    };
+    // On the ground the soil is as deep as it looks, over the pot's tilt.
+    let (a, b) = (sx - 3.0, sy * pot.hw / pot.ry - 3.0);
+    let (c, s) = (math::cos(az), math::sin(az));
+    let qa = math::sq(c / a) + math::sq(s / b);
+    let qb = 2.0 * off * c / math::sq(a);
+    let qc = math::sq(off / a) - 1.0;
+    ((-qb + (math::sq(qb) - 4.0 * qa * qc).max(0.0).sqrt()) / (2.0 * qa)).max(0.0)
 }
 
 /// A root's half-width a share `t` along it, `w0` where it leaves the trunk:
@@ -1986,6 +2032,8 @@ struct RootPlan {
     /// How far it has turned white with a classic-language trunk, 0 for
     /// bark.
     white: f64,
+    /// Drawn over the other roots.
+    over: bool,
 }
 
 /// Plans a tree's surface roots, more with age (3 to 7), from a trunk foot
@@ -2016,12 +2064,33 @@ fn root_plans(b: &Bonsai, base_r: f64, pot: &Pot, off: f64) -> Vec<RootPlan> {
                 brace,
                 thick: 1.0,
                 white: 0.0,
+                over: false,
             };
             hold_on(b, &mut plan, i, (base_r, u), pot, off);
+            plan.reach = plan.reach.min(to_soil(pot, plan.az, off));
             plan
         })
         .collect();
     whiten(&mut plans, b.skeleton.legacy_jin);
+    // A trunk more white than bark grips the soil with two white roots
+    // running forward, angled apart, over the others.
+    if b.skeleton.legacy_jin >= 0.5 {
+        for turn in [-0.55, 0.55] {
+            let mut r = Rng::keyed(b.account_id, &format!("root/front{turn}"));
+            let az = math::TAU / 4.0 + turn * b.leader.side;
+            plans.push(RootPlan {
+                az,
+                reach: root_reach(base_r, b.extras.nebari, pot.hw, az, r.unit(), 0.0, off)
+                    .min(to_soil(pot, az, off)),
+                bend: -turn * b.leader.side * 0.4,
+                jitter: (1.0, 1.0),
+                brace: 0.0,
+                thick: 0.8,
+                white: b.skeleton.legacy_jin,
+                over: true,
+            });
+        }
+    }
     plans
 }
 
@@ -2062,8 +2131,8 @@ fn whiten(plans: &mut [RootPlan], jin: f64) {
 fn hold_on(b: &Bonsai, plan: &mut RootPlan, i: u32, (base_r, u): (f64, f64), pot: &Pot, off: f64) {
     let half = math::TAU / 2.0;
     // A root stretching to the rim stops inside its band, short of the
-    // inner wall where the soil lies below the rim.
-    let edge = pot.hw * 0.92;
+    // inner wall where the soil lies below the rim, and on the soil.
+    let edge = |az: f64| to_rim(pot.hw * 0.92, az, off).min(to_soil(pot, az, off));
     let wind = b.leader.sweep.abs().min(1.0);
     if wind > 0.0 {
         let up = -b.leader.sweep.signum();
@@ -2080,7 +2149,7 @@ fn hold_on(b: &Bonsai, plan: &mut RootPlan, i: u32, (base_r, u): (f64, f64), pot
                 to_rim(pot.hw * 0.78, plan.az, off) * (0.45 + 0.55 * math::cos(plan.az).abs());
             plan.reach = free.min(room);
             if i == 0 {
-                plan.reach = math::lerp(plan.reach, to_rim(edge, plan.az, off), wind);
+                plan.reach = math::lerp(plan.reach, edge(plan.az), wind);
             }
         } else if math::cos(plan.az) * up < 0.0 {
             plan.reach *= 1.0 - 0.35 * wind;
@@ -2096,7 +2165,7 @@ fn hold_on(b: &Bonsai, plan: &mut RootPlan, i: u32, (base_r, u): (f64, f64), pot
         }
         let grip = ((math::cos(plan.az) * spill - 0.2) / 0.3).clamp(0.0, 1.0) * fall;
         if grip > 0.0 {
-            plan.reach = math::lerp(plan.reach, to_rim(edge, plan.az, off), grip);
+            plan.reach = math::lerp(plan.reach, edge(plan.az), grip);
         }
     }
 }
@@ -2136,6 +2205,7 @@ fn nebari(
             brace,
             thick,
             white,
+            over,
             ..
         } = plan;
         // A root gone white with its trunk is drawn as the trunk is.
@@ -2221,7 +2291,7 @@ fn nebari(
             light = bark.shift(0.05, 0.0),
             rw = Num(ww * 0.18),
         );
-        roots.push((math::sin(az), s));
+        roots.push((math::sin(az) + if over { 2.0 } else { 0.0 }, s));
         hulls.push(h);
     }
     roots.sort_by(|a, b| a.0.total_cmp(&b.0));
@@ -2420,24 +2490,54 @@ mod tests {
     }
 
     /// A second trunk leaving the trunk low runs on down into the soil, so
-    /// its start is cut at the soil, never a round end on the trunk's face;
-    /// one leaving higher up keeps its start.
+    /// its start is cut at the soil, never a round end on the trunk's face:
+    /// one within its own width of the foot, or within the trunk's, however
+    /// thin it is. One leaving higher up keeps its start.
     #[test]
     fn a_strand_leaving_the_trunk_low_runs_into_the_soil() {
         let mut low = vec![(254.0, 396.5, 7.4), (254.0, 390.0, 7.0)];
-        assert!(into_soil(&mut low, 404.0));
+        assert!(into_soil(&mut low, (254.0, 404.0), 4.0));
         assert!(
             low[0].1 > 404.0,
             "starts at {:.1}, above the soil",
             low[0].1
         );
         assert!(low.iter().all(|p| (p.0 - 254.0).abs() < 1e-9));
-        let mut high = vec![(254.0, 396.5, 0.9), (254.0, 390.0, 0.9)];
-        assert!(!into_soil(&mut high, 404.0));
+        // Thin, but within the trunk's width (8.9) of the foot.
+        let mut thin = vec![(258.0, 396.4, 2.8), (258.0, 390.0, 2.6)];
+        assert!(into_soil(&mut thin, (254.0, 404.0), 8.9));
+        assert!(thin[0].1 > 404.0, "starts at {:.1}", thin[0].1);
+        // A leaning strand carries on along its own line, no bend where it
+        // left the trunk.
+        let mut lean = vec![(258.0, 396.4, 2.8), (261.0, 390.0, 2.6)];
+        assert!(into_soil(&mut lean, (250.0, 404.0), 8.9));
+        let slope = |a: (f64, f64, f64), b: (f64, f64, f64)| (b.0 - a.0) / (b.1 - a.1);
+        assert!(lean[0].1 > 404.0 && lean[0].0 < 258.0, "{lean:?}");
+        assert!(
+            (slope(lean[0], lean[2]) - slope(lean[2], lean[3])).abs() < 1e-9,
+            "{lean:?}"
+        );
+        // One lying flatter is steepened, so it reaches the soil near the foot.
+        let mut flat = vec![(258.0, 396.4, 2.8), (266.0, 394.0, 2.6)];
+        assert!(into_soil(&mut flat, (254.0, 404.0), 8.9));
+        assert!(
+            (flat[0].0 - 258.0).abs() <= 0.6 * (flat[0].1 - 396.4) + 1e-9,
+            "{flat:?}"
+        );
+        // It never runs past the trunk's foot, so it meets the trunk in a V,
+        // never crossing it.
+        let mut over = vec![(256.0, 396.4, 2.8), (262.0, 390.0, 2.6)];
+        assert!(into_soil(&mut over, (254.0, 404.0), 8.9));
+        assert!((over[0].0 - 254.0).abs() < 1e-9, "{over:?}");
+        let mut high = vec![(254.0, 390.0, 0.9), (254.0, 384.0, 0.9)];
+        assert!(!into_soil(&mut high, (254.0, 404.0), 8.9));
+        // A limb well up a very wide trunk is a limb, not a second trunk.
+        let mut limb = vec![(220.0, 360.0, 6.0), (200.0, 350.0, 5.0)];
+        assert!(!into_soil(&mut limb, (254.0, 404.0), 60.0));
         assert_eq!(high.len(), 2);
         // Wood already starting in the soil is cut there as it is.
         let mut sunk = vec![(257.3, 405.3, 0.2), (250.0, 400.0, 0.2)];
-        assert!(!into_soil(&mut sunk, 404.0));
+        assert!(!into_soil(&mut sunk, (254.0, 404.0), 8.9));
         assert_eq!(sunk.len(), 2);
     }
 
@@ -2737,6 +2837,71 @@ mod tests {
                 .iter()
                 .all(|r| r.white == 0.0)
         );
+    }
+
+    /// A white trunk grips the soil: two more white roots run forward, one
+    /// each side of the viewer, drawn over the others and inside the rim. A
+    /// trunk in its bark has none.
+    #[test]
+    fn a_white_trunk_grips_with_two_forward_roots() {
+        let pot = root_pot();
+        let b = Bonsai::grow(
+            &crate::fixtures::by_name("legacy").unwrap().snapshot,
+            &Config::default(),
+            None,
+        );
+        let roots = root_plans(&b, 14.0, &pot, 0.0);
+        let over: Vec<&RootPlan> = roots.iter().filter(|r| r.over).collect();
+        assert_eq!(over.len(), 2, "{roots:?}");
+        assert!(
+            math::cos(over[0].az) * math::cos(over[1].az) < 0.0,
+            "{over:?}"
+        );
+        for r in &over {
+            assert!(
+                r.white > 0.0 && r.thick < 1.0 && math::sin(r.az) > 0.8,
+                "{r:?}"
+            );
+            assert!(root_end(r, 0.0) <= pot.hw * 0.92, "{r:?}");
+        }
+        let bark = styled(crate::config::Style::Chokkan);
+        assert!(root_plans(&bark, 14.0, &pot, 0.0).iter().all(|r| !r.over));
+        // Only once the trunk is more white than bark.
+        let mut faint = b;
+        faint.skeleton.legacy_jin = 1e-14;
+        assert!(root_plans(&faint, 14.0, &pot, 0.0).iter().all(|r| !r.over));
+    }
+
+    /// No root runs past the soil, even in a small pot whose rim takes up
+    /// much of its top: a windswept tree's longest and a cascade's gripping
+    /// roots end 3 inside the soil's edge, so their blunt tips stay on it.
+    #[test]
+    fn roots_stay_on_the_soil_in_a_small_pot() {
+        let pot = Pot {
+            hw: 52.0,
+            ry: 8.5,
+            depth: 30.0,
+            bw: 46.0,
+            glaze: Rgb::hex(0x2b_2b2b),
+            shape: crate::pot::Shape::Oval,
+            level: 0,
+        };
+        let (a, b) = (pot.hw - 7.0, (pot.ry - 2.0) * pot.hw / pot.ry - 3.0);
+        for style in [
+            crate::config::Style::Fukinagashi,
+            crate::config::Style::Kengai,
+        ] {
+            let b_ = styled(style);
+            for off in [0.0, -8.0, 8.0] {
+                for r in root_plans(&b_, 9.0, &pot, off) {
+                    let (x, z) = (off + r.reach * math::cos(r.az), r.reach * math::sin(r.az));
+                    assert!(
+                        math::sq(x / a) + math::sq(z / b) < 1.0,
+                        "{style:?} {off}: {r:?}"
+                    );
+                }
+            }
+        }
     }
 
     /// A root facing the viewer, seen nearly end-on, tapers to a point, so

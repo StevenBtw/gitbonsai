@@ -1,6 +1,6 @@
 // The gallery's pure logic: what the API sends, what the page shows, the
 // sign-in links and their results. Shared by gallery.ts and app.ts, and tested
-// by test/gallery-core.test.mjs.
+// by test/gallery-core.test.ts.
 
 /** The API's base URL; build.sh puts the real one (or a local stub's) in. */
 export const API = "@API@";

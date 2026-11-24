@@ -1229,6 +1229,18 @@ fn lip_of(pot: &Pot) -> (f64, f64) {
     }
 }
 
+/// How round a rectangle's rim frame is at its back corners, across: the
+/// vintage clay barely, the glossy cobalt a little more, the speckled green
+/// most. Seen from above it is foreshortened front to back.
+fn corner_r(pot: &Pot) -> f64 {
+    detail(pot)
+        * match pot.level {
+            10 => 9.0,
+            9 => 6.0,
+            _ => 3.0,
+        }
+}
+
 /// Whether a rectangle has the thick, detailed rim: the glossy cobalt and
 /// the speckled green do, the vintage clay a plain one.
 fn detailed_rim(pot: &Pot) -> bool {
@@ -1598,12 +1610,25 @@ fn top_rect(pot: &Pot, soil: Rgb) -> String {
             pot.glaze.shift(-0.18, 0.0)
         )
     };
-    let mut s = trap(
-        cx - lipw,
-        cx + lipw,
-        rim - ry,
-        rim + ry,
-        &format!(r#" fill="{}""#, pot.glaze.shift(0.09, 0.0)),
+    // The rim frame, its back corners rounded: each curve runs from the
+    // back edge to a point down the side, foreshortened as the top is, the
+    // pot twice as wide as it is deep.
+    let (l, r, yb, yf) = (cx - lipw, cx + lipw, rim - ry, rim + ry);
+    let c = corner_r(pot);
+    let down = (c * 2.0 * ry / hw / (yf - yb)).min(0.5);
+    let mut frame = PathData::new();
+    frame
+        .m((l, yf))
+        .l((l + tp * (1.0 - down), yb + (yf - yb) * down))
+        .q((l + tp, yb), (l + tp + c, yb))
+        .l((r - tp - c, yb))
+        .q((r - tp, yb), (r - tp * (1.0 - down), yb + (yf - yb) * down))
+        .l((r, yf))
+        .z();
+    let mut s = format!(
+        r#"<path d="{}" fill="{}"/>"#,
+        frame.as_str(),
+        pot.glaze.shift(0.09, 0.0)
     );
     let opening = trap(l0, r0, b0, f0, "");
     let _ = write!(
@@ -2089,8 +2114,10 @@ mod tests {
             .filter(|t| !t.is_empty())
             .map(|t| t.parse().unwrap())
             .collect();
-        // M back-left y H back-right L front-right y H front-left Z
-        let (back, front) = (n[2] - n[0], n[3] - n[5]);
+        // M front-left y, up the side, Q round the back-left corner (its
+        // control point the corner), along the back, Q round the back-right
+        // corner, down to the front-right.
+        let (back, front) = (n[10] - n[4], n[14] - n[0]);
         let k = detail(&pot);
         assert!((front - back - 6.0 * k).abs() < 0.05, "{d}");
     }
@@ -2290,6 +2317,31 @@ mod tests {
                 "{level}: {}",
                 rim(&pot)
             );
+        }
+    }
+
+    /// A rectangle's rim frame is rounded at the back corners, the vintage
+    /// clay's barely, the glossy cobalt's a little more, the speckled
+    /// green's most.
+    #[test]
+    fn a_rectangles_back_corners_are_rounded() {
+        let mut last = 0.0;
+        for level in 8..11u8 {
+            let pot = Pot {
+                hw: 100.0,
+                ry: 17.0,
+                depth: 60.0,
+                bw: 80.0,
+                glaze: Rgb::hex(0x23_468f),
+                shape: Shape::Rect,
+                level,
+            };
+            let r = corner_r(&pot);
+            assert!(r > last, "{level}: {r}");
+            last = r;
+            let t = top(&pot, Rgb::hex(0x4a_3a2a));
+            let frame = &t[..t.find("/>").unwrap()];
+            assert_eq!(frame.matches('Q').count(), 2, "{level}: {frame}");
         }
     }
 
