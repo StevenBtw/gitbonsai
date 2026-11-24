@@ -20,7 +20,8 @@ Farcical aquatic ceremony, and a white trunk grips the soil with two forward roo
 - **The site's how-to screen keeps its size**: on gitbonsai.dev the screen under "Add it to your profile" no longer changes height between its steps, so the page stays put on a phone; its workflow file is set a size smaller.
 - **Strands leaving just above the soil run into it**: a strand or second trunk leaving within the trunk's width of the soil carries on along its own line into the soil, meeting the trunk in a V, instead of starting in a round end on the trunk's face.
 
-## [0.6.1] - 2026-11-24
+
+## [0.6.1] - 2026-11-23
 
 Pot meta rebalance and shadow update: pots stand without feet and cast one stepped shadow, soil heaps up gently with a fine grain, moss grows as star moss, and the rectangles are seen flatter, with a higher rim, the finest two with a detailed rim. Every tree's picture changes around its pot, which would make this a minor version; it ships as 0.6.1 because it finishes the pots of 0.6.0. gitbonsai.dev gets an icon.
 
