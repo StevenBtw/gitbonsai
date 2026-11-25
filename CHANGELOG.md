@@ -2,6 +2,24 @@
 
 All notable changes to gitbonsai, a Japanese maple bonsai grown from GitHub activity. A change to how a tree grows or looks is at least a minor version, because people notice their tree changing; a patch only fixes drawing bugs, wood or leaves drawn where they were never meant to be.
 
+## [0.6.2] - 2026-11-25
+
+Farcical aquatic ceremony, and a white trunk grips the soil with two forward roots. A cascade grown from one classic language alone turns white as it should, and the rectangles' rims are rounded at the back. Trees with a white trunk, a rectangle pot, a root reaching the rim or a strand leaving just above the soil change around their foot or pot, which would make this a minor version; it ships as 0.6.2 because it finishes the look of 0.6.1.
+
+### Changed
+
+- **A white trunk grips the soil with two forward roots**: a trunk more white than bark grows two white roots running toward the viewer, angled apart and over the others, so its foot no longer ends in a hard edge on the soil.
+- **Rectangle pots have rounded back corners**: the rim frame curves round its back corners, barely on the vintage clay, a little more on the glossy cobalt and most on the speckled green.
+- **The exhibition sorts by most stars**: the trees with the most stars come first; newest first and A to Z stay in the sort menu.
+
+### Fixed
+
+- **A cascade grown from one classic language turns white**: its trunk stayed in its bark unless a second language claimed a strand; the classic language now keeps a lifeline up the trunk, which turns white over it as the tree ages, as the legend says.
+- **Roots stay on the soil**: a windswept or cascading tree's longest roots stop on the soil instead of running onto the rim, most visibly in the training pot.
+- **A sprout's dropped seed leaf lies over the roots**: a root no longer runs across it.
+- **The site's how-to screen keeps its size**: on gitbonsai.dev the screen under "Add it to your profile" no longer changes height between its steps, so the page stays put on a phone; its workflow file is set a size smaller.
+- **Strands leaving just above the soil run into it**: a strand or second trunk leaving within the trunk's width of the soil carries on along its own line into the soil, meeting the trunk in a V, instead of starting in a round end on the trunk's face.
+
 ## [0.6.1] - 2026-11-23
 
 Pot meta rebalance and shadow update: pots stand without feet and cast one stepped shadow, soil heaps up gently with a fine grain, moss grows as star moss, and the rectangles are seen flatter, with a higher rim, the finest two with a detailed rim. Every tree's picture changes around its pot, which would make this a minor version; it ships as 0.6.1 because it finishes the pots of 0.6.0. gitbonsai.dev gets an icon.

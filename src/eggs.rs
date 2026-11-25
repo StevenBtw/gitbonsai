@@ -7,7 +7,7 @@
 //!
 //! | Achievement | x1 | x2 | x3 | x4 |
 //! |---|---|---|---|---|
-//! | Pull Shark | small stone fish | goldfish pebble | stone tuna | stone shark |
+//! | Pull Shark | small stone fish | polished ivory white shark | stone tuna | stone shark |
 //! | Starstruck | paper star | clear-glass furin | blue furin painted with stars | golden furin, strip swaying |
 //! | Pair Extraordinaire (spring) | (nothing) | two pebbles | yin-yang pebbles | red-crowned cranes |
 //! | Galaxy Brain | glowworm (summer) | firefly (summer) | firefly + a galaxy begonia leaf behind the trunk | firefly + a night sky petunia behind the trunk |
@@ -633,21 +633,13 @@ pub fn eggs(
     if let Some(t) = tier("pull-shark") {
         let (symbol, half) = match t {
             1 => ("fish1", 5.5),
-            2 => ("fish2", 6.5),
-            3 => ("fish3", 9.0),
+            2 => ("ivoryshark", 7.2),
+            3 => ("fish3", 6.75),
             _ => ("fish4", 12.0),
         };
-        // The goldfish is a pebble painted orange-gold; the others stay plain stone.
-        let paint = if t == 2 {
-            if dark {
-                Rgb::hex(0xe59a45)
-            } else {
-                Rgb::hex(0xd9822f)
-            }
-        } else {
-            paints.stone
-        };
-        let at = (CENTER_X + hw * 0.5, SOIL_Y + ry * 0.35);
+        // The ivory shark, tall with its fins, lies further back.
+        let depth = if t == 2 { 0.05 } else { 0.35 };
+        let at = (CENTER_X + hw * 0.5, SOIL_Y + ry * depth);
         if let Some((x, y)) = settle(
             &mut soil,
             at,
@@ -657,14 +649,48 @@ pub fn eggs(
         ) {
             let _ = write!(
                 e.front,
-                r##"<g transform="translate({} {}) scale({})"><ellipse cy="1.4" rx="{}" ry="1.6" fill="{shadow}" opacity=".45"/><use href="#{symbol}" fill="{paint}" stroke="{}" stroke-width=".3"/><path d="M-2-2.2Q.4-3.2 2.6-2.2" fill="none" stroke="#fff" stroke-width=".55" opacity=".45"/><g fill="{}" opacity=".3"><circle cx="-2" cy="-.6" r=".35"/><circle cx="1" cy="-1.4" r=".28"/><circle cx="-.4" cy=".4" r=".3"/></g></g>"##,
+                r#"<g transform="translate({} {}) scale({})">"#,
                 Num(x),
                 Num(y),
-                Num(w * 1.3 * k),
-                Num(half),
-                paint.shift(-0.18, 0.0),
-                paint.shift(-0.2, 0.0)
+                Num(w * 1.3 * k)
             );
+            if t == 2 {
+                // A polished ivory white shark, seen three quarters on, at a
+                // little over half the size it is drawn and a little flatter:
+                // its back lit above a crisp crease from snout to tail, the
+                // flank and belly a step darker each. It lies sunk in the
+                // soil, its belly and fins under it, with a faint shadow.
+                let (ivory, edge) = if dark {
+                    (Rgb::hex(0xede5d3), Rgb::hex(0xb09c76))
+                } else {
+                    (Rgb::hex(0xf6f0e2), Rgb::hex(0xc3b08c))
+                };
+                let _ = write!(
+                    e.front,
+                    r##"<ellipse cx=".6" cy="1" rx="{}" ry="1" fill="{shadow}" opacity=".28"/><clipPath id="sunk"><rect x="-12" y="-12" width="24" height="14.1"/></clipPath><use href="#{symbol}" clip-path="url(#sunk)" transform="scale(.55 .46)" fill="{ivory}" stroke="{edge}" stroke-width=".36" stroke-linejoin="round"/><ellipse cx="1.2" cy="1.05" rx="{}" ry=".42" fill="{}" opacity=".9"/></g>"##,
+                    Num(half * 0.85),
+                    Num(half * 0.62),
+                    paints.soil.shift(-0.04, 0.0)
+                );
+            } else {
+                let paint = paints.stone;
+                // The tuna carries its own gloss along its back, and is
+                // drawn at three quarters of its size.
+                let (gloss, size) = if t == 3 {
+                    ("", r#" transform="scale(.75)""#)
+                } else {
+                    (
+                        r##"<path d="M-2-2.2Q.4-3.2 2.6-2.2" fill="none" stroke="#fff" stroke-width=".55" opacity=".45"/>"##,
+                        "",
+                    )
+                };
+                let _ = write!(
+                    e.front,
+                    r##"<ellipse cy="1.4" rx="{half}" ry="1.6" fill="{shadow}" opacity=".45"/><use href="#{symbol}"{size} fill="{paint}" stroke="{}" stroke-width=".3" stroke-linejoin="round"/>{gloss}<g fill="{}" opacity=".3"><circle cx="-2" cy="-.6" r=".35"/><circle cx="1" cy="-1.4" r=".28"/><circle cx="-.4" cy=".4" r=".3"/></g></g>"##,
+                    paint.shift(-0.18, 0.0),
+                    paint.shift(-0.2, 0.0)
+                );
+            }
         }
     }
     // A pair is a spring thing: the pebbles and the cranes' courtship.
@@ -773,14 +799,8 @@ pub fn eggs(
             // The clapper hangs inside the bell at its lip, where it strikes
             // the rim: drawn first, so the glass or metal covers its upper
             // half. The paper strip that catches the wind hangs below.
-            // The painted chimes dance in the wind: the blue one slowly,
-            // the golden one faster.
-            let sway = match t {
-                3 => r#" class="fw""#,
-                t if t >= 4 => r#" class="fs""#,
-                _ => "",
-            };
-            e.animated += usize::from(t >= 3);
+            let sway = format!(r#" class="{}""#, furin_sway(t));
+            e.animated += 1;
             let _ = write!(
                 g,
                 r##"<g{sway}><path d="M0 4.2V12" stroke="#8a7a5a" stroke-width=".3"/><circle cy="9.5" r=".75" fill="{edge}"/><rect x="-1.2" y="12" width="2.4" height="7.4" fill="{strip}" stroke="#00000022" stroke-width=".2"/></g>"##
@@ -1067,6 +1087,9 @@ pub fn kintsugi(archived: &[String], seed: u64, pot: &Pot, dark: bool, lit: f64)
     let tone_of = |z: usize| if z == 0 { 0.0 } else { SHADE[z - 1].1 };
     let (mut stapled, mut clipped) = ([false; 3], false);
     let mut veins = String::new();
+    // The staples, drawn after every crack: one crack never runs over
+    // another's staple.
+    let mut pins = String::new();
     for (i, name) in archived.iter().take(MAX_SEAMS).enumerate() {
         let theta = math::rad(base + i as f64 * GOLDEN);
         if math::sin(theta) < 0.2 || math::cos(theta).abs() > 0.9 {
@@ -1209,7 +1232,7 @@ pub fn kintsugi(archived: &[String], seed: u64, pot: &Pot, dark: bool, lit: f64)
             let z = zone(x);
             stapled[z] = true;
             let _ = write!(
-                veins,
+                pins,
                 r##"<use href="#stp{}" transform="translate({} {})rotate({})"/>"##,
                 STEP_ID[z],
                 Num::coarse(x),
@@ -1218,6 +1241,7 @@ pub fn kintsugi(archived: &[String], seed: u64, pot: &Pot, dark: bool, lit: f64)
             );
         }
     }
+    veins.push_str(&pins);
     if veins.is_empty() {
         return String::new();
     }
@@ -1268,9 +1292,43 @@ pub fn kintsugi(archived: &[String], seed: u64, pot: &Pot, dark: bool, lit: f64)
     )
 }
 
+/// The class a furin of tier `t` sways by in the wind, each finer one
+/// faster: the clear glass slowly, the blue nearly as fast as the golden.
+fn furin_sway(t: u8) -> &'static str {
+    match t {
+        2 => "fw",
+        3 => "fm",
+        _ => "fs",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Every furin sways, each finer one faster: the clear glass slowly,
+    /// the blue nearly as fast as the golden one.
+    #[test]
+    fn every_furin_sways_each_finer_one_faster() {
+        let period = |t: u8| {
+            let class = furin_sway(t);
+            let rule = crate::render::ANIMATION_CSS
+                .split(&format!(".{class}{{"))
+                .nth(1)
+                .expect(class);
+            let at = rule.find("s ease").unwrap();
+            rule[..at]
+                .rsplit(' ')
+                .next()
+                .unwrap()
+                .parse::<f64>()
+                .unwrap()
+        };
+        let (clear, blue, golden) = (period(2), period(3), period(4));
+        assert!(clear > blue && blue > golden, "{clear} {blue} {golden}");
+        assert!(blue - golden < 0.6, "{blue} {golden}");
+        assert_eq!(golden, 2.4);
+    }
 
     /// A galaxy plant peeks: its stem always behind the trunk and some of
     /// it too, most of it showing, the petunia's centre always in view.
@@ -1316,6 +1374,44 @@ mod tests {
         let mut last = [spot(3.0, 0.55, true), spot(19.0, 0.3, true)];
         last[0].centred = false;
         assert_eq!(peek(&last), (None, Some((19.0, 319.0))));
+    }
+
+    /// Pull Shark x2 lays an ivory white shark trinket on the soil, in place
+    /// of the painted goldfish.
+    #[test]
+    fn pull_shark_x2_is_an_ivory_white_shark() {
+        let config = crate::Config::default();
+        let b = Bonsai::grow(
+            &crate::fixtures::by_name("comeback").unwrap().snapshot,
+            &config,
+            None,
+        );
+        assert_eq!(b.achievements.get("pull-shark"), Some(&2));
+        let svg = crate::render::svg(&b, &config, crate::render::Theme::Light);
+        assert!(svg.contains(r##"href="#ivoryshark""##));
+        assert!(!svg.contains("fish2"));
+    }
+
+    /// Every staple lies over every crack: none is drawn under a crack that
+    /// runs across it.
+    #[test]
+    fn staples_lie_over_every_crack() {
+        let pot = Pot {
+            hw: 120.0,
+            ry: 22.0,
+            depth: 80.0,
+            bw: 96.0,
+            glaze: Rgb::hex(0x6b_4e3d),
+            shape: crate::pot::Shape::Oval,
+            level: 2,
+        };
+        let names: Vec<String> = (0..12).map(|i| format!("repo{i}")).collect();
+        let svg = kintsugi(&names, 7, &pot, false, 1.0);
+        let first = svg.find(r##"href="#stp"##).expect("staples");
+        assert!(
+            !svg[first..].contains(r#"stroke-width=".8""#),
+            "a crack over a staple"
+        );
     }
 
     /// A crack in the brown clay oval gets a copper staple about every 20

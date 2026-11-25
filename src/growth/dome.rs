@@ -2313,6 +2313,29 @@ fn grow_trunks(sk: &mut Skeleton, c: &Ctx, leader: &Leader, rng: &mut Rng) -> Wo
             st.share = 0.5 * st.share + 0.5 * was[2];
         }
     }
+    // A cascade grown from one classic language alone keeps a lifeline: that
+    // language claims a strand of its own along the trunk, which turns white
+    // over it as it does under a second language's strand, over a year and a
+    // half of the tree's life.
+    if claimed.is_empty()
+        && leader.cascade != 0.0
+        && let Some(lang) = founder
+            .as_deref()
+            .filter(|l| crate::style::is_legacy(l) && !life.dropped(l))
+    {
+        #[allow(
+            clippy::cast_possible_truncation,
+            reason = "a tree's age in months, a few hundred at most"
+        )]
+        let months = (life.age() * 12.0).round() as i32;
+        claimed.push(crate::growth::trunks::Strand {
+            lang: lang.to_string(),
+            peel: 0.0,
+            sag: 0.0,
+            share: 0.1,
+            months,
+        });
+    }
     // A cascade has one trunk: its languages' strands stay along it, and
     // show as branches instead.
     let kc = leader.cascade.abs();
@@ -3783,6 +3806,38 @@ pub fn grow(
 mod tests {
     use super::*;
     use crate::growth::testkit::snap;
+
+    /// A cascade grown from one classic language alone, Fortran for six
+    /// years, still turns white: its own language keeps a living strand up
+    /// the white trunk as its lifeline, as a second language's strand does.
+    #[test]
+    fn a_lone_classic_language_cascade_turns_white_with_a_lifeline() {
+        let start: crate::date::Date = "2020-01-06".parse().unwrap();
+        let days: Vec<(crate::date::Date, u32, &[(&str, u32)])> = (0..6 * 52)
+            .flat_map(|w| (0..4).map(move |d| start.add_days(w * 7 + d)))
+            .map(|d| (d, 6, &[("Fortran", 6)][..]))
+            .collect();
+        let observed = start.add_days(6 * 364);
+        let b = crate::Bonsai::grow(&snap(&days, observed), &crate::Config::default(), None);
+        assert!(
+            b.leader.cascade.abs() > 0.5,
+            "a cascade: {}",
+            b.leader.cascade
+        );
+        assert!(
+            b.skeleton.legacy_jin > 0.95,
+            "white: {}",
+            b.skeleton.legacy_jin
+        );
+        assert!(
+            b.skeleton
+                .nodes
+                .iter()
+                .any(|n| n.strand && n.language.as_deref() == Some("Fortran")),
+            "a living Fortran strand up the trunk"
+        );
+        assert_eq!(b.white_trunk(), Some("Fortran"));
+    }
 
     /// Every fixture life old enough for the dome, with its seed.
     fn dome_lives() -> Vec<(String, Life, u64)> {

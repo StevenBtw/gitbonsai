@@ -1,19 +1,23 @@
-// Tests for gallery-core.ts, run on its compiled output: npm test --prefix site
+// Tests for gallery-core.ts, type-checked by tsc and run as TypeScript by
+// Node: npm test --prefix site
 import test from "node:test";
 import assert from "node:assert/strict";
-import * as g from "../.test-out/gallery-core.js";
+import * as g from "../gallery-core.ts";
 
-const e = (login, over = {}) => ({
-  login,
-  github_id: login.length,
-  style: "moyogi",
-  languages: ["Rust"],
-  added: "2026-11-01T00:00:00Z",
-  grown: "2026-11-01T00:00:00Z",
-  stars: 0,
-  age_weeks: 300,
-  ...over,
-});
+// A grown tree as the tests build it; `over` may set fields to what a real
+// answer never holds, to check the guards.
+const e = (login: string, over: Partial<g.Entry> = {}): g.Grown =>
+  ({
+    login,
+    github_id: login.length,
+    style: "moyogi",
+    languages: ["Rust"],
+    added: "2026-11-01T00:00:00Z",
+    grown: "2026-11-01T00:00:00Z",
+    stars: 0,
+    age_weeks: 300,
+    ...over,
+  }) as g.Grown;
 
 test("cleanLogin trims, drops one @ and validates", () => {
   assert.equal(g.cleanLogin("  @StevenBtw "), "StevenBtw");
@@ -34,7 +38,7 @@ test("parseList reads entries and drops malformed ones", () => {
 
 test("parseWholeList keeps an answer only when every entry reads", () => {
   const good = e("tj");
-  assert.deepEqual(g.parseWholeList({ entries: [good] }).map((x) => x.login), ["tj"]);
+  assert.deepEqual(g.parseWholeList({ entries: [good] })?.map((x) => x.login), ["tj"]);
   assert.deepEqual(g.parseWholeList({ entries: [] }), []);
   // One malformed entry, or no list at all: the whole answer is set aside.
   assert.equal(g.parseWholeList({ entries: [good, { ...good, login: undefined }] }), null);
@@ -55,7 +59,7 @@ test("view filters and sorts without mutating", () => {
     e("Anna", { style: "moyogi", languages: ["Rust"], added: "2026-11-01T00:00:00Z", stars: 5 }),
   ];
   const copy = structuredClone(all);
-  const base = { search: "", style: "", language: "", age: "", sort: "new" };
+  const base: g.Query = { search: "", style: "", language: "", age: "", sort: "new" };
   assert.deepEqual(g.view(all, { ...base, search: "STEV" }).map((x) => x.login), ["stevenbtw"]);
   assert.deepEqual(g.view(all, { ...base, style: "moyogi" }).map((x) => x.login), ["tj", "Anna"]);
   assert.deepEqual(g.view(all, { ...base, language: "Rust" }).map((x) => x.login), ["stevenbtw", "Anna"]);
@@ -106,7 +110,7 @@ test("authUrl and svgUrl", () => {
 });
 
 test("ageBracket buckets whole years, with 18+ at the top", () => {
-  const y = (n) => n * 52;
+  const y = (n: number) => n * 52;
   assert.equal(g.ageBracket(0), "0");
   assert.equal(g.ageBracket(51), "0");
   assert.equal(g.ageBracket(y(1)), "1");
@@ -123,26 +127,27 @@ test("ageBracket buckets whole years, with 18+ at the top", () => {
 
 test("the age filter, and entries without an age", () => {
   const all = [e("old", { age_weeks: 20 * 52 }), e("young", { age_weeks: 10 }), e("mid", { age_weeks: 5 * 52 })];
-  const base = { search: "", style: "", language: "", age: "", sort: "az" };
+  const base: g.Query = { search: "", style: "", language: "", age: "", sort: "az" };
   assert.deepEqual(g.view(all, { ...base, age: "18" }).map((x) => x.login), ["old"]);
   assert.deepEqual(g.view(all, { ...base, age: "0" }).map((x) => x.login), ["young"]);
   assert.deepEqual(g.view(all, { ...base, age: "4" }).map((x) => x.login), ["mid"]);
-  const { age_weeks, ...noAge } = e("x");
+  const { age_weeks: _, ...noAge } = e("x");
   const kept = g.parseList({ entries: [noAge] });
-  assert.equal(g.parseList({ entries: [{ ...noAge, age_weeks: null }] })[0].age_weeks, -1);
+  assert.equal(g.parseList({ entries: [{ ...noAge, age_weeks: null }] })[0]?.age_weeks, -1);
   assert.equal(kept.length, 1);
-  assert.equal(kept[0].age_weeks, -1);
+  assert.equal(kept[0]?.age_weeks, -1);
   assert.deepEqual(g.view(kept, { ...base, age: "0" }), []);
   assert.equal(g.view(kept, base).length, 1);
 });
 
 // A tree shown before it has grown, exactly as GET /v1/gallery sends it.
-const waitingEntry = (login, added = "2026-11-10T00:00:00Z") => ({
+const waitingEntry = (login: string, added = "2026-11-10T00:00:00Z") => ({
   login, github_id: 7, added, example: false, stars: 0, grown: null, style: null, languages: [], age_weeks: null,
 });
 
 test("a waiting entry parses, and a bad one is still dropped", () => {
   const [w] = g.parseList({ entries: [waitingEntry("sprout")] });
+  assert.ok(w);
   assert.equal(w.login, "sprout");
   assert.equal(w.grown, null);
   assert.equal(w.style, null);
@@ -158,7 +163,7 @@ test("a waiting entry parses, and a bad one is still dropped", () => {
 
 test("waiting entries leave a style or language filter, and sort by added", () => {
   const all = [e("tj", { added: "2026-11-01T00:00:00Z" }), ...g.parseList({ entries: [waitingEntry("sprout", "2026-11-05T00:00:00Z")] })];
-  const base = { search: "", style: "", language: "", age: "", sort: "new" };
+  const base: g.Query = { search: "", style: "", language: "", age: "", sort: "new" };
   assert.deepEqual(g.view(all, { ...base, style: "moyogi" }).map((x) => x.login), ["tj"]);
   assert.deepEqual(g.view(all, { ...base, language: "Rust" }).map((x) => x.login), ["tj"]);
   assert.deepEqual(g.view(all, base).map((x) => x.login), ["sprout", "tj"]);
@@ -166,16 +171,16 @@ test("waiting entries leave a style or language filter, and sort by added", () =
 });
 
 test("progress parses, and a bad one becomes null without dropping the entry", () => {
-  const one = (progress) => g.parseList({ entries: [{ ...waitingEntry("sprout"), progress }] });
-  assert.deepEqual(one({ done: 41, total: 64 })[0].progress, { done: 41, total: 64 });
-  assert.deepEqual(one({ done: 0, total: 3 })[0].progress, { done: 0, total: 3 });
-  assert.deepEqual(one({ done: 400, total: 400 })[0].progress, { done: 400, total: 400 });
+  const one = (progress: unknown) => g.parseList({ entries: [{ ...waitingEntry("sprout"), progress }] });
+  assert.deepEqual(one({ done: 41, total: 64 })[0]?.progress, { done: 41, total: 64 });
+  assert.deepEqual(one({ done: 0, total: 3 })[0]?.progress, { done: 0, total: 3 });
+  assert.deepEqual(one({ done: 400, total: 400 })[0]?.progress, { done: 400, total: 400 });
   // A hundred years of quarters at most, and never an unsafe number: the year rings are drawn one by one.
   const big = 2 ** 53;
   for (const bad of [null, undefined, { done: 65, total: 64 }, { done: -1, total: 4 }, { done: 1.5, total: 4 }, { done: 1, total: 0 }, { done: "3", total: 4 }, 7, { done: 1, total: 401 }, { done: big, total: big }]) {
     const [e] = one(bad);
     assert.equal(e?.login, "sprout", JSON.stringify(bad));
-    assert.equal(e.progress, null, JSON.stringify(bad));
+    assert.equal(e?.progress, null, JSON.stringify(bad));
   }
 });
 
@@ -183,6 +188,7 @@ test("polling: 5 s while one grows, 30 s while the only ones waiting are queued,
   const [queued] = g.parseList({ entries: [{ ...waitingEntry("q"), progress: null }] });
   const [growing] = g.parseList({ entries: [{ ...waitingEntry("w"), progress: { done: 3, total: 28 } }] });
   const [regrowing] = g.parseList({ entries: [{ ...e("tj"), progress: { done: 10, total: 28 } }] });
+  assert.ok(queued && growing && regrowing);
   assert.equal(g.pollDelay([]), null);
   assert.equal(g.pollDelay([e("tj")]), null);
   assert.equal(g.pollDelay([regrowing]), null);

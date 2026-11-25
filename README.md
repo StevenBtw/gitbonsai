@@ -26,7 +26,7 @@ Unless you set a style, your last three years mostly pick the shape: steady work
   </picture>
 </p>
 
-From top left, smallest to largest:
+From top left:
 
 - **Sprout** (simulated): three days and 12 contributions in, its seed leaves still open.
 - **Newcomer**: the same account a few months in, a thin seedling.
@@ -70,7 +70,7 @@ The five real trees are grown from their public GitHub activity with `gitbonsai 
 Add the action to a weekly workflow in your profile repository (`<you>/<you>`); [examples/profile-workflow.yml](examples/profile-workflow.yml) is a complete one to copy to `.github/workflows/bonsai.yml`:
 
 ```yaml
-- uses: StevenBtw/gitbonsai@v0.6.1
+- uses: StevenBtw/gitbonsai@v0.6.2
   with:
     output-dir: assets   # bonsai-light.svg and bonsai-dark.svg
     legend: left         # optional: off (default), left or right

@@ -10,7 +10,8 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "isolatedModules": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "types": []
   },
   "files": ["app.ts", "gallery-core.ts", "gallery.ts"]
 }

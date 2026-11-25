@@ -408,6 +408,7 @@ fn every_output_stays_within_budget() {
                     "class=\"gl\"",
                     "class=\"fs\"",
                     "class=\"fw\"",
+                    "class=\"fm\"",
                     "class=\"ff\"",
                 ]
                 .iter()
@@ -823,13 +824,14 @@ fn a_dormant_tree_grows_leaves_again() {
     assert!(after.skeleton.flows()[0] >= before.skeleton.flows()[0]);
 }
 
-/// Both painted wind chimes dance: the blue one slowly, the golden one faster.
+/// Both painted wind chimes dance: the blue one a little slower than the
+/// golden one.
 #[test]
 fn the_wind_chimes_sway_at_their_own_pace() {
     let render = |name: &str| render::svg(&grow(name), &Config::default(), Theme::Light);
     let blue = render("polyglot");
     let golden = render("veteran");
-    assert!(blue.contains("class=\"fw\""), "the blue chime sways");
+    assert!(blue.contains("class=\"fm\""), "the blue chime sways");
     assert!(golden.contains("class=\"fs\""), "the golden chime sways");
     let period = |svg: &str, class: &str| -> f64 {
         let rule = svg.split(&format!(".{class}{{")).nth(1).unwrap();
@@ -842,7 +844,7 @@ fn the_wind_chimes_sway_at_their_own_pace() {
             .unwrap()
     };
     assert!(
-        period(&blue, "fw") > period(&golden, "fs"),
+        period(&blue, "fm") > period(&golden, "fs"),
         "blue is the slower"
     );
 }
