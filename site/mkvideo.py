@@ -58,7 +58,7 @@ def main():
             meta.append({'n': os.path.basename(f)[:-len('-dark.svg')],
                          'vb': [float(x) for x in re.search(r'viewBox="([^"]*)"', s).group(1).split()],
                          'wk': re.search(r'observed (\d{4}-W\d+)', s).group(1),
-                         'd': caption(re.search(r'<desc id="d">([^<]*)', s).group(1))})
+                         'd': caption(re.search(r'<desc id="bonsai-desc">([^<]*)', s).group(1))})
         if not meta:
             sys.exit(f'no frames for {tree} in {src}')
         ux = min(m['vb'][0] for m in meta); uy = min(m['vb'][1] for m in meta)

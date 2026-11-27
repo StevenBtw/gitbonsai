@@ -38,7 +38,7 @@ def read(svg):
     meta = re.search(r'<metadata>([^<]*)</metadata>', text).group(1)
     # "gitbonsai 0.4.0; observed 2026-W44; moyogi; dark"
     style = [p.strip() for p in meta.split(';')][2]
-    desc = re.search(r'<desc id="d">([^<]*)</desc>', text).group(1)
+    desc = re.search(r'<desc id="bonsai-desc">([^<]*)</desc>', text).group(1)
     box = [float(v) for v in re.search(r'viewBox="([^"]+)"', text).group(1).split()]
     return style, desc, box
 
