@@ -1,4 +1,4 @@
-# <img src="site/favicon.svg" alt="" width="26" height="26" align="center"> gitbonsai
+# <img src="site/favicon.svg" alt="" width="26" height="26" align="absmiddle"> gitbonsai
 
 Grow a Japanese maple bonsai from your GitHub activity: an animated SVG for your profile README.
 
