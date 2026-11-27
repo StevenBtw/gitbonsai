@@ -1,6 +1,6 @@
 // gitbonsai.dev: the theme toggle, the timelapse player, "see your own tree"
 // (api.gitbonsai.dev) and the how-to. Compiled to app.js by build.sh.
-import { API as API_BASE, authUrl, cleanLogin, parseResult, resultText } from "./gallery-core.js";
+import { API as API_BASE, authUrl, cleanLogin, parseNextPot, parseResult, potNo, resultText } from "./gallery-core.js";
 
 /** The element with `id`; the page always has it. */
 function $<T extends HTMLElement = HTMLElement>(id: string): T {
@@ -64,7 +64,7 @@ const withLegend = (): boolean => heroLegend.checked && !narrow.matches;
 const variant = (p: Plate): string => `hero/${p.id}${withLegend() ? "-legend" : ""}`;
 let plates: Plate[] = [];
 let shown = -1;
-const plateNo = (i: number): string => String(i + 1).padStart(2, "0");
+const plateNo = (i: number): string => potNo(i + 1);
 // Grow-in, once: the plates before the Showcase pass by, then it rests there.
 // Not with reduced motion, not when the page opens scrolled past the hero, and
 // never again once a visitor picks a plate.
@@ -308,7 +308,6 @@ fetch("plates.json")
         gallery.appendChild(b);
       });
       heroCanvas.classList.add("scaled");
-      $("yourno").textContent = plateNo(plates.length);
       const home = Math.max(0, plates.findIndex((p) => p.id === "showcase"));
       homeAt = home;
       // A checked plate and one tab stop before the row is shown, also during the grow-in.
@@ -499,6 +498,14 @@ fetch("frames.json")
 
 /* Your tree: grown by api.gitbonsai.dev, shown only as <img> from a blob URL */
 const API = `${API_BASE}/v1/tree/`;
+// The visitor's plate takes the next free number: plates and the exhibition's pots are one series.
+void fetch(`${API_BASE}/v1/gallery`)
+  .then((r) => (r.ok ? r.json() : null))
+  .then((body: unknown) => {
+    const next = parseNextPot(body);
+    if (next !== null) $("yourno").textContent = potNo(next);
+  })
+  .catch(() => {});
 /** A 200 from the API. */
 interface Tree {
   login: string;
