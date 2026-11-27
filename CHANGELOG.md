@@ -2,7 +2,7 @@
 
 All notable changes to gitbonsai, a Japanese maple bonsai grown from GitHub activity. A change to how a tree grows or looks is at least a minor version, because people notice their tree changing; a patch only fixes drawing bugs, wood or leaves drawn where they were never meant to be.
 
-## [0.6.2] - 2026-11-27
+## [0.6.3] - 2026-11-27
 
 Full crowns release: every leaf of a tree's crown now shows. Half the leaf clusters in a single tree's SVG were never drawn, so every profile tree, exhibition tree and the site's own trees fill out; the README rows always showed them and stay as they were.
 
