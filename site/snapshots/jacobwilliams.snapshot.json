@@ -4,10 +4,10 @@
   "account_id": 6483379,
   "range": {
     "from": "2007-01-01",
-    "to": "2026-11-18"
+    "to": "2026-11-26"
   },
-  "observed_on": "2026-11-18",
-  "collected_with": "gitbonsai 0.4.0",
+  "observed_on": "2026-11-26",
+  "collected_with": "gitbonsai 0.6.3",
   "language_colors": {
     "Batchfile": "#c1f12e",
     "C": "#555555",
@@ -13766,7 +13766,7 @@
       "by_language": {
         "Fortran": 17
       },
-      "private": 1
+      "private": 2
     },
     {
       "date": "2026-11-05",
@@ -13782,7 +13782,8 @@
       "by_language": {
         "Fortran": 12,
         "HTML": 12
-      }
+      },
+      "private": 2
     },
     {
       "date": "2026-11-07",
@@ -13805,7 +13806,8 @@
       "by_language": {
         "Fortran": 17,
         "Python": 3
-      }
+      },
+      "private": 1
     },
     {
       "date": "2026-11-10",
@@ -13827,7 +13829,8 @@
       "total": 19,
       "by_language": {
         "Fortran": 18
-      }
+      },
+      "private": 1
     },
     {
       "date": "2026-11-13",
@@ -13843,7 +13846,8 @@
       "by_language": {
         "Fortran": 12,
         "HTML": 13
-      }
+      },
+      "private": 1
     },
     {
       "date": "2026-11-15",
@@ -13851,7 +13855,8 @@
       "by_language": {
         "Fortran": 28,
         "HTML": 2
-      }
+      },
+      "private": 1
     },
     {
       "date": "2026-11-16",
@@ -13859,7 +13864,8 @@
       "by_language": {
         "Fortran": 5,
         "HTML": 1
-      }
+      },
+      "private": 1
     },
     {
       "date": "2026-11-17",
@@ -13874,7 +13880,69 @@
       "by_language": {
         "C++": 1,
         "Fortran": 14
+      },
+      "private": 1
+    },
+    {
+      "date": "2026-11-19",
+      "total": 15,
+      "by_language": {
+        "Fortran": 15
       }
+    },
+    {
+      "date": "2026-11-20",
+      "total": 8,
+      "by_language": {
+        "Fortran": 9
+      }
+    },
+    {
+      "date": "2026-11-21",
+      "total": 9,
+      "by_language": {
+        "Fortran": 9
+      }
+    },
+    {
+      "date": "2026-11-22",
+      "total": 31,
+      "by_language": {
+        "Fortran": 7
+      },
+      "private": 21
+    },
+    {
+      "date": "2026-11-23",
+      "total": 21,
+      "by_language": {
+        "Fortran": 3
+      },
+      "private": 16
+    },
+    {
+      "date": "2026-11-24",
+      "total": 29,
+      "by_language": {
+        "Fortran": 9
+      },
+      "private": 18
+    },
+    {
+      "date": "2026-11-25",
+      "total": 12,
+      "by_language": {
+        "Fortran": 5
+      },
+      "private": 6
+    },
+    {
+      "date": "2026-11-26",
+      "total": 30,
+      "by_language": {
+        "Fortran": 18
+      },
+      "private": 10
     }
   ],
   "truncated_windows": [],
