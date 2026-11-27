@@ -323,7 +323,7 @@ footer a { color: var(--muted-foreground); }
   .gview-head { flex-wrap: wrap; row-gap: 4px; }
   .gview-head h2 { flex: 1 0 calc(100% - 52px); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .gview-head .icon-btn { order: 1; }
-  .gview-head .sty { order: 2; }
+  .gview-head .no, .gview-head .sty { order: 2; }
 }
 .gview-art { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 16px; }
 .gview-art img { width: 100%; max-height: calc(100dvh - 220px); object-fit: contain; }

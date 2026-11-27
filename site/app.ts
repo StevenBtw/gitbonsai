@@ -499,7 +499,8 @@ fetch("frames.json")
 /* Your tree: grown by api.gitbonsai.dev, shown only as <img> from a blob URL */
 const API = `${API_BASE}/v1/tree/`;
 // The visitor's plate takes the next free number: plates and the exhibition's pots are one series.
-void fetch(`${API_BASE}/v1/gallery`)
+// Revalidated, so a number another tree took meanwhile isn't offered from the cache.
+void fetch(`${API_BASE}/v1/gallery`, { cache: "no-cache" })
   .then((r) => (r.ok ? r.json() : null))
   .then((body: unknown) => {
     const next = parseNextPot(body);

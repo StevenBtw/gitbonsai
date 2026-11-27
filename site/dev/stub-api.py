@@ -43,6 +43,18 @@ def make_handler(args):
         entries[2]["progress"] = {"done": 0, "total": 24}
         # A grown tree being regrown keeps its picture; the page ignores its progress.
         next(e for e in entries if e["login"] == "tj")["progress"] = {"done": 10, "total": 28}
+    # Pot numbers as the API gives them: first come, first served from 9; an
+    # account taken out and shown again gets its own number back.
+    pots, nxt = {}, [9]
+
+    def pot(login):
+        if login.lower() not in pots:
+            pots[login.lower()] = nxt[0]
+            nxt[0] += 1
+        return pots[login.lower()]
+
+    for e in sorted(entries, key=lambda e: e["added"]):
+        e["pot"] = pot(e["login"])
 
     def grow():
         for e in entries:
@@ -87,7 +99,7 @@ def make_handler(args):
             if u.path == "/v1/gallery":
                 with lock:
                     grow()
-                    body = json.dumps({"entries": entries}).encode()
+                    body = json.dumps({"entries": entries, "next_pot": nxt[0]}).encode()
                 return self.send(200, body, extra=[("Cache-Control", "public, max-age=60")])
             if u.path == "/v1/gallery/starred":
                 with lock:
@@ -111,7 +123,7 @@ def make_handler(args):
                         entries.insert(0, {"login": login, "github_id": 1000 + len(entries), "style": "moyogi",
                                            "languages": ["Python"], "added": "2026-11-22T09:00:00Z",
                                            "grown": "2026-11-22T09:00:00Z", "stars": 0, "age_weeks": 120,
-                                           "progress": None})
+                                           "progress": None, "pot": pot(login)})
                     loc = f"{args.site}/?gallery={flag}&login={login}{'&legend=1' if legend == '1' else ''}#yours"
                 else:
                     flag = flag or "removed"
@@ -196,7 +208,9 @@ def selftest(args):
     code, _, body = call(B)
     lst = json.loads(body)["entries"]
     grown = [e for e in lst if e["grown"]]
-    assert code == 200 and len(grown) == 8 and all(len(e) == 9 for e in grown) and len(lst) == 10, lst
+    assert code == 200 and len(grown) == 8 and all(len(e) == 10 for e in grown) and len(lst) == 10, lst
+    # Pots from 9 in the order trees were added, and the next one after them.
+    assert sorted(e["pot"] for e in lst) == list(range(9, 19)) and json.loads(body)["next_pot"] == 19
     by = {e["login"]: e for e in lst}
     assert by["seedling"]["progress"] is None and by["tj"]["progress"] == {"done": 10, "total": 28}
     assert by[WAITING[1]]["progress"] == {"done": 4, "total": 24}, by[WAITING[1]]
@@ -219,6 +233,12 @@ def selftest(args):
     # A tree added through the sign-in is listed like any other.
     assert call(f"{B}/auth?login=new-here&action=add&legend=0")[0] == 302
     assert any(e["login"] == "new-here" for e in json.loads(call(B)[2])["entries"])
+    # Taken out and shown again, it gets its own pot back; no one else gets it.
+    pot_of = lambda: next(e["pot"] for e in json.loads(call(B)[2])["entries"] if e["login"] == "new-here")
+    first = pot_of()
+    assert call(f"{B}/auth?login=new-here&action=remove&legend=0")[0] == 302
+    assert call(f"{B}/auth?login=new-here&action=add&legend=0")[0] == 302
+    assert pot_of() == first == 19 and json.loads(call(B)[2])["next_pot"] == 20
     assert call(f"{B}/tj/dark.svg?v=x")[0] == 200 and call(f"{B}/tj/legend-light.svg")[0] == 200
     tree = json.loads(call(B.replace("/v1/gallery", "/v1/tree/seedling"))[2])
     assert isinstance(tree["style"], str), tree  # a waiting tree grows like any other
