@@ -70,7 +70,7 @@ The five real trees are grown from their public GitHub activity with `gitbonsai 
 Add the action to a weekly workflow in your profile repository (`<you>/<you>`); [examples/profile-workflow.yml](examples/profile-workflow.yml) is a complete one to copy to `.github/workflows/bonsai.yml`:
 
 ```yaml
-- uses: StevenBtw/gitbonsai@v0.6.2
+- uses: StevenBtw/gitbonsai@v0.6.3
   with:
     output-dir: assets   # bonsai-light.svg and bonsai-dark.svg
     legend: left         # optional: off (default), left or right

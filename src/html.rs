@@ -129,10 +129,10 @@ pub fn timelapse(title: &str, frames: &[(String, String)]) -> String {
         .map(|(base, label)| format!("[{:?},{:?}]", base, label))
         .collect();
     let body = format!(
-        r#"<h1>{}</h1><div class="bar"><button onclick="toggleTheme()">Light / dark</button><button id="play">Play</button><input id="t" type="range" min="0" max="{}" value="{}" style="width:420px"><span id="label"></span></div>
+        r#"<h1>{}</h1><div class="bar"><button onclick="toggleTheme()">Light / dark</button><button id="play">Play</button><input id="scrub" type="range" min="0" max="{}" value="{}" style="width:420px"><span id="label"></span></div>
 <figure style="--w:480px"><img id="l" class="light" alt=""><img id="d" class="dark" alt=""></figure>
 <script>
-const frames=[{}];const t=document.getElementById("t");
+const frames=[{}];const t=document.getElementById("scrub");
 function show(i){{const f=frames[i];document.getElementById("l").src=f[0]+"-light.svg";document.getElementById("d").src=f[0]+"-dark.svg";document.getElementById("label").textContent=f[1]}}
 t.oninput=()=>show(+t.value);show(+t.value);let timer=null;
 document.getElementById("play").onclick=()=>{{if(timer){{clearInterval(timer);timer=null;return}}if(+t.value>=frames.length-1)t.value=0;timer=setInterval(()=>{{if(+t.value>=frames.length-1){{clearInterval(timer);timer=null;return}}t.value=+t.value+1;show(+t.value)}},120)}};
