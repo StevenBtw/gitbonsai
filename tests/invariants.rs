@@ -387,6 +387,32 @@ fn rendering_is_deterministic() {
     }
 }
 
+/// Every id in an SVG names one element, so each `<use>` draws what it
+/// means to: a leaf cluster once shared its id with the title, and a
+/// browser drew those leaves as nothing.
+#[test]
+fn every_id_names_one_element() {
+    for fixture in fixtures::all() {
+        for style in Style::ALL {
+            let config = config(style);
+            let bonsai = Bonsai::grow(&fixture.snapshot, &config, None);
+            for theme in Theme::ALL {
+                let svg = render::svg(&bonsai, &config, theme);
+                let mut seen = std::collections::BTreeSet::new();
+                for part in svg.split(" id=\"").skip(1) {
+                    let id = &part[..part.find('"').unwrap()];
+                    assert!(
+                        seen.insert(id),
+                        "{}/{style}/{}: id {id:?} twice",
+                        fixture.name,
+                        theme.name()
+                    );
+                }
+            }
+        }
+    }
+}
+
 /// The budget: at most 241 KB, 2,800 elements and 80 animated elements.
 /// 0.3.0 raised it from 150 KB for crowns with 1.5 times the leaves; 0.4.0
 /// from 190 KB for the windswept and formal upright crowns; 0.6.0 from
@@ -496,8 +522,8 @@ fn the_svg_is_self_contained_and_accessible() {
             Theme::Dark,
         );
         assert!(svg.starts_with("<svg xmlns=\"http://www.w3.org/2000/svg\""));
-        assert!(svg.contains("<title id=\"t\">Bonsai for @fixture-"));
-        assert!(svg.contains("<desc id=\"d\">"));
+        assert!(svg.contains("<title id=\"bonsai-title\">Bonsai for @fixture-"));
+        assert!(svg.contains("<desc id=\"bonsai-desc\">"));
         assert_eq!(svg.matches("http://").count(), 1, "only the namespace");
         assert!(!svg.contains("<text"), "no rendered text");
         assert!(!svg.contains("<image"), "no embedded images");

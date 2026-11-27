@@ -367,7 +367,7 @@ fn draw(bonsai: &Bonsai, config: &Config, theme: Theme, camera: Option<Frame>) -
     let mut out = String::with_capacity(painted.body.len() + 16 * 1024);
     let _ = write!(
         out,
-        r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}" width="{size}" height="{height}" role="img" aria-labelledby="t d">"#,
+        r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}" width="{size}" height="{height}" role="img" aria-labelledby="bonsai-title bonsai-desc">"#,
         Num(x),
         Num(y),
         Num(w),
@@ -375,7 +375,8 @@ fn draw(bonsai: &Bonsai, config: &Config, theme: Theme, camera: Option<Frame>) -
     );
     let _ = write!(
         out,
-        r#"<title id="t">Bonsai for @{}</title><desc id="d">{}</desc>"#,
+        // Ids of their own: a leaf cluster is drawn from the symbol `t`.
+        r#"<title id="bonsai-title">Bonsai for @{}</title><desc id="bonsai-desc">{}</desc>"#,
         escape(&bonsai.login),
         escape(&bonsai.description())
     );
