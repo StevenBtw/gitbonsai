@@ -1,7 +1,6 @@
 name: gitbonsai
 description:
-  Grow a Japanese maple bonsai from a GitHub account's activity, as light and
-  dark animated SVGs for a profile README.
+  Grow a Japanese maple bonsai from a GitHub account's activity, as animated SVGs for a profile README.
 branding:
   icon: feather
   color: green
