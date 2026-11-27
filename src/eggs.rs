@@ -1392,6 +1392,7 @@ mod tests {
         };
         assert_eq!(drawn("sprout", 1), Vec::<&str>::new());
         assert_eq!(drawn("comeback", 2), ["fish1"]);
+        assert_eq!(drawn("steady", 3), ["fish3"]);
         assert_eq!(drawn("veteran", 4), ["ivoryshark"]);
     }
 
