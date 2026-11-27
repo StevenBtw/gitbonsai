@@ -10,7 +10,9 @@ import {
   isGrown,
   languagesByCount,
   pollDelay,
+  potNo,
   parseList,
+  parseNextPot,
   parseWholeList,
   parseResult,
   parseStarred,
@@ -134,11 +136,21 @@ async function toggle(login: string): Promise<void> {
   syncStars(login);
 }
 
+/** A tree's number in the exhibition, small in the corner as the front page's plates have it. */
+function potMark(pot: number): HTMLElement {
+  const no = document.createElement("span");
+  no.className = "no tnum";
+  no.textContent = potNo(pot);
+  no.title = `No. ${pot} in the exhibition`;
+  return no;
+}
+
 /* The grid */
 function card(e: Entry, i: number): HTMLElement {
   const a = document.createElement("article");
   a.className = "card plate";
   a.dataset.login = e.login;
+  if (e.pot !== null) a.append(potMark(e.pot));
   const who = document.createElement("span");
   who.className = "who";
   who.textContent = `@${e.login}`;
@@ -363,7 +375,7 @@ function showView(): void {
   close.setAttribute("aria-label", "Close");
   close.textContent = "✕";
   close.addEventListener("click", () => dlg.close());
-  head.append(title, sty, close);
+  head.append(...(e.pot === null ? [] : [potMark(e.pot)]), title, sty, close);
   const img = document.createElement("img");
   img.src = svgUrl(e, theme(), legendOn);
   img.alt = `The bonsai grown from the public activity of @${e.login}, ${e.style}`;
@@ -430,7 +442,10 @@ async function load(): Promise<void> {
     // Fresh after a sign-in round trip, so a tree just added or removed shows as it is now.
     const r = await fetch(`${API}/v1/gallery`, { cache: removed || location.hash ? "no-cache" : "default" });
     if (!r.ok) throw new Error(String(r.status));
-    all = parseList(await r.json());
+    const body: unknown = await r.json();
+    all = parseList(body);
+    const next = parseNextPot(body);
+    if (next !== null) $("next-pot").textContent = `; the next one shown is no. ${potNo(next)}`;
   } catch {
     status.textContent = "The exhibition can't be reached right now. Try again in a while.";
     return;

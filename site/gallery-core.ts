@@ -20,6 +20,9 @@ export interface Entry {
   /** How far its growth has come, in quarters of history fetched; null while it
    *  waits its turn, and ignored on a grown tree, which keeps its picture. */
   progress: Progress | null;
+  /** Its number in the exhibition, first come, first served from 9 (1 to 8
+   *  are the front page's plates); null when the API gives none. */
+  pot: number | null;
 }
 export interface Progress {
   done: number;
@@ -79,9 +82,20 @@ export function parseList(body: unknown): Entry[] {
       ...e,
       age_weeks: typeof a === "number" && Number.isFinite(a) && a >= 0 ? Math.floor(a) : -1,
       progress: parseProgress((e as { progress?: unknown }).progress),
+      pot: wholeFrom1((e as { pot?: unknown }).pot),
     };
   });
 }
+
+const wholeFrom1 = (v: unknown): number | null => (Number.isSafeInteger(v) && (v as number) >= 1 ? (v as number) : null);
+
+/** The number the next tree put on show gets, from a GET /v1/gallery body; null when it doesn't say. */
+export function parseNextPot(body: unknown): number | null {
+  return body && typeof body === "object" ? wholeFrom1((body as { next_pot?: unknown }).next_pot) : null;
+}
+
+/** A pot or plate number as the site shows it: two digits at least, "05". */
+export const potNo = (n: number): string => String(n).padStart(2, "0");
 
 /** The entries of `body` when every one of them reads, `null` when any is
  *  malformed or there is no list: an answer that may leave a tree out, so the

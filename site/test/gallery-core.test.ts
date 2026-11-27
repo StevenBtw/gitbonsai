@@ -202,3 +202,25 @@ test("progressText counts quarters", () => {
   assert.equal(g.progressText({ done: 41, total: 64 }), "41 of 64 quarters");
   assert.equal(g.progressText({ done: 1, total: 1 }), "1 of 1 quarter");
 });
+
+test("an entry's pot is a whole number from 1, or null", () => {
+  const good = e("tj");
+  assert.equal(g.parseList({ entries: [{ ...good, pot: 9 }] })[0]?.pot, 9);
+  // Missing (a hidden example) or nonsense: the tree still shows, without a number.
+  for (const bad of [undefined, null, 0, -3, 2.5, "9", Infinity]) {
+    const [x] = g.parseList({ entries: [{ ...good, pot: bad }] });
+    assert.ok(x, String(bad));
+    assert.equal(x.pot, null, String(bad));
+  }
+});
+
+test("next_pot is read from the listing's top level", () => {
+  assert.equal(g.parseNextPot({ entries: [], next_pot: 28 }), 28);
+  for (const bad of [null, {}, { next_pot: 0 }, { next_pot: "28" }, { next_pot: 1.5 }]) assert.equal(g.parseNextPot(bad), null);
+});
+
+test("a pot number reads as the front page's plates do", () => {
+  assert.equal(g.potNo(5), "05");
+  assert.equal(g.potNo(28), "28");
+  assert.equal(g.potNo(140), "140");
+});
