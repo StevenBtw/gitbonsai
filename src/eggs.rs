@@ -7,7 +7,7 @@
 //!
 //! | Achievement | x1 | x2 | x3 | x4 |
 //! |---|---|---|---|---|
-//! | Pull Shark | small stone fish | polished ivory white shark | stone tuna | stone shark |
+//! | Pull Shark | (nothing) | small stone fish | stone tuna | polished ivory white shark |
 //! | Starstruck | paper star | clear-glass furin | blue furin painted with stars | golden furin, strip swaying |
 //! | Pair Extraordinaire (spring) | (nothing) | two pebbles | yin-yang pebbles | red-crowned cranes |
 //! | Galaxy Brain | glowworm (summer) | firefly (summer) | firefly + a galaxy begonia leaf behind the trunk | firefly + a night sky petunia behind the trunk |
@@ -630,15 +630,14 @@ pub fn eggs(
             );
         }
     }
-    if let Some(t) = tier("pull-shark") {
+    if let Some(t) = tier("pull-shark").filter(|&t| t >= 2) {
         let (symbol, half) = match t {
-            1 => ("fish1", 5.5),
-            2 => ("ivoryshark", 7.2),
+            2 => ("fish1", 5.5),
             3 => ("fish3", 6.75),
-            _ => ("fish4", 12.0),
+            _ => ("ivoryshark", 7.2),
         };
         // The ivory shark, tall with its fins, lies further back.
-        let depth = if t == 2 { 0.05 } else { 0.35 };
+        let depth = if t >= 4 { 0.05 } else { 0.35 };
         let at = (CENTER_X + hw * 0.5, SOIL_Y + ry * depth);
         if let Some((x, y)) = settle(
             &mut soil,
@@ -654,7 +653,7 @@ pub fn eggs(
                 Num(y),
                 Num(w * 1.3 * k)
             );
-            if t == 2 {
+            if t >= 4 {
                 // A polished ivory white shark, seen three quarters on, at a
                 // little over half the size it is drawn and a little flatter:
                 // its back lit above a crisp crease from snout to tail, the
@@ -674,19 +673,16 @@ pub fn eggs(
                 );
             } else {
                 let paint = paints.stone;
-                // The tuna carries its own gloss along its back, and is
-                // drawn at three quarters of its size.
-                let (gloss, size) = if t == 3 {
-                    ("", r#" transform="scale(.75)""#)
+                // The tuna, with its own gloss along its back, is drawn at
+                // three quarters of its size.
+                let size = if t == 3 {
+                    r#" transform="scale(.75)""#
                 } else {
-                    (
-                        r##"<path d="M-2-2.2Q.4-3.2 2.6-2.2" fill="none" stroke="#fff" stroke-width=".55" opacity=".45"/>"##,
-                        "",
-                    )
+                    ""
                 };
                 let _ = write!(
                     e.front,
-                    r##"<ellipse cy="1.4" rx="{half}" ry="1.6" fill="{shadow}" opacity=".45"/><use href="#{symbol}"{size} fill="{paint}" stroke="{}" stroke-width=".3" stroke-linejoin="round"/>{gloss}<g fill="{}" opacity=".3"><circle cx="-2" cy="-.6" r=".35"/><circle cx="1" cy="-1.4" r=".28"/><circle cx="-.4" cy=".4" r=".3"/></g></g>"##,
+                    r##"<ellipse cy="1.4" rx="{half}" ry="1.6" fill="{shadow}" opacity=".45"/><use href="#{symbol}"{size} fill="{paint}" stroke="{}" stroke-width=".3" stroke-linejoin="round"/><g fill="{}" opacity=".3"><circle cx="-2" cy="-.6" r=".35"/><circle cx="1" cy="-1.4" r=".28"/><circle cx="-.4" cy=".4" r=".3"/></g></g>"##,
                     paint.shift(-0.18, 0.0),
                     paint.shift(-0.2, 0.0)
                 );
@@ -1376,20 +1372,27 @@ mod tests {
         assert_eq!(peek(&last), (None, Some((19.0, 319.0))));
     }
 
-    /// Pull Shark x2 lays an ivory white shark trinket on the soil, in place
-    /// of the painted goldfish.
+    /// Pull Shark climbs from nothing at x1 to the small stone fish, the
+    /// stone tuna and, at x4, the polished ivory white shark.
     #[test]
-    fn pull_shark_x2_is_an_ivory_white_shark() {
+    fn pull_shark_climbs_to_the_ivory_shark() {
         let config = crate::Config::default();
-        let b = Bonsai::grow(
-            &crate::fixtures::by_name("comeback").unwrap().snapshot,
-            &config,
-            None,
-        );
-        assert_eq!(b.achievements.get("pull-shark"), Some(&2));
-        let svg = crate::render::svg(&b, &config, crate::render::Theme::Light);
-        assert!(svg.contains(r##"href="#ivoryshark""##));
-        assert!(!svg.contains("fish2"));
+        let drawn = |fixture: &str, tier: u8| {
+            let b = Bonsai::grow(
+                &crate::fixtures::by_name(fixture).unwrap().snapshot,
+                &config,
+                None,
+            );
+            assert_eq!(b.achievements.get("pull-shark"), Some(&tier), "{fixture}");
+            let svg = crate::render::svg(&b, &config, crate::render::Theme::Light);
+            ["fish1", "fish3", "ivoryshark"]
+                .into_iter()
+                .filter(|s| svg.contains(&format!("href=\"#{s}\"")))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(drawn("sprout", 1), Vec::<&str>::new());
+        assert_eq!(drawn("comeback", 2), ["fish1"]);
+        assert_eq!(drawn("veteran", 4), ["ivoryshark"]);
     }
 
     /// Every staple lies over every crack: none is drawn under a crack that

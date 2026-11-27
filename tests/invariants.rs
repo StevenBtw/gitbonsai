@@ -645,7 +645,7 @@ fn easter_eggs_follow_the_achievements() {
     // Observed in November: the autumn samara, not the spring cranes
     // (`seasonal_eggs_keep_their_season`).
     for egg in [
-        "#fish4",
+        "#ivoryshark",
         "#goen",
         r#"rx="8.4" ry="1.1""#,
         "class=\"fs\"",
@@ -654,7 +654,8 @@ fn easter_eggs_follow_the_achievements() {
         assert!(veteran.contains(egg), "veteran lacks {egg}");
     }
     let sprout = render("sprout");
-    assert!(sprout.contains("#fish1\""));
+    // Pull Shark x1 draws nothing.
+    assert!(!sprout.contains("#fish1\""));
     assert!(
         !sprout.contains("url(#pc)"),
         "no archived repos, no kintsugi"
@@ -2126,7 +2127,7 @@ fn a_left_tree_is_furnished_as_the_mirror_image() {
     for egg in [
         r##"fill="#3b0f6a""##,
         r##"<use href="#goen"/>"##,
-        r##"<use href="#fish4""##,
+        r##"<use href="#ivoryshark""##,
     ] {
         let (r, l) = (at(&right, egg), at(&left, egg));
         assert!(!r.2 && l.2, "{egg}: only the left tree's is mirrored");
