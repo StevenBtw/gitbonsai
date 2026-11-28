@@ -1,4 +1,4 @@
-# <img src="site/favicon.svg" alt="" width="26" height="26" align="absmiddle"> <span style="color:#a39d91">git</span>*bonsai*
+<h1><picture><source media="(prefers-color-scheme: dark)" srcset="assets/wordmark-dark.svg"><img src="assets/wordmark-light.svg" alt="gitbonsai" height="34"></picture></h1>
 
 Grow a Japanese maple bonsai from your GitHub activity: an animated SVG for your profile README.
 
